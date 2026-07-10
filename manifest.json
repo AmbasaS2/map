@@ -1,0 +1,18 @@
+{
+  "display_name": "🗺️ 지도",
+  "loading_order": 50,
+  "requires": [],
+  "optional": [],
+  "dependencies": [],
+  "js": "index.js",
+  "css": "style.css",
+  "author": "Anonymous",
+  "version": "2.6.4",
+  "auto_update": false,
+  "minimum_client_version": "1.12.6",
+  "name": "🗺️ 지도",
+  "hooks": {
+    "enable": "onEnable",
+    "disable": "onDisable"
+  }
+}
