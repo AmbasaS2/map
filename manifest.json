@@ -13,6 +13,7 @@
   "name": "🗺️ 지도",
   "hooks": {
     "enable": "onEnable",
-    "disable": "onDisable"
+    "disable": "onDisable",
+    "activate": "onActivate"
   }
 }

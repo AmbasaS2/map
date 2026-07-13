@@ -68,12 +68,11 @@ const EMPTY_MEMORY = Object.freeze({
 });
 
 let spellCasting = false;
-let menuObserver = null;
 let initialized = false;
 let lifecycleEnabled = true;
-let initRetryTimer = null;
 let initDomReadyHandler = null;
-let menuRetryTimer = null;
+let appLifecycleHooksBound = false;
+let appLifecycleHandlers = [];
 let chatChangedHooked = false;
 let lastKnownChatSignature = '';
 let profileSwitchDepth = 0;
@@ -4741,8 +4740,7 @@ function ensureExtensionsMenuButton() {
         menu.appendChild(button);
     }
 
-    // Do not remove/recreate the button on every DOM mutation. Updating in place prevents
-    // MutationObserver feedback loops that can freeze SillyTavern during boot.
+    // Update the existing button in place instead of removing and recreating it.
     button.id = 'mma-extension-menu-button';
     button.dataset.mmaMenuButton = 'true';
     button.className = 'list-group-item flex-container flexGap5 interactable';
@@ -4757,27 +4755,6 @@ function ensureExtensionsMenuButton() {
         });
     }
     return true;
-}
-
-function scheduleExtensionsMenuButton() {
-    if (ensureExtensionsMenuButton()) return;
-    if (menuRetryTimer) return;
-
-    let attempts = 0;
-    menuRetryTimer = setInterval(() => {
-        attempts += 1;
-        if (ensureExtensionsMenuButton() || attempts >= 60) {
-            clearInterval(menuRetryTimer);
-            menuRetryTimer = null;
-            if (attempts >= 60) console.warn('[MarauderMap] extensions menu was not found; map can still open from settings if available.');
-        }
-    }, 500);
-}
-
-// Kept as a compatibility wrapper for older internal calls. It intentionally does
-// not observe document.body anymore.
-function watchExtensionsMenu() {
-    scheduleExtensionsMenuButton();
 }
 
 function safeInitStep(label, fn) {
@@ -4833,16 +4810,66 @@ function handleMapChatChanged() {
     setTimeout(() => syncExtensionPrompt({ createMemory: false }), 0);
 }
 
-function init() {
-    if (!lifecycleEnabled || initialized) return;
-    if (!isContextReady()) {
-        scheduleInit();
+function isAppUiReady() {
+    return Boolean(document.body && (
+        document.getElementById('extensionsMenu') ||
+        document.getElementById('extensions_settings') ||
+        document.getElementById('extensions_settings2')
+    ));
+}
+
+function handleMapLifecycleReady() {
+    if (!lifecycleEnabled) return;
+    if (!initialized) {
+        if (isContextReady()) init();
         return;
     }
+    // APP_READY can follow APP_INITIALIZED. This second event is a single,
+    // event-driven chance to add the menu button if that specific UI arrived later.
+    ensureExtensionsMenuButton();
+}
+
+function bindAppLifecycleHooks() {
+    if (appLifecycleHooksBound) return;
+    const context = safeContext();
+    const eventSource = context?.eventSource;
+    const eventTypes = context?.event_types || context?.eventTypes || {};
+    if (!eventSource?.on) return;
+
+    const seen = new Set();
+    const handlers = [];
+    for (const key of ['APP_INITIALIZED', 'APP_READY']) {
+        const eventName = eventTypes[key];
+        if (!eventName || seen.has(eventName)) continue;
+        seen.add(eventName);
+        const handler = () => handleMapLifecycleReady();
+        eventSource.on(eventName, handler);
+        handlers.push({ eventName, handler });
+    }
+    appLifecycleHandlers = handlers;
+    appLifecycleHooksBound = handlers.length > 0;
+}
+
+function unbindAppLifecycleHooks() {
+    if (!appLifecycleHooksBound && !appLifecycleHandlers.length) return;
+    const context = safeContext();
+    const eventSource = context?.eventSource;
+    for (const { eventName, handler } of appLifecycleHandlers) {
+        try {
+            if (typeof eventSource?.off === 'function') eventSource.off(eventName, handler);
+            else if (typeof eventSource?.removeListener === 'function') eventSource.removeListener(eventName, handler);
+        } catch { /* noop */ }
+    }
+    appLifecycleHandlers = [];
+    appLifecycleHooksBound = false;
+}
+
+function init() {
+    if (!lifecycleEnabled || initialized || !isContextReady()) return;
 
     initialized = true;
     safeInitStep('setupExtensionButtonInSettings', setupExtensionButtonInSettings);
-    safeInitStep('scheduleExtensionsMenuButton', scheduleExtensionsMenuButton);
+    safeInitStep('ensureExtensionsMenuButton', ensureExtensionsMenuButton);
     // Restore an already-existing injected map prompt quietly, but do not create
     // map DOM, run migrations, or touch chat memory during SillyTavern boot.
     safeInitStep('syncExtensionPromptExistingOnly', () => syncExtensionPrompt({ createMemory: false }));
@@ -4855,52 +4882,39 @@ function init() {
             chatChangedHooked = true;
         }
     });
-
 }
 
-function scheduleInit() {
-    if (!lifecycleEnabled || initialized || initRetryTimer) return;
+function startLifecycleInit() {
+    if (!lifecycleEnabled || initialized) return;
+    bindAppLifecycleHooks();
 
-    const startTrying = () => {
-        initDomReadyHandler = null;
-        if (!lifecycleEnabled || initialized || initRetryTimer) return;
-        let attempts = 0;
-        initRetryTimer = setInterval(() => {
-            attempts += 1;
-            if (!lifecycleEnabled) {
-                clearInterval(initRetryTimer);
-                initRetryTimer = null;
-                return;
-            }
-            if (isContextReady()) {
-                clearInterval(initRetryTimer);
-                initRetryTimer = null;
-                init();
-                return;
-            }
-            if (attempts >= 80) {
-                clearInterval(initRetryTimer);
-                initRetryTimer = null;
-                console.warn('[MarauderMap] SillyTavern context was not ready; initialization was skipped instead of blocking the app.');
-            }
-        }, 250);
-    };
+    // Re-enabling after SillyTavern is already ready should initialize immediately.
+    // During normal startup, APP_INITIALIZED / APP_READY perform the setup instead.
+    if (document.readyState !== 'loading' && isContextReady() && isAppUiReady()) {
+        handleMapLifecycleReady();
+        return;
+    }
 
-    if (document.readyState === 'loading') {
-        if (!initDomReadyHandler) {
-            initDomReadyHandler = startTrying;
-            document.addEventListener('DOMContentLoaded', initDomReadyHandler, { once: true });
-        }
-    } else {
-        startTrying();
+    // One standard DOM readiness callback is retained only for clients where the
+    // extension activate hook runs before the document is interactive.
+    if (document.readyState === 'loading' && !initDomReadyHandler) {
+        initDomReadyHandler = () => {
+            initDomReadyHandler = null;
+            bindAppLifecycleHooks();
+            if (isContextReady() && isAppUiReady()) handleMapLifecycleReady();
+        };
+        document.addEventListener('DOMContentLoaded', initDomReadyHandler, { once: true });
     }
 }
 
-scheduleInit();
+export function onActivate() {
+    lifecycleEnabled = true;
+    startLifecycleInit();
+}
 
 export function onEnable() {
     lifecycleEnabled = true;
-    scheduleInit();
+    startLifecycleInit();
 }
 
 export function onDisable() {
@@ -4920,21 +4934,10 @@ export function onDisable() {
         }
     } catch { /* noop */ }
     lastKnownChatSignature = '';
-    if (menuObserver) {
-        try { menuObserver.disconnect(); } catch { /* noop */ }
-        menuObserver = null;
-    }
+    unbindAppLifecycleHooks();
     if (initDomReadyHandler) {
         try { document.removeEventListener('DOMContentLoaded', initDomReadyHandler); } catch { /* noop */ }
         initDomReadyHandler = null;
-    }
-    if (initRetryTimer) {
-        clearInterval(initRetryTimer);
-        initRetryTimer = null;
-    }
-    if (menuRetryTimer) {
-        clearInterval(menuRetryTimer);
-        menuRetryTimer = null;
     }
     document.getElementById(EXTENSION_ROOT_ID)?.remove();
     document.getElementById('mma-extension-menu-button')?.remove();
