@@ -2999,3 +2999,53 @@ button.mma-footstep:focus-visible em {
   line-height: 1.25 !important;
   box-shadow: none !important;
 }
+
+/* v2.6.4: Phrase Desk-style two-column extension settings */
+#mma-settings-block .mma-settings-content {
+  border-top: 1px solid rgba(128, 118, 100, .18) !important;
+  padding-top: 8px !important;
+  padding-bottom: 6px !important;
+}
+
+#mma-settings-block .mma-settings-grid {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+  column-gap: 8px !important;
+  row-gap: 7px !important;
+  width: 100% !important;
+  min-width: 0 !important;
+}
+
+#mma-settings-block .mma-settings-grid .mma-settings-field {
+  margin: 0 !important;
+  min-width: 0 !important;
+}
+
+#mma-settings-block .mma-settings-grid select {
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+}
+
+#mma-settings-block .mma-settings-debug-field {
+  display: flex !important;
+  align-items: flex-end !important;
+  justify-content: flex-end !important;
+  align-self: stretch !important;
+}
+
+#mma-settings-block .mma-settings-debug-field .mma-debug-settings-button {
+  width: auto !important;
+  min-width: 0 !important;
+  margin: 0 !important;
+  padding: 5px 10px !important;
+  min-height: 28px !important;
+  font-size: 12px !important;
+}
+
+#mma-settings-block #mma-settings-debug-panel {
+  grid-column: 1 / -1 !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  margin: 0 !important;
+}
