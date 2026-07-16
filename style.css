@@ -3049,24 +3049,3 @@ button.mma-footstep:focus-visible em {
   min-width: 0 !important;
   margin: 0 !important;
 }
-
-
-/* v2.6.4: refined two-column settings alignment */
-#mma-settings-block .mma-settings-label-spacer {
-  visibility: hidden !important;
-  min-height: 16px !important;
-  margin: 0 0 3px !important;
-  padding: 0 !important;
-}
-
-#mma-settings-block .mma-settings-debug-field {
-  display: flex !important;
-  flex-direction: column !important;
-  align-items: flex-end !important;
-  justify-content: flex-end !important;
-  align-self: stretch !important;
-}
-
-#mma-settings-block .mma-settings-debug-field .mma-debug-settings-button {
-  align-self: flex-end !important;
-}

@@ -4679,7 +4679,6 @@ function setupExtensionButtonInSettings() {
                     </div>
                 </div>
                 <div class="mma-settings-field mma-settings-debug-field">
-                    <label class="mma-settings-label mma-settings-label-spacer" aria-hidden="true">&nbsp;</label>
                     <button id="mma-open-debug" type="button" class="menu_button mma-debug-settings-button">🐞 <span>디버그 로그</span></button>
                 </div>
                 <div id="mma-settings-debug-panel" class="mma-settings-debug-panel" style="display:none;">
