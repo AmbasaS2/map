@@ -440,7 +440,7 @@
 .mma-toolbar-actions {
   justify-content: flex-end;
 }
-.mma-settings-content {
+.mma-settings-inner {
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -2886,11 +2886,15 @@ button.mma-footstep:focus-visible em {
   box-shadow: none !important;
 }
 
-/* v2.6.4: Phrase Desk-style two-column extension settings */
-#mma-settings-block .mma-settings-content {
+/* v2.6.4: keep ST's animated drawer untouched; style the inner settings shell instead. */
+#mma-settings-block > .mma-settings-content {
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+}
+#mma-settings-block .mma-settings-inner {
   border-top: 1px solid rgba(128, 118, 100, .18) !important;
-  padding-top: 8px !important;
-  padding-bottom: 6px !important;
+  padding: 8px 0 6px !important;
 }
 
 #mma-settings-block .mma-settings-grid {

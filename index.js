@@ -4656,6 +4656,7 @@ function setupExtensionButtonInSettings() {
             <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
         </div>
         <div class="inline-drawer-content mma-settings-content" style="display:none;">
+            <div class="mma-settings-inner">
             <div class="mma-settings-grid">
                 <div class="mma-settings-field mma-settings-profile-field">
                     <label class="mma-settings-label" for="mma-connection-profile">연결 프로필</label>
@@ -4688,6 +4689,7 @@ function setupExtensionButtonInSettings() {
                     </div>
                     <textarea id="mma-settings-debug-output" readonly rows="8" placeholder="디버그 로그 버튼을 누르면 최근 지도 요청 로그와 설정 정보가 여기에 표시됩니다."></textarea>
                 </div>
+            </div>
             </div>
         </div>
     `;
