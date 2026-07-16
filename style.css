@@ -2926,9 +2926,6 @@ button.mma-footstep:focus-visible em {
 
 /* v2.6.4: compact, ordered extension-tab settings layout */
 #mma-settings-block .mma-settings-content {
-  display: flex !important;
-  flex-direction: column !important;
-  gap: 0 !important;
   padding-bottom: 8px !important;
 }
 
