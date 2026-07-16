@@ -446,7 +446,7 @@ function refreshExtensionsMenuButton() {
     const button = document.getElementById('mma-extension-menu-button');
     if (!button) return;
     button.title = getThemeKey() === 'modern' ? 'Location tracker' : "Marauder's Map";
-    button.innerHTML = `<span class="mma-menu-icon">${getExtensionMenuIcon()}</span><span class="mma-menu-label">지도</span>`;
+    button.innerHTML = `<span class="mma-menu-icon extensionsMenuExtensionButton">${getExtensionMenuIcon()}</span><span class="mma-menu-label">지도</span>`;
 }
 
 function applyThemeClass() {
@@ -4745,7 +4745,7 @@ function ensureExtensionsMenuButton() {
     button.id = 'mma-extension-menu-button';
     button.className = 'list-group-item flex-container flexGap5 interactable';
     button.title = getThemeKey() === 'modern' ? 'Location tracker' : "Marauder's Map";
-    button.innerHTML = `<span class="mma-menu-icon">${getExtensionMenuIcon()}</span><span class="mma-menu-label">지도</span>`;
+    button.innerHTML = `<span class="mma-menu-icon extensionsMenuExtensionButton">${getExtensionMenuIcon()}</span><span class="mma-menu-label">지도</span>`;
     button.addEventListener('click', () => {
         openMap();
     });
