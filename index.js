@@ -4656,21 +4656,27 @@ function setupExtensionButtonInSettings() {
             <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
         </div>
         <div class="inline-drawer-content mma-settings-content" style="display:none;">
-            <label class="mma-settings-label" for="mma-theme-setting">Theme</label>
-            <select id="mma-theme-setting" class="text_pole">
-                <option value="marauder" ${getThemeKey() === 'marauder' ? 'selected' : ''}>Marauder's Map (HP AU)</option>
-                <option value="modern" ${getThemeKey() === 'modern' ? 'selected' : ''}>Location tracker (Modern AU)</option>
-            </select>
-            <label class="mma-settings-label" for="mma-font-scale">글씨 크기</label>
-            <div class="mma-font-scale-row">
-                <input id="mma-font-scale" type="number" min="10" max="24" step="1" value="${normalizeFontScale(settings.fontScale)}">
-                <span id="mma-font-scale-value">px</span>
+            <div class="mma-settings-field mma-settings-profile-field">
+                <label class="mma-settings-label" for="mma-connection-profile">연결 프로필</label>
+                <select id="mma-connection-profile" class="text_pole">
+                    <option value="main">메인 API</option>
+                </select>
+                <p class="mma-settings-note">메인 API 외 별도 프로필 사용을 추천합니다.</p>
             </div>
-            <label class="mma-settings-label" for="mma-connection-profile">연결 프로필</label>
-            <select id="mma-connection-profile" class="text_pole">
-                <option value="main">메인 API</option>
-            </select>
-            <p class="mma-settings-note">메인 API 외 별도 프로필 사용을 추천합니다.</p>
+            <div class="mma-settings-field">
+                <label class="mma-settings-label" for="mma-theme-setting">Theme</label>
+                <select id="mma-theme-setting" class="text_pole">
+                    <option value="marauder" ${getThemeKey() === 'marauder' ? 'selected' : ''}>Marauder's Map (HP AU)</option>
+                    <option value="modern" ${getThemeKey() === 'modern' ? 'selected' : ''}>Location tracker (Modern AU)</option>
+                </select>
+            </div>
+            <div class="mma-settings-field mma-settings-font-field">
+                <label class="mma-settings-label" for="mma-font-scale">글씨 크기</label>
+                <div class="mma-font-scale-row">
+                    <input id="mma-font-scale" class="text_pole mma-font-scale-input" type="number" min="10" max="24" step="1" value="${normalizeFontScale(settings.fontScale)}">
+                    <span id="mma-font-scale-value">px</span>
+                </div>
+            </div>
             <div class="mma-global-debug-box">
                 <button id="mma-open-debug" type="button" class="menu_button mma-debug-settings-button">🐞 <span>디버그 로그</span></button>
                 <div id="mma-settings-debug-panel" class="mma-settings-debug-panel" style="display:none;">

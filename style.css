@@ -2923,3 +2923,82 @@ button.mma-footstep:focus-visible em {
 
 /* v2.6.0 stability: isolate generic card class names and keep disabled toolbar icons inert. */
 #mma-root .mma-toolbar-actions button:disabled { cursor: default; }
+
+/* v2.6.4: compact, ordered extension-tab settings layout */
+#mma-settings-block .mma-settings-content {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 0 !important;
+  padding-bottom: 8px !important;
+}
+
+#mma-settings-block .mma-settings-field {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 0 !important;
+  margin: 0 0 7px !important;
+  min-width: 0 !important;
+}
+
+#mma-settings-block .mma-settings-field:last-of-type {
+  margin-bottom: 0 !important;
+}
+
+#mma-settings-block .mma-settings-label {
+  display: block !important;
+  margin: 0 0 3px !important;
+  font-size: 12px !important;
+  line-height: 1.35 !important;
+}
+
+#mma-settings-block .mma-settings-field select,
+#mma-settings-block .mma-settings-field input[type="number"] {
+  margin: 0 !important;
+}
+
+#mma-settings-block .mma-settings-note {
+  margin: 3px 0 0 !important;
+  font-size: 11px !important;
+  line-height: 1.35 !important;
+}
+
+#mma-settings-block .mma-font-scale-row {
+  display: flex !important;
+  align-items: center !important;
+  gap: 3px !important;
+  margin: 0 !important;
+}
+
+#mma-settings-block #mma-font-scale-value {
+  min-width: 0 !important;
+  width: auto !important;
+  margin: 0 !important;
+  text-align: left !important;
+  font-size: 12px !important;
+  line-height: 1 !important;
+}
+
+#mma-settings-block .mma-global-debug-box {
+  margin: 6px 0 2px !important;
+  padding: 0 !important;
+  gap: 6px !important;
+}
+
+#mma-settings-block .mma-debug-settings-button {
+  margin: 0 !important;
+}
+
+
+
+/* v2.6.4: font-size input matches Scene Board settings control */
+#mma-settings-block .mma-font-scale-input {
+  width: 92px !important;
+  max-width: 120px !important;
+  min-height: 28px !important;
+  height: 28px !important;
+  margin: 0 !important;
+  padding: 0 8px !important;
+  font-size: 12px !important;
+  line-height: 1.25 !important;
+  box-shadow: none !important;
+}
