@@ -4739,29 +4739,17 @@ async function populateConnectionProfileSelect() {
 function ensureExtensionsMenuButton() {
     const menu = document.querySelector('#extensionsMenu');
     if (!menu) return false;
+    if (document.getElementById('mma-extension-menu-button')) return true;
 
-    let button = document.getElementById('mma-extension-menu-button') || menu.querySelector('[data-mma-menu-button="true"]');
-    if (!button) {
-        button = document.createElement('div');
-        button.id = 'mma-extension-menu-button';
-        button.dataset.mmaMenuButton = 'true';
-        menu.appendChild(button);
-    }
-
-    // Update the existing button in place instead of removing and recreating it.
+    const button = document.createElement('div');
     button.id = 'mma-extension-menu-button';
-    button.dataset.mmaMenuButton = 'true';
     button.className = 'list-group-item flex-container flexGap5 interactable';
     button.title = getThemeKey() === 'modern' ? 'Location tracker' : "Marauder's Map";
     button.innerHTML = `<span class="mma-menu-icon">${getExtensionMenuIcon()}</span><span class="mma-menu-label">지도</span>`;
-    if (button.parentElement !== menu) menu.appendChild(button);
-
-    if (button.dataset.mmaBound !== 'true') {
-        button.dataset.mmaBound = 'true';
-        button.addEventListener('click', () => {
-            openMap();
-        });
-    }
+    button.addEventListener('click', () => {
+        openMap();
+    });
+    menu.appendChild(button);
     return true;
 }
 
@@ -4819,22 +4807,16 @@ function handleMapChatChanged() {
 }
 
 function isAppUiReady() {
-    return Boolean(document.body && (
-        document.getElementById('extensionsMenu') ||
-        document.getElementById('extensions_settings') ||
-        document.getElementById('extensions_settings2')
-    ));
+    return Boolean(
+        document.body &&
+        document.getElementById('extensionsMenu') &&
+        (document.getElementById('extensions_settings') || document.getElementById('extensions_settings2'))
+    );
 }
 
 function handleMapLifecycleReady() {
-    if (!lifecycleEnabled) return;
-    if (!initialized) {
-        if (isContextReady()) init();
-        return;
-    }
-    // APP_READY can follow APP_INITIALIZED. This second event is a single,
-    // event-driven chance to add the menu button if that specific UI arrived later.
-    ensureExtensionsMenuButton();
+    if (!lifecycleEnabled || initialized) return;
+    if (isContextReady() && isAppUiReady()) init();
 }
 
 function bindAppLifecycleHooks() {

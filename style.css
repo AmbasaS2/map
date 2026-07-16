@@ -428,16 +428,6 @@
   .mma-toolbar-actions { flex-wrap: wrap; justify-content: flex-end; }
   .mma-managed-button { padding: 8px 12px; }
 }
-
-/* v0.1.2 refinements */
-#mma-extension-menu-button {
-  cursor: pointer;
-}
-#mma-extension-menu-button span:first-child {
-  width: 1.35em;
-  display: inline-block;
-  text-align: center;
-}
 .mma-top-right {
   display: flex;
   flex-direction: column;
@@ -485,28 +475,6 @@
 }
 @media (max-width: 880px) {
   .mma-top-right { align-items: flex-end; }
-}
-
-/* v0.1.5 interaction and menu refinements */
-#extensionsMenu #mma-extension-menu-button {
-  border: 0 !important;
-  box-shadow: none !important;
-  outline: none !important;
-  background: transparent !important;
-  margin: 0 !important;
-  border-radius: 0 !important;
-  min-height: unset !important;
-  width: 100% !important;
-  box-sizing: border-box !important;
-  color: inherit !important;
-}
-#extensionsMenu #mma-extension-menu-button:hover {
-  background: rgba(128, 128, 128, .10) !important;
-}
-#extensionsMenu #mma-extension-menu-button span:first-child {
-  width: 1.5em;
-  display: inline-block;
-  text-align: center;
 }
 .mma-top-right .mma-managed-button { order: 0; }
 .mma-top-right .mma-toolbar-actions { order: 1; }
@@ -1202,8 +1170,6 @@ button.mma-footstep:focus-visible em {
 }
 
 
-
-
 /* v1 final layer balance:
    Above SillyTavern's normal toolbar, below companion popups/toasts/loaders. */
 #mma-root {
@@ -1454,9 +1420,6 @@ button.mma-footstep:focus-visible em {
     min-width: min(320px, 92vw);
   }
 }
-
-/* v2.1 평범한 지도 refinements */
-#mma-extension-menu-button span:last-child { font-weight: 600; }
 
 #mma-window.mma-theme-modern {
   color: #1f2937;
@@ -2357,7 +2320,6 @@ button.mma-footstep:focus-visible em {
 }
 
 
-
 /* v2.4.0: actual map canvas can be resized vertically by dragging the subtle corner stripes */
 .mma-map-canvas {
   position: relative;
@@ -2458,7 +2420,6 @@ button.mma-footstep:focus-visible em {
 }
 
 
-
 /* v2.4.6: Marauder search keyword buttons match Modern AU compact sizing */
 #mma-window.mma-theme-marauder .mma-recommend-buttons button,
 #mma-window.mma-theme-marauder .mma-custom-search button,
@@ -2481,7 +2442,6 @@ button.mma-footstep:focus-visible em {
 #mma-window.mma-theme-marauder .mma-custom-search button {
   min-width: 42px !important;
 }
-
 
 
 /* v2.4.10: settings-side debug controls match Konggomul compact layout */
@@ -2510,13 +2470,6 @@ button.mma-footstep:focus-visible em {
 #mma-settings-block button {
   font-size: 12px !important;
   line-height: 1.3 !important;
-}
-
-#mma-settings-block .mma-global-debug-box {
-  margin-top: 10px !important;
-  display: grid !important;
-  gap: 6px !important;
-  max-width: min(100%, 680px) !important;
 }
 
 #mma-settings-block .mma-debug-settings-button {
@@ -2597,39 +2550,6 @@ button.mma-footstep:focus-visible em {
 }
 
 
-
-/* v2.4.11: balanced extension menu label and theme-aware icon */
-#mma-extension-menu-button {
-  font-weight: inherit !important;
-}
-
-#mma-extension-menu-button .mma-menu-icon {
-  display: inline-flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  width: 1.35em !important;
-  min-width: 1.35em !important;
-  margin-right: 4px !important;
-  font-weight: 400 !important;
-  line-height: 1 !important;
-}
-
-#mma-extension-menu-button .mma-menu-label {
-  font-weight: inherit !important;
-  line-height: inherit !important;
-}
-
-
-
-/* v2.4.12: tighter settings layout and plain SillyTavern-style controls */
-#mma-extension-menu-button {
-  font-weight: inherit !important;
-}
-
-#mma-settings-block .mma-settings-content {
-  padding-bottom: 12px !important;
-}
-
 #mma-settings-block .mma-settings-label {
   margin: 7px 0 3px !important;
 }
@@ -2666,12 +2586,6 @@ button.mma-footstep:focus-visible em {
   margin: 4px 0 7px !important;
 }
 
-#mma-settings-block .mma-global-debug-box {
-  margin-top: 4px !important;
-  margin-bottom: 12px !important;
-  padding-bottom: 6px !important;
-}
-
 #mma-settings-block .mma-debug-settings-button,
 #mma-settings-block .mma-debug-actions button,
 #mma-settings-block #mma-copy-debug,
@@ -2689,7 +2603,6 @@ button.mma-footstep:focus-visible em {
   font-size: 11.5px !important;
   line-height: 1.1 !important;
 }
-
 
 
 /* v2.4.13: font size setting is px, not percent */
@@ -2893,23 +2806,6 @@ button.mma-footstep:focus-visible em {
   margin-top: 0 !important;
 }
 
-/* Let SillyTavern's normal flex gap handle icon-to-label spacing. */
-#extensionsMenu #mma-extension-menu-button .mma-menu-icon,
-#extensionsMenu #mma-extension-menu-button span:first-child {
-  display: inline !important;
-  width: auto !important;
-  min-width: 0 !important;
-  margin: 0 !important;
-  padding: 0 !important;
-  text-align: inherit !important;
-  line-height: inherit !important;
-}
-#extensionsMenu #mma-extension-menu-button .mma-menu-label {
-  margin: 0 !important;
-  padding: 0 !important;
-  font-weight: inherit !important;
-}
-
 
 /* v2.6.0: restore only the mini-map resize handle and tighten section headings */
 #mma-window .mma-info-block h4 {
@@ -2925,9 +2821,6 @@ button.mma-footstep:focus-visible em {
 #mma-root .mma-toolbar-actions button:disabled { cursor: default; }
 
 /* v2.6.4: compact, ordered extension-tab settings layout */
-#mma-settings-block .mma-settings-content {
-  padding-bottom: 8px !important;
-}
 
 #mma-settings-block .mma-settings-field {
   display: flex !important;
@@ -2975,16 +2868,9 @@ button.mma-footstep:focus-visible em {
   line-height: 1 !important;
 }
 
-#mma-settings-block .mma-global-debug-box {
-  margin: 6px 0 2px !important;
-  padding: 0 !important;
-  gap: 6px !important;
-}
-
 #mma-settings-block .mma-debug-settings-button {
   margin: 0 !important;
 }
-
 
 
 /* v2.6.4: font-size input matches Scene Board settings control */
@@ -3025,13 +2911,6 @@ button.mma-footstep:focus-visible em {
   width: 100% !important;
   min-width: 0 !important;
   max-width: 100% !important;
-}
-
-#mma-settings-block .mma-settings-debug-field {
-  display: flex !important;
-  align-items: flex-end !important;
-  justify-content: flex-end !important;
-  align-self: stretch !important;
 }
 
 #mma-settings-block .mma-settings-debug-field .mma-debug-settings-button {
