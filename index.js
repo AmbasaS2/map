@@ -15,7 +15,7 @@ const EXTENSION_PROMPT_KEY = 'marauders_map_active_context';
 const FOOTSTEP_LIMIT = 10;
 const DEBUG_LOG_LIMIT = 40;
 const memoryDebugLogs = [];
-const EXTENSION_VERSION = '2.7.15';
+const EXTENSION_VERSION = '3.0.0';
 const SHARED_NOTEBOOK_KEYS = Object.freeze(['managedItems', 'footstepProfiles', 'trackedPeople', 'recommendations', 'searchResults']);
 const DISCOVERY_HISTORY_LIMIT = 30;
 const UNCOLLECTED_RECOMMENDATION_LIMIT = 24;
@@ -5396,7 +5396,7 @@ function renderMapView() {
         <section class="mma-map-screen">
             <header class="mma-toolbar">
                 <div>
-                    <div class="mma-brand small">${escapeHtml(theme.shortLabel)}${isBonbonTheme() ? '<span class="mma-bonbon-title-sweet" aria-hidden="true"></span>' : ''}</div>
+                    <div class="mma-brand small">${escapeHtml(theme.shortLabel)}${isBonbonTheme() ? '<span class="mma-bonbon-title-die" aria-hidden="true">🎲</span>' : ''}</div>
                     <div class="mma-region">${escapeHtml(map.regionName)} <span>${escapeHtml(map.timeHint || '')}</span>${lastChecked}</div>
                 </div>
                 <div class="mma-top-right">
