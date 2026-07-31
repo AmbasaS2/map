@@ -8037,3 +8037,449 @@ button.mma-footstep:focus-visible em {
     margin-bottom: 6px !important;
   }
 }
+
+
+/* v2.7.10 Bonbon quiet loop and confection palette */
+#mma-window.mma-theme-bonbon,
+#mma-root.mma-theme-bonbon {
+  --mma-bb-fig: #b47691;
+  --mma-bb-fig-deep: #724a5d;
+  --mma-bb-fig-soft: #e8cbd4;
+  --mma-bb-rose: #e8cbd4;
+  --mma-bb-chocolate: #9a7163;
+  --mma-bb-chocolate-deep: #554440;
+  --mma-bb-chocolate-soft: #c8aaa0;
+  --mma-bb-milk-chocolate: #9a7163;
+  --mma-bb-ivory: #fffcf8;
+  --mma-bb-cream: #fff8ed;
+  --mma-bb-cream-deep: #f8eee3;
+  --mma-bb-pistachio: #cdd8b2;
+  --mma-bb-pistachio-deep: #758261;
+  --mma-bb-line: #e3d0ca;
+  --mma-bb-line-soft: rgba(227, 208, 202, .66);
+  --mma-bb-soft-shadow: rgba(85, 68, 64, .08);
+}
+
+#mma-window.mma-theme-bonbon {
+  border-color: #e3d0ca !important;
+  background: #fff8ed !important;
+  color: #554440 !important;
+  box-shadow: 0 1px 2px rgba(85, 68, 64, .08) !important;
+}
+
+#mma-window.mma-theme-bonbon::after {
+  border-color: rgba(255, 252, 248, .9) !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-brand,
+#mma-window.mma-theme-bonbon .mma-brand.small,
+#mma-window.mma-theme-bonbon .mma-place-header strong,
+#mma-window.mma-theme-bonbon .mma-event-title,
+#mma-window.mma-theme-bonbon .mma-event-title b,
+#mma-window.mma-theme-bonbon .mma-info-block h4,
+#mma-window.mma-theme-bonbon .mma-section-title,
+#mma-window.mma-theme-bonbon .mma-notebook-section summary,
+#mma-window.mma-theme-bonbon .mma-person-signal-block h4 {
+  color: #724a5d !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-info-block p,
+#mma-window.mma-theme-bonbon .mma-info-block li,
+#mma-window.mma-theme-bonbon .mma-event-card p,
+#mma-window.mma-theme-bonbon .mma-event-card li,
+#mma-window.mma-theme-bonbon .mma-person-signal-summary,
+#mma-window.mma-theme-bonbon .mma-person-signal-block p,
+#mma-window.mma-theme-bonbon .mma-person-signal-block li,
+#mma-window.mma-theme-bonbon .mma-panel-note,
+#mma-window.mma-theme-bonbon .mma-empty {
+  color: #554440 !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-region,
+#mma-window.mma-theme-bonbon .mma-region span,
+#mma-window.mma-theme-bonbon .mma-event-location,
+#mma-window.mma-theme-bonbon .mma-event-detail,
+#mma-window.mma-theme-bonbon .mma-settings-note,
+#mma-window.mma-theme-bonbon .mma-card-hint,
+#mma-window.mma-theme-bonbon .mma-search-auto-save-note,
+#mma-window.mma-theme-bonbon .mma-last-checked {
+  color: #9a7163 !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-box-cover {
+  border-color: #e3d0ca !important;
+  background: #fffcf8 !important;
+  box-shadow: 0 1px 2px rgba(85, 68, 64, .08) !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-box-cover::before {
+  background:
+    linear-gradient(#b47691, #b47691) top / 100% 20px no-repeat,
+    linear-gradient(#9a7163, #9a7163) bottom / 100% 20px no-repeat,
+    linear-gradient(#e8cbd4, #e8cbd4) left / 20px 100% no-repeat,
+    linear-gradient(#cdd8b2, #cdd8b2) right / 20px 100% no-repeat !important;
+  box-shadow: inset 0 0 0 1px #e3d0ca !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-box-cover::after {
+  border-color: rgba(227, 208, 202, .76) !important;
+  background: #fff8ed !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-cover-title {
+  color: #724a5d !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-cover-copy,
+#mma-window.mma-theme-bonbon .mma-bonbon-cover-meta {
+  color: #9a7163 !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-cover-meta,
+#mma-window.mma-theme-bonbon .mma-bonbon-cover-piece-die,
+#mma-window.mma-theme-bonbon .mma-bonbon-cover-piece-key-card {
+  border-color: #e3d0ca !important;
+  background: #fffcf8 !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-cover-piece-die,
+#mma-window.mma-theme-bonbon .mma-bonbon-cover-piece-key-card,
+#mma-window.mma-theme-bonbon .mma-bonbon-cover-piece-pawn {
+  color: #b47691 !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-cover-piece-tile {
+  border-color: #758261 !important;
+  background: #cdd8b2 !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-box-cover .mma-spell-button,
+#mma-window.mma-theme-bonbon .mma-bonbon-box-cover .mma-spell-button:hover,
+#mma-window.mma-theme-bonbon .mma-bonbon-box-cover .mma-spell-button:focus-visible {
+  border-color: #724a5d !important;
+  background: #724a5d !important;
+  color: #fffcf8 !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-toolbar,
+#mma-window.mma-theme-bonbon .mma-world-summary {
+  border-color: #e3d0ca !important;
+  background: #fffcf8 !important;
+  color: #554440 !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-managed-button,
+#mma-window.mma-theme-bonbon .mma-toolbar-actions button,
+#mma-window.mma-theme-bonbon .mma-place-header button,
+#mma-window.mma-theme-bonbon .mma-place-actions button,
+#mma-window.mma-theme-bonbon .mma-event-actions button,
+#mma-window.mma-theme-bonbon .mma-recommend-buttons button,
+#mma-window.mma-theme-bonbon .mma-custom-search button,
+#mma-window.mma-theme-bonbon .mma-search-tabs button,
+#mma-window.mma-theme-bonbon .mma-discovery-confirm-actions button {
+  border-color: #e3d0ca !important;
+  background: #fffcf8 !important;
+  color: #724a5d !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-managed-button:hover,
+#mma-window.mma-theme-bonbon .mma-managed-button:focus-visible,
+#mma-window.mma-theme-bonbon .mma-toolbar-actions button:hover,
+#mma-window.mma-theme-bonbon .mma-toolbar-actions button:focus-visible,
+#mma-window.mma-theme-bonbon .mma-place-header button:hover,
+#mma-window.mma-theme-bonbon .mma-place-header button:focus-visible,
+#mma-window.mma-theme-bonbon .mma-place-actions button:hover,
+#mma-window.mma-theme-bonbon .mma-place-actions button:focus-visible,
+#mma-window.mma-theme-bonbon .mma-event-actions button:hover,
+#mma-window.mma-theme-bonbon .mma-event-actions button:focus-visible,
+#mma-window.mma-theme-bonbon .mma-recommend-buttons button:hover,
+#mma-window.mma-theme-bonbon .mma-recommend-buttons button:focus-visible,
+#mma-window.mma-theme-bonbon .mma-custom-search button:hover,
+#mma-window.mma-theme-bonbon .mma-custom-search button:focus-visible,
+#mma-window.mma-theme-bonbon .mma-search-tabs button:hover,
+#mma-window.mma-theme-bonbon .mma-search-tabs button:focus-visible,
+#mma-window.mma-theme-bonbon .mma-discovery-confirm-actions button:hover,
+#mma-window.mma-theme-bonbon .mma-discovery-confirm-actions button:focus-visible {
+  border-color: #b47691 !important;
+  background: #f3e5ea !important;
+  color: #724a5d !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-search-tabs button.active,
+#mma-window.mma-theme-bonbon .mma-search-tabs button[aria-selected="true"],
+#mma-window.mma-theme-bonbon .mma-action-choice.active,
+#mma-window.mma-theme-bonbon .mma-event-actions button.active {
+  border-color: #724a5d !important;
+  background: #724a5d !important;
+  color: #fffcf8 !important;
+}
+
+/* Places are the board spaces. The backdrop is only one quiet continuous loop. */
+#mma-window.mma-theme-bonbon .mma-map-canvas {
+  border-color: #e3d0ca !important;
+  background: #fff8ed !important;
+  box-shadow: 0 1px 2px rgba(85, 68, 64, .08) !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-board-track::before {
+  content: none !important;
+  display: none !important;
+  border: 0 !important;
+  background: none !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-board-rail {
+  box-sizing: border-box;
+  overflow: visible;
+  border: 1px solid #e3d0ca !important;
+  border-radius: 5px;
+  background-color: #fffcf8 !important;
+  box-shadow: none !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-board-rail::after {
+  content: none !important;
+  display: none !important;
+  background: none !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-board-rail-top {
+  top: calc(18% - 13px);
+  right: 18%;
+  left: 18%;
+  height: 26px;
+  background: linear-gradient(to bottom, #b47691 0 3px, #fffcf8 3px) !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-board-rail-right {
+  top: 18%;
+  right: auto;
+  bottom: 22%;
+  left: calc(82% - 13px);
+  width: 26px;
+  background: linear-gradient(to left, #cdd8b2 0 3px, #fffcf8 3px) !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-board-rail-bottom {
+  top: calc(78% - 13px);
+  right: 18%;
+  bottom: auto;
+  left: 18%;
+  height: 26px;
+  background: linear-gradient(to top, #9a7163 0 3px, #fffcf8 3px) !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-board-rail-left {
+  top: 18%;
+  bottom: 22%;
+  left: calc(18% - 13px);
+  width: 26px;
+  background: linear-gradient(to right, #e8cbd4 0 3px, #fffcf8 3px) !important;
+}
+
+#mma-window.mma-theme-bonbon [class*="mma-bonbon-board-corner"] {
+  display: block;
+  width: 30px;
+  height: 30px;
+  overflow: hidden;
+  border: 1px solid #e3d0ca !important;
+  border-radius: 7px !important;
+  outline: 0 !important;
+  background: #fffcf8 !important;
+  color: transparent !important;
+  box-shadow: none !important;
+  pointer-events: none;
+}
+
+#mma-window.mma-theme-bonbon [class*="mma-bonbon-board-corner"]::before {
+  content: none !important;
+  display: none !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-board-corner-top-left {
+  top: calc(18% - 15px);
+  left: calc(18% - 15px);
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-board-corner-top-right {
+  top: calc(18% - 15px);
+  right: calc(18% - 15px);
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-board-corner-bottom-right {
+  right: calc(18% - 15px);
+  bottom: calc(22% - 15px);
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-board-corner-bottom-left {
+  bottom: calc(22% - 15px);
+  left: calc(18% - 15px);
+}
+
+#mma-window.mma-theme-bonbon .mma-node {
+  border-color: #e3d0ca !important;
+  background: #fffcf8 !important;
+  color: #554440 !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-node:hover,
+#mma-window.mma-theme-bonbon .mma-node:focus-visible {
+  border-color: #b47691 !important;
+  background: #fff8ed !important;
+  outline-color: rgba(180, 118, 145, .34) !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-node.selected {
+  border-color: #724a5d !important;
+  background: #724a5d !important;
+  color: #fffcf8 !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-node.current-location::before,
+#mma-window.mma-theme-bonbon .mma-node.current-location::after {
+  color: #758261 !important;
+  border-color: #758261 !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-footstep.mma-bonbon-piece,
+#mma-window.mma-theme-bonbon .mma-bonbon-pawn,
+#mma-window.mma-theme-bonbon .mma-bonbon-mini-pawn {
+  color: #b47691 !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-event-badge {
+  background: #cdd8b2 !important;
+  color: #554440 !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-side-panel {
+  border-color: #e3d0ca !important;
+  background: #f8eee3 !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-place-header {
+  border-bottom-color: #e3d0ca !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-info-block,
+#mma-window.mma-theme-bonbon .mma-event-card,
+#mma-window.mma-theme-bonbon .tracked-card,
+#mma-window.mma-theme-bonbon .person-search-card,
+#mma-window.mma-theme-bonbon .recommendation-card,
+#mma-window.mma-theme-bonbon .search-history-card,
+#mma-window.mma-theme-bonbon .mma-discovery-list-card,
+#mma-window.mma-theme-bonbon .mma-discovery-confirm,
+#mma-window.mma-theme-bonbon .mma-discovery-card-icon {
+  border-color: #e3d0ca !important;
+  background: #fffcf8 !important;
+  color: #554440 !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-status,
+#mma-window.mma-theme-bonbon .mma-status.injected,
+#mma-window.mma-theme-bonbon .mma-status.observed,
+#mma-window.mma-theme-bonbon .mma-quest-reward {
+  border-color: #758261 !important;
+  background: rgba(205, 216, 178, .38) !important;
+  color: #554440 !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-status.held {
+  border-color: #e8cbd4 !important;
+  background: rgba(232, 203, 212, .34) !important;
+  color: #724a5d !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-panel-note,
+#mma-window.mma-theme-bonbon .mma-empty,
+#mma-window.mma-theme-bonbon .mma-scroll-text,
+#mma-window.mma-theme-bonbon .mma-space-description,
+#mma-window.mma-theme-bonbon .mma-debug-entry pre,
+#mma-window.mma-theme-bonbon .mma-notebook-section,
+#mma-window.mma-theme-bonbon input,
+#mma-window.mma-theme-bonbon select,
+#mma-window.mma-theme-bonbon textarea,
+#mma-window.mma-theme-bonbon .mma-custom-search input,
+#mma-window.mma-theme-bonbon .mma-theme-picker select {
+  border-color: #e3d0ca !important;
+  background: #fffcf8 !important;
+  color: #554440 !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-map-discovery-trigger,
+#mma-window.mma-theme-bonbon .mma-board-key-card-trigger {
+  border-color: #e3d0ca !important;
+  background: #fffcf8 !important;
+  color: #724a5d !important;
+  box-shadow: none !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-discovery-marker span {
+  border-color: #e3d0ca !important;
+  background: #fffcf8 !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-discovery-confirm::before {
+  margin: 0 auto 8px !important;
+  border-color: #e3d0ca !important;
+  background: #fffcf8 !important;
+}
+
+#mma-window.mma-theme-bonbon #mma-busy {
+  background: rgba(85, 68, 64, .42) !important;
+  color: #fffcf8 !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-spinner {
+  border-color: rgba(255, 252, 248, .58) !important;
+  border-top-color: #b47691 !important;
+  border-right-color: #cdd8b2 !important;
+}
+
+@media (max-width: 420px) {
+  #mma-window.mma-theme-bonbon .mma-bonbon-board-rail-top {
+    top: calc(18% - 9px);
+    height: 18px;
+  }
+
+  #mma-window.mma-theme-bonbon .mma-bonbon-board-rail-right {
+    left: calc(82% - 9px);
+    width: 18px;
+  }
+
+  #mma-window.mma-theme-bonbon .mma-bonbon-board-rail-bottom {
+    top: calc(78% - 9px);
+    height: 18px;
+  }
+
+  #mma-window.mma-theme-bonbon .mma-bonbon-board-rail-left {
+    left: calc(18% - 9px);
+    width: 18px;
+  }
+
+  #mma-window.mma-theme-bonbon [class*="mma-bonbon-board-corner"] {
+    width: 22px;
+    height: 22px;
+  }
+
+  #mma-window.mma-theme-bonbon .mma-bonbon-board-corner-top-left {
+    top: calc(18% - 11px);
+    left: calc(18% - 11px);
+  }
+
+  #mma-window.mma-theme-bonbon .mma-bonbon-board-corner-top-right {
+    top: calc(18% - 11px);
+    right: calc(18% - 11px);
+  }
+
+  #mma-window.mma-theme-bonbon .mma-bonbon-board-corner-bottom-right {
+    right: calc(18% - 11px);
+    bottom: calc(22% - 11px);
+  }
+
+  #mma-window.mma-theme-bonbon .mma-bonbon-board-corner-bottom-left {
+    bottom: calc(22% - 11px);
+    left: calc(18% - 11px);
+  }
+}
+
