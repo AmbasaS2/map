@@ -15,7 +15,7 @@ const EXTENSION_PROMPT_KEY = 'marauders_map_active_context';
 const FOOTSTEP_LIMIT = 10;
 const DEBUG_LOG_LIMIT = 40;
 const memoryDebugLogs = [];
-const EXTENSION_VERSION = '2.7.5';
+const EXTENSION_VERSION = '2.7.6';
 const SHARED_NOTEBOOK_KEYS = Object.freeze(['managedItems', 'footstepProfiles', 'trackedPeople', 'recommendations', 'searchResults']);
 const DISCOVERY_HISTORY_LIMIT = 30;
 const UNCOLLECTED_RECOMMENDATION_LIMIT = 24;
@@ -4764,7 +4764,7 @@ function renderFootstepPanel(footstepId) {
     panel.innerHTML = `
         <div class="mma-place-card mma-footstep-card">
             <header class="mma-place-header">
-                <div><span class="mma-place-icon">${isModernTheme() ? '●' : (isBonbonTheme() ? '<span class="mma-bonbon-mini-pawn" aria-hidden="true"></span>' : '👣')}</span><strong>${escapeHtml(profile.name)}</strong></div>
+                <div><span class="mma-place-icon">${isModernTheme() ? '●' : (isBonbonTheme() ? '<span class="mma-bonbon-mini-pawn" aria-hidden="true">♟</span>' : '👣')}</span><strong>${escapeHtml(profile.name)}</strong></div>
                 <button title="위치 카드로 돌아가기" data-action="back">↩️</button>
             </header>
             <section class="mma-info-block">
@@ -5436,7 +5436,18 @@ function renderCanvas() {
     const memory = ensureMemory();
     const map = memory.map;
     const locations = map?.locations || [];
-    canvas.innerHTML = '<button id="mma-map-resize-handle" type="button" aria-label="지도판 세로 크기 조절" title="위아래로 드래그해 지도판 크기를 조절합니다."></button>';
+    const bonbonTrackMarkup = isBonbonTheme() ? `
+        <div class="mma-bonbon-board-track" aria-hidden="true">
+            <span class="mma-bonbon-board-rail mma-bonbon-board-rail-top"></span>
+            <span class="mma-bonbon-board-rail mma-bonbon-board-rail-right"></span>
+            <span class="mma-bonbon-board-rail mma-bonbon-board-rail-bottom"></span>
+            <span class="mma-bonbon-board-rail mma-bonbon-board-rail-left"></span>
+            <span class="mma-bonbon-board-corner mma-bonbon-board-corner-top-left"></span>
+            <span class="mma-bonbon-board-corner mma-bonbon-board-corner-top-right"></span>
+            <span class="mma-bonbon-board-corner mma-bonbon-board-corner-bottom-right"></span>
+            <span class="mma-bonbon-board-corner mma-bonbon-board-corner-bottom-left"></span>
+        </div>` : '';
+    canvas.innerHTML = `${bonbonTrackMarkup}<button id="mma-map-resize-handle" type="button" aria-label="지도판 세로 크기 조절" title="위아래로 드래그해 지도판 크기를 조절합니다."></button>`;
     wireMapResizeHandle(canvas);
     requestAnimationFrame(() => rememberMapCanvasBaseHeight(canvas));
 
@@ -5455,7 +5466,9 @@ function renderCanvas() {
     });
     canvas.appendChild(discoverButton);
 
-    const positions = getNodePositions(locations.length);
+    const positions = isBonbonTheme()
+        ? getBonbonBoardPositions(locations.length)
+        : getNodePositions(locations.length);
     locations.forEach((loc, index) => {
         const pos = positions[index] || { x: 50, y: 50 };
         const node = document.createElement('button');
@@ -5499,7 +5512,7 @@ function renderCanvas() {
         foot.innerHTML = isModernTheme()
             ? `<span class="mma-tracker-dot" aria-hidden="true"></span><em>${escapeHtml(fp.visibleName ? fp.label : '???')}</em>`
             : isBonbonTheme()
-                ? `<span class="mma-bonbon-pawn" aria-hidden="true"></span><em>${escapeHtml(fp.visibleName ? fp.label : '???')}</em>`
+                ? `<span class="mma-bonbon-pawn" aria-hidden="true">♟</span><em>${escapeHtml(fp.visibleName ? fp.label : '???')}</em>`
                 : `<span>👣</span><em>${escapeHtml(fp.visibleName ? fp.label : '???')}</em>`;
         foot.addEventListener('click', (event) => {
             event.stopPropagation();
@@ -5642,6 +5655,35 @@ function getNodePositions(count) {
         12: [{ x: 50, y: 8 }, { x: 20, y: 18 }, { x: 80, y: 18 }, { x: 13, y: 39 }, { x: 87, y: 39 }, { x: 15, y: 64 }, { x: 85, y: 64 }, { x: 32, y: 84 }, { x: 68, y: 84 }, { x: 50, y: 50 }, { x: 36, y: 58 }, { x: 64, y: 58 }],
     };
     return presets[count] || presets[12];
+}
+
+function getBonbonBoardPositions(count) {
+    const nodeCount = Math.max(0, Math.floor(Number(count) || 0));
+    if (!nodeCount) return [];
+
+    const bounds = { left: 18, right: 82, top: 18, bottom: 78 };
+    const width = bounds.right - bounds.left;
+    const height = bounds.bottom - bounds.top;
+    const perimeter = (width + height) * 2;
+    const step = perimeter / nodeCount;
+    const start = step / 2;
+
+    return Array.from({ length: nodeCount }, (_, index) => {
+        let distance = start + (step * index);
+        if (distance < width) {
+            return { x: bounds.left + distance, y: bounds.top };
+        }
+        distance -= width;
+        if (distance < height) {
+            return { x: bounds.right, y: bounds.top + distance };
+        }
+        distance -= height;
+        if (distance < width) {
+            return { x: bounds.right - distance, y: bounds.bottom };
+        }
+        distance -= width;
+        return { x: bounds.left, y: bounds.bottom - distance };
+    });
 }
 
 
