@@ -9623,6 +9623,16 @@ button.mma-footstep:focus-visible em {
   pointer-events: none;
 }
 
+#mma-window.mma-theme-bonbon .mma-node.mma-bonbon-location-card:not(.selected):not(.current-location) {
+  border-color: var(--mma-bb-chocolate) !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-node.mma-bonbon-location-card:not(.selected):not(.current-location):hover,
+#mma-window.mma-theme-bonbon .mma-node.mma-bonbon-location-card:not(.selected):not(.current-location):focus-visible {
+  border-color: var(--mma-bb-fig-deep) !important;
+  transform: translate(-50%, -50%) scale(1.04) !important;
+}
+
 #mma-window .mma-top-right .mma-toolbar-actions {
   display: flex !important;
   flex-wrap: nowrap !important;
