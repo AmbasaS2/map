@@ -15,7 +15,7 @@ const EXTENSION_PROMPT_KEY = 'marauders_map_active_context';
 const FOOTSTEP_LIMIT = 10;
 const DEBUG_LOG_LIMIT = 40;
 const memoryDebugLogs = [];
-const EXTENSION_VERSION = '2.7.14';
+const EXTENSION_VERSION = '2.7.15';
 const SHARED_NOTEBOOK_KEYS = Object.freeze(['managedItems', 'footstepProfiles', 'trackedPeople', 'recommendations', 'searchResults']);
 const DISCOVERY_HISTORY_LIMIT = 30;
 const UNCOLLECTED_RECOMMENDATION_LIMIT = 24;
@@ -5450,6 +5450,7 @@ function renderCanvas() {
             <span class="mma-bonbon-board-corner mma-bonbon-board-corner-top-right"></span>
             <span class="mma-bonbon-board-corner mma-bonbon-board-corner-bottom-right"></span>
             <span class="mma-bonbon-board-corner mma-bonbon-board-corner-bottom-left"></span>
+            <span class="mma-bonbon-board-mark"><b>BONBON</b><small>BOARD</small></span>
         </div>` : '';
     canvas.innerHTML = `${bonbonTrackMarkup}<button id="mma-map-resize-handle" type="button" aria-label="지도판 세로 크기 조절" title="위아래로 드래그해 지도판 크기를 조절합니다."></button>`;
     wireMapResizeHandle(canvas);
@@ -5505,6 +5506,7 @@ function renderCanvas() {
         return { x: pos.x, y: pos.y, r: 13 };
     });
     occupiedPoints.push({ x: 95, y: 7, r: 10.5 });
+    occupiedPoints.push({ x: 96, y: 94, r: 9 });
     const footstepCountByLocation = {};
 
     (map?.footsteps || []).forEach((fp, index) => {
@@ -5513,8 +5515,10 @@ function renderCanvas() {
         const pos = positions[locIndex] || { x: 50, y: 50 };
         const localIndex = footstepCountByLocation[fp.locationId] || 0;
         footstepCountByLocation[fp.locationId] = localIndex + 1;
-        const footPos = getFootstepPosition(pos, localIndex, index, occupiedPoints);
-        occupiedPoints.push({ x: footPos.x, y: footPos.y, r: 8 });
+        const footPos = isBonbonTheme()
+            ? getBonbonBoardPiecePosition(pos, localIndex, index, occupiedPoints, 'person')
+            : getFootstepPosition(pos, localIndex, index, occupiedPoints);
+        occupiedPoints.push({ x: footPos.x, y: footPos.y, r: isBonbonTheme() ? 15 : 8 });
         const foot = document.createElement('button');
         foot.type = 'button';
         foot.className = `mma-footstep ${isModernTheme() ? 'mma-modern-tracker' : (isBonbonTheme() ? `mma-bonbon-piece mma-bonbon-piece-${index % 4}` : '')}`.trim();
@@ -5544,8 +5548,10 @@ function renderCanvas() {
         const anchor = positions[locIndex] || { x: 50, y: 50 };
         const localIndex = discoveryCountByLocation[item.locationId] || 0;
         discoveryCountByLocation[item.locationId] = localIndex + 1;
-        const markerPos = getFootstepPosition(anchor, localIndex + 5, index + 19, occupiedPoints);
-        occupiedPoints.push({ x: markerPos.x, y: markerPos.y, r: 8 });
+        const markerPos = isBonbonTheme()
+            ? getBonbonBoardPiecePosition(anchor, localIndex, index + 19, occupiedPoints, 'discovery')
+            : getFootstepPosition(anchor, localIndex + 5, index + 19, occupiedPoints);
+        occupiedPoints.push({ x: markerPos.x, y: markerPos.y, r: isBonbonTheme() ? 10 : 8 });
         const marker = document.createElement('button');
         marker.type = 'button';
         marker.className = 'mma-discovery-marker';
@@ -5680,26 +5686,72 @@ function getBonbonBoardPositions(count) {
     const bounds = { left: 18, right: 82, top: 18, bottom: 78 };
     const width = bounds.right - bounds.left;
     const height = bounds.bottom - bounds.top;
-    const perimeter = (width + height) * 2;
-    const step = perimeter / nodeCount;
-    const start = step / 2;
+    const sideCounts = { top: Math.floor(nodeCount / 4), right: Math.floor(nodeCount / 4), bottom: Math.floor(nodeCount / 4), left: Math.floor(nodeCount / 4) };
+    const remainderOrder = ['top', 'bottom', 'right', 'left'];
+    for (let index = 0; index < nodeCount % 4; index++) {
+        sideCounts[remainderOrder[index]] += 1;
+    }
 
-    return Array.from({ length: nodeCount }, (_, index) => {
-        let distance = start + (step * index);
-        if (distance < width) {
-            return { x: bounds.left + distance, y: bounds.top };
-        }
-        distance -= width;
-        if (distance < height) {
-            return { x: bounds.right, y: bounds.top + distance };
-        }
-        distance -= height;
-        if (distance < width) {
-            return { x: bounds.right - distance, y: bounds.bottom };
-        }
-        distance -= width;
-        return { x: bounds.left, y: bounds.bottom - distance };
-    });
+    const positions = [];
+    for (let index = 0; index < sideCounts.top; index++) {
+        positions.push({ x: bounds.left + (width * ((index + 1) / (sideCounts.top + 1))), y: bounds.top });
+    }
+    for (let index = 0; index < sideCounts.right; index++) {
+        positions.push({ x: bounds.right, y: bounds.top + (height * ((index + 1) / (sideCounts.right + 1))) });
+    }
+    for (let index = 0; index < sideCounts.bottom; index++) {
+        positions.push({ x: bounds.right - (width * ((index + 1) / (sideCounts.bottom + 1))), y: bounds.bottom });
+    }
+    for (let index = 0; index < sideCounts.left; index++) {
+        positions.push({ x: bounds.left, y: bounds.bottom - (height * ((index + 1) / (sideCounts.left + 1))) });
+    }
+    return positions;
+}
+
+function getBonbonBoardPiecePosition(anchor, localIndex, globalIndex, occupiedPoints, kind = 'person') {
+    const bounds = { left: 18, right: 82, top: 18, bottom: 78 };
+    const sideDistances = [
+        { side: 'top', distance: Math.abs(anchor.y - bounds.top) },
+        { side: 'right', distance: Math.abs(anchor.x - bounds.right) },
+        { side: 'bottom', distance: Math.abs(anchor.y - bounds.bottom) },
+        { side: 'left', distance: Math.abs(anchor.x - bounds.left) },
+    ];
+    const side = sideDistances.sort((a, b) => a.distance - b.distance)[0]?.side || 'top';
+    const vectors = {
+        top: { inwardX: 0, inwardY: 1, tangentX: 1, tangentY: 0 },
+        right: { inwardX: -1, inwardY: 0, tangentX: 0, tangentY: 1 },
+        bottom: { inwardX: 0, inwardY: -1, tangentX: -1, tangentY: 0 },
+        left: { inwardX: 1, inwardY: 0, tangentX: 0, tangentY: -1 },
+    };
+    const vector = vectors[side];
+    const slotOrder = [0, -1, 1, -2, 2, -3, 3];
+    const discovery = kind === 'discovery';
+    const direction = discovery ? -1 : 1;
+    const baseDistance = discovery ? 14 : 15 + ((Math.abs(globalIndex) % 2) * 5);
+    const laneStep = discovery ? 6 : 7;
+    const tangentStep = discovery ? 11 : 14;
+    const collisionDistance = discovery ? 9 : 15;
+
+    for (let attempt = 0; attempt < 28; attempt++) {
+        const placementIndex = Math.max(0, localIndex) + attempt;
+        const lane = Math.floor(placementIndex / slotOrder.length);
+        const tangentSlot = slotOrder[placementIndex % slotOrder.length];
+        const inwardDistance = baseDistance + (lane * laneStep);
+        const tangentOffset = tangentSlot * tangentStep;
+        const x = clampPositionValue(
+            anchor.x + (vector.inwardX * inwardDistance * direction) + (vector.tangentX * tangentOffset),
+            discovery ? 6 : 8,
+            discovery ? 94 : 92,
+        );
+        const y = clampPositionValue(
+            anchor.y + (vector.inwardY * inwardDistance * direction) + (vector.tangentY * tangentOffset),
+            discovery ? 8 : 10,
+            discovery ? 92 : 90,
+        );
+        if (!hasFootstepCollision(x, y, occupiedPoints, collisionDistance)) return { x, y };
+    }
+
+    return getFootstepPosition(anchor, localIndex, globalIndex, occupiedPoints);
 }
 
 
