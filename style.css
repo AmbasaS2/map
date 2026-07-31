@@ -7169,3 +7169,526 @@ button.mma-footstep:focus-visible em {
     transition: none !important;
   }
 }
+
+/* v2.7.7 Bonbon Panna Blueberry motion polish */
+#mma-window.mma-theme-bonbon,
+#mma-root.mma-theme-bonbon {
+  --mma-bb-fig: #7871b5;
+  --mma-bb-fig-deep: #5e588f;
+  --mma-bb-fig-soft: #a59fcf;
+  --mma-bb-chocolate: #80675d;
+  --mma-bb-chocolate-deep: #4a443d;
+  --mma-bb-chocolate-soft: #9a877f;
+  --mma-bb-ivory: #fffcf8;
+  --mma-bb-cream: #faf6ef;
+  --mma-bb-cream-deep: #f1e9dd;
+  --mma-bb-pistachio: #c6d0ad;
+  --mma-bb-pistachio-deep: #758467;
+  --mma-bb-line: #d6c5ab;
+  --mma-bb-line-soft: rgba(214, 197, 171, .62);
+  --mma-bb-soft-shadow: rgba(74, 68, 61, .09);
+}
+
+#mma-window.mma-theme-bonbon {
+  color: #4a443d !important;
+  border-color: #d6c5ab !important;
+  background: #faf6ef !important;
+  box-shadow: 0 1px 2px rgba(74, 68, 61, .11) !important;
+}
+
+#mma-window.mma-theme-bonbon::after {
+  border-color: rgba(255, 252, 248, .82) !important;
+}
+
+#mma-root.mma-theme-bonbon #mma-overlay {
+  background: rgba(74, 68, 61, .5) !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-brand,
+#mma-window.mma-theme-bonbon .mma-brand.small,
+#mma-window.mma-theme-bonbon .mma-place-header strong,
+#mma-window.mma-theme-bonbon .mma-event-title,
+#mma-window.mma-theme-bonbon .mma-event-title b,
+#mma-window.mma-theme-bonbon .mma-info-block h4,
+#mma-window.mma-theme-bonbon .mma-section-title,
+#mma-window.mma-theme-bonbon .mma-notebook-section summary,
+#mma-window.mma-theme-bonbon .mma-person-signal-block h4 {
+  color: #5e588f !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-info-block p,
+#mma-window.mma-theme-bonbon .mma-info-block li,
+#mma-window.mma-theme-bonbon .mma-event-card p,
+#mma-window.mma-theme-bonbon .mma-event-card li,
+#mma-window.mma-theme-bonbon .mma-person-signal-summary,
+#mma-window.mma-theme-bonbon .mma-person-signal-block p,
+#mma-window.mma-theme-bonbon .mma-person-signal-block li,
+#mma-window.mma-theme-bonbon .mma-panel-note,
+#mma-window.mma-theme-bonbon .mma-empty {
+  color: #4a443d !important;
+}
+
+/* Panna game box with blueberry and milk-chocolate track chips. */
+#mma-window.mma-theme-bonbon .mma-bonbon-box-cover {
+  border-color: #d6c5ab !important;
+  background: #fffcf8 !important;
+  box-shadow: 0 1px 2px rgba(74, 68, 61, .09) !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-box-cover::before {
+  background:
+    repeating-linear-gradient(90deg, #7871b5 0 34px, #fffcf8 34px 36px, #80675d 36px 70px, #fffcf8 70px 72px, #c6d0ad 72px 106px, #fffcf8 106px 108px) top / 100% 28px no-repeat,
+    repeating-linear-gradient(90deg, #80675d 0 34px, #fffcf8 34px 36px, #c6d0ad 36px 70px, #fffcf8 70px 72px, #7871b5 72px 106px, #fffcf8 106px 108px) bottom / 100% 28px no-repeat,
+    repeating-linear-gradient(0deg, #c6d0ad 0 34px, #fffcf8 34px 36px, #7871b5 36px 70px, #fffcf8 70px 72px, #80675d 72px 106px, #fffcf8 106px 108px) left / 28px 100% no-repeat,
+    repeating-linear-gradient(0deg, #7871b5 0 34px, #fffcf8 34px 36px, #80675d 36px 70px, #fffcf8 70px 72px, #c6d0ad 72px 106px, #fffcf8 106px 108px) right / 28px 100% no-repeat !important;
+  box-shadow: inset 0 0 0 1px #d6c5ab !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-box-cover::after {
+  border-color: rgba(214, 197, 171, .68) !important;
+  background: #faf6ef !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-cover-title {
+  color: #5e588f !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-cover-copy,
+#mma-window.mma-theme-bonbon .mma-bonbon-cover-meta {
+  color: #80675d !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-cover-meta {
+  border-color: #d6c5ab !important;
+  background: #fffcf8 !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-cover-piece:nth-child(1),
+#mma-window.mma-theme-bonbon .mma-bonbon-cover-piece-die {
+  border-color: #d6c5ab !important;
+  background: #fffcf8 !important;
+  color: #7871b5 !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-cover-piece:nth-child(2),
+#mma-window.mma-theme-bonbon .mma-bonbon-cover-piece-key-card {
+  border-color: #a59fcf !important;
+  background: #fffcf8 !important;
+  color: #7871b5 !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-cover-piece:nth-child(3),
+#mma-window.mma-theme-bonbon .mma-bonbon-cover-piece-pawn {
+  color: #7871b5 !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-cover-piece:nth-child(4),
+#mma-window.mma-theme-bonbon .mma-bonbon-cover-piece-tile {
+  border-color: #758467 !important;
+  background: #c6d0ad !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-box-cover .mma-spell-button {
+  border-color: #7871b5 !important;
+  background: #7871b5 !important;
+  color: #fffcf8 !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-box-cover .mma-spell-button:hover,
+#mma-window.mma-theme-bonbon .mma-bonbon-box-cover .mma-spell-button:focus-visible {
+  border-color: #5e588f !important;
+  background: #5e588f !important;
+  outline-color: rgba(204, 198, 228, .8) !important;
+}
+
+/* Panna surfaces and consistent blueberry controls. */
+#mma-window.mma-theme-bonbon .mma-toolbar,
+#mma-window.mma-theme-bonbon .mma-world-summary {
+  border-color: #d6c5ab !important;
+  background: #fffcf8 !important;
+  color: #4a443d !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-region {
+  color: #80675d !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-region span,
+#mma-window.mma-theme-bonbon .mma-event-location,
+#mma-window.mma-theme-bonbon .mma-event-detail,
+#mma-window.mma-theme-bonbon .mma-settings-note,
+#mma-window.mma-theme-bonbon .mma-card-hint,
+#mma-window.mma-theme-bonbon .mma-search-auto-save-note,
+#mma-window.mma-theme-bonbon .mma-last-checked {
+  color: #9a877f !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-managed-button,
+#mma-window.mma-theme-bonbon .mma-toolbar-actions button,
+#mma-window.mma-theme-bonbon .mma-place-header button,
+#mma-window.mma-theme-bonbon .mma-place-actions button,
+#mma-window.mma-theme-bonbon .mma-event-actions button,
+#mma-window.mma-theme-bonbon .mma-recommend-buttons button,
+#mma-window.mma-theme-bonbon .mma-custom-search button,
+#mma-window.mma-theme-bonbon .mma-search-tabs button,
+#mma-window.mma-theme-bonbon .mma-discovery-confirm-actions button {
+  border-color: #d6c5ab !important;
+  background: #fffcf8 !important;
+  color: #5e588f !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-managed-button:hover,
+#mma-window.mma-theme-bonbon .mma-managed-button:focus-visible,
+#mma-window.mma-theme-bonbon .mma-toolbar-actions button:hover,
+#mma-window.mma-theme-bonbon .mma-toolbar-actions button:focus-visible,
+#mma-window.mma-theme-bonbon .mma-place-header button:hover,
+#mma-window.mma-theme-bonbon .mma-place-header button:focus-visible,
+#mma-window.mma-theme-bonbon .mma-place-actions button:hover,
+#mma-window.mma-theme-bonbon .mma-place-actions button:focus-visible,
+#mma-window.mma-theme-bonbon .mma-event-actions button:hover,
+#mma-window.mma-theme-bonbon .mma-event-actions button:focus-visible,
+#mma-window.mma-theme-bonbon .mma-recommend-buttons button:hover,
+#mma-window.mma-theme-bonbon .mma-recommend-buttons button:focus-visible,
+#mma-window.mma-theme-bonbon .mma-custom-search button:hover,
+#mma-window.mma-theme-bonbon .mma-custom-search button:focus-visible,
+#mma-window.mma-theme-bonbon .mma-search-tabs button:hover,
+#mma-window.mma-theme-bonbon .mma-search-tabs button:focus-visible,
+#mma-window.mma-theme-bonbon .mma-discovery-confirm-actions button:hover,
+#mma-window.mma-theme-bonbon .mma-discovery-confirm-actions button:focus-visible {
+  border-color: #a59fcf !important;
+  background: #faf6ef !important;
+  color: #5e588f !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-search-tabs button.active,
+#mma-window.mma-theme-bonbon .mma-search-tabs button[aria-selected="true"],
+#mma-window.mma-theme-bonbon .mma-action-choice.active,
+#mma-window.mma-theme-bonbon .mma-event-actions button.active {
+  border-color: #7871b5 !important;
+  background: #7871b5 !important;
+  color: #fffcf8 !important;
+}
+
+/* Blueberry board track with a quiet panna center. */
+#mma-window.mma-theme-bonbon .mma-map-canvas {
+  border-color: #d6c5ab !important;
+  background:
+    linear-gradient(90deg, transparent calc(50% - .5px), rgba(128, 103, 93, .07) 50%, transparent calc(50% + .5px)),
+    linear-gradient(transparent calc(50% - .5px), rgba(128, 103, 93, .07) 50%, transparent calc(50% + .5px)),
+    #faf6ef !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-board-track::before {
+  border-color: rgba(214, 197, 171, .62) !important;
+  background: rgba(255, 252, 248, .8) !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-board-rail-top {
+  background: repeating-linear-gradient(90deg, #7871b5 0 42px, #fffcf8 42px 44px, #80675d 44px 86px, #fffcf8 86px 88px, #c6d0ad 88px 130px, #fffcf8 130px 132px) !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-board-rail-right {
+  background: repeating-linear-gradient(0deg, #c6d0ad 0 42px, #fffcf8 42px 44px, #7871b5 44px 86px, #fffcf8 86px 88px, #80675d 88px 130px, #fffcf8 130px 132px) !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-board-rail-bottom {
+  background: repeating-linear-gradient(90deg, #80675d 0 42px, #fffcf8 42px 44px, #c6d0ad 44px 86px, #fffcf8 86px 88px, #7871b5 88px 130px, #fffcf8 130px 132px) !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-board-rail-left {
+  background: repeating-linear-gradient(0deg, #7871b5 0 42px, #fffcf8 42px 44px, #80675d 44px 86px, #fffcf8 86px 88px, #c6d0ad 88px 130px, #fffcf8 130px 132px) !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-board-corner-top-left {
+  background: #7871b5 !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-board-corner-top-right,
+#mma-window.mma-theme-bonbon .mma-bonbon-board-corner-bottom-left {
+  background: #c6d0ad !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-board-corner-bottom-right {
+  background: #80675d !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-node {
+  border-color: #d6c5ab !important;
+  background: #fffcf8 !important;
+  color: #4a443d !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-node:hover,
+#mma-window.mma-theme-bonbon .mma-node:focus-visible {
+  border-color: #a59fcf !important;
+  background: #faf6ef !important;
+  outline-color: rgba(204, 198, 228, .76) !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-node.selected {
+  border-color: #5e588f !important;
+  background: #7871b5 !important;
+  color: #fffcf8 !important;
+  box-shadow: 0 1px 2px rgba(120, 113, 181, .14) !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-node.current-location::before {
+  color: #758467 !important;
+  animation: mma-bonbon-current-panna-sway 3.7s ease-in-out infinite !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-node.current-location::after {
+  border-color: #758467 !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-event-badge {
+  background: #c6d0ad !important;
+  color: #4a443d !important;
+}
+
+@keyframes mma-bonbon-current-panna-sway {
+  0%, 100% { margin-left: -1px; rotate: -1deg; }
+  50% { margin-left: 1px; rotate: 1deg; }
+}
+
+/* Slow tabletop-piece motion; delay comes from each generated person. */
+#mma-window.mma-theme-bonbon .mma-footstep.mma-bonbon-piece {
+  color: #7871b5 !important;
+  animation: none !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-pawn,
+#mma-window.mma-theme-bonbon .mma-bonbon-mini-pawn {
+  color: #7871b5 !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-footstep.mma-bonbon-piece .mma-bonbon-pawn {
+  animation: mma-bonbon-person-panna-sway 3.6s ease-in-out infinite !important;
+  animation-delay: var(--mma-bonbon-sway-delay, 0s) !important;
+  transform-origin: 50% 90%;
+}
+
+@keyframes mma-bonbon-person-panna-sway {
+  0%, 100% { transform: translateX(-2px) rotate(-1.2deg); }
+  50% { transform: translateX(2px) rotate(1.2deg); }
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-cover-piece-pawn::before,
+#mma-window.mma-theme-bonbon .mma-bonbon-cover-piece:nth-child(3)::before {
+  display: block;
+  color: #7871b5 !important;
+  animation: mma-bonbon-cover-panna-sway 3.8s ease-in-out infinite !important;
+  transform-origin: 50% 90%;
+}
+
+@keyframes mma-bonbon-cover-panna-sway {
+  0%, 100% { transform: translateX(-1px) rotate(-.8deg); }
+  50% { transform: translateX(1px) rotate(.8deg); }
+}
+
+/* Panna cards, detail panels, notebook and status chips. */
+#mma-window.mma-theme-bonbon .mma-side-panel {
+  border-color: #d6c5ab !important;
+  background: #f1e9dd !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-place-header {
+  border-bottom-color: #d6c5ab !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-info-block,
+#mma-window.mma-theme-bonbon .mma-event-card,
+#mma-window.mma-theme-bonbon .tracked-card,
+#mma-window.mma-theme-bonbon .person-search-card,
+#mma-window.mma-theme-bonbon .recommendation-card,
+#mma-window.mma-theme-bonbon .search-history-card,
+#mma-window.mma-theme-bonbon .mma-discovery-list-card {
+  border-color: #d6c5ab !important;
+  background: #fffcf8 !important;
+  color: #4a443d !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-event-card.injected,
+#mma-window.mma-theme-bonbon .mma-event-card.observed {
+  border-left-color: #758467 !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-event-card.held {
+  border-left-color: #7871b5 !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-status,
+#mma-window.mma-theme-bonbon .mma-status.injected,
+#mma-window.mma-theme-bonbon .mma-status.observed,
+#mma-window.mma-theme-bonbon .mma-quest-reward {
+  border-color: #758467 !important;
+  background: rgba(198, 208, 173, .4) !important;
+  color: #4a443d !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-status.held {
+  border-color: #a59fcf !important;
+  background: rgba(204, 198, 228, .36) !important;
+  color: #5e588f !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-status.ignored {
+  border-color: #d6c5ab !important;
+  background: rgba(128, 103, 93, .08) !important;
+  color: #80675d !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-panel-note,
+#mma-window.mma-theme-bonbon .mma-empty,
+#mma-window.mma-theme-bonbon .mma-scroll-text,
+#mma-window.mma-theme-bonbon .mma-space-description,
+#mma-window.mma-theme-bonbon .mma-debug-entry pre,
+#mma-window.mma-theme-bonbon .mma-notebook-section,
+#mma-window.mma-theme-bonbon input,
+#mma-window.mma-theme-bonbon select,
+#mma-window.mma-theme-bonbon textarea,
+#mma-window.mma-theme-bonbon .mma-custom-search input,
+#mma-window.mma-theme-bonbon .mma-theme-picker select {
+  border-color: #d6c5ab !important;
+  background: #fffcf8 !important;
+  color: #4a443d !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-notebook-section summary,
+#mma-window.mma-theme-bonbon .mma-search-tabs {
+  border-color: #d6c5ab !important;
+  background: #faf6ef !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-notebook-section summary small,
+#mma-window.mma-theme-bonbon .mma-person-signal-meta small,
+#mma-window.mma-theme-bonbon .mma-person-signal-status {
+  border-color: #ccc6e4 !important;
+  background: rgba(204, 198, 228, .28) !important;
+  color: #5e588f !important;
+}
+
+#mma-window.mma-theme-bonbon input:focus,
+#mma-window.mma-theme-bonbon select:focus,
+#mma-window.mma-theme-bonbon textarea:focus {
+  border-color: #7871b5 !important;
+  outline-color: rgba(204, 198, 228, .62) !important;
+}
+
+/* Milk-and-blueberry key card for the gold key emoji. */
+#mma-window.mma-theme-bonbon .mma-map-discovery-trigger,
+#mma-window.mma-theme-bonbon .mma-board-key-card-trigger {
+  border-color: #ccc6e4 !important;
+  background: #fffcf8 !important;
+  color: #7871b5 !important;
+  box-shadow: none !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-map-discovery-trigger span,
+#mma-window.mma-theme-bonbon .mma-board-key-card-trigger span {
+  color: inherit !important;
+  filter: none !important;
+  font-size: 17px !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-map-discovery-trigger:hover,
+#mma-window.mma-theme-bonbon .mma-map-discovery-trigger:focus-visible,
+#mma-window.mma-theme-bonbon .mma-board-key-card-trigger:hover,
+#mma-window.mma-theme-bonbon .mma-board-key-card-trigger:focus-visible {
+  border-color: #7871b5 !important;
+  background: rgba(204, 198, 228, .28) !important;
+  outline-color: rgba(204, 198, 228, .72) !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-discovery-marker span {
+  border-color: #d6c5ab !important;
+  background: #fffcf8 !important;
+  animation: mma-bonbon-discovery-panna-float 3.5s ease-in-out infinite !important;
+  animation-delay: var(--mma-discovery-delay, 0s) !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-discovery-marker:hover span,
+#mma-window.mma-theme-bonbon .mma-discovery-marker:focus-visible span {
+  border-color: #a59fcf !important;
+  background: #faf6ef !important;
+}
+
+@keyframes mma-bonbon-discovery-panna-float {
+  0%, 100% { translate: 0 0; rotate: -.5deg; }
+  50% { translate: 0 -3px; rotate: .5deg; }
+}
+
+#mma-window.mma-theme-bonbon .mma-discovery-confirm,
+#mma-window.mma-theme-bonbon .mma-discovery-list-card,
+#mma-window.mma-theme-bonbon .mma-discovery-card-icon {
+  border-color: #d6c5ab !important;
+  background: #fffcf8 !important;
+  color: #4a443d !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-discovery-confirm::before {
+  content: "🔑" !important;
+  border-color: #ccc6e4 !important;
+  background: #fffcf8 !important;
+  color: #7871b5 !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-discovery-confirm h3 {
+  color: #5e588f !important;
+}
+
+/* Three visible diagonal resize rails. */
+#mma-window.mma-theme-bonbon #mma-map-resize-handle::before {
+  right: 3px;
+  bottom: 3px;
+  width: 21px;
+  height: 21px;
+  border-radius: 0 0 6px 0;
+  background: repeating-linear-gradient(135deg, transparent 0 4px, rgba(120, 113, 181, .78) 4px 6px, transparent 6px 9px) !important;
+}
+
+#mma-window.mma-theme-bonbon #mma-busy {
+  background: rgba(74, 68, 61, .45) !important;
+  color: #fffcf8 !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-spinner {
+  border-color: rgba(255, 252, 248, .55) !important;
+  border-top-color: #7871b5 !important;
+  border-right-color: #c6d0ad !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-failure-screen,
+#mma-window.mma-theme-bonbon .mma-failure-screen .mma-info-block,
+#mma-window.mma-theme-bonbon .mma-map-toast.mma-map-toast-bonbon,
+#mma-root.mma-theme-bonbon .mma-map-toast.mma-map-toast-bonbon {
+  border-color: #d6c5ab !important;
+  background: #fffcf8 !important;
+  color: #4a443d !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-map-toast.mma-map-toast-success,
+#mma-window.mma-theme-bonbon .mma-map-toast.mma-map-toast-info,
+#mma-root.mma-theme-bonbon .mma-map-toast.mma-map-toast-success,
+#mma-root.mma-theme-bonbon .mma-map-toast.mma-map-toast-info {
+  border-left-color: #758467 !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-map-toast.mma-map-toast-warning,
+#mma-window.mma-theme-bonbon .mma-map-toast.mma-map-toast-error,
+#mma-root.mma-theme-bonbon .mma-map-toast.mma-map-toast-warning,
+#mma-root.mma-theme-bonbon .mma-map-toast.mma-map-toast-error {
+  border-left-color: #7871b5 !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #mma-window.mma-theme-bonbon .mma-footstep.mma-bonbon-piece .mma-bonbon-pawn,
+  #mma-window.mma-theme-bonbon .mma-node.current-location::before,
+  #mma-window.mma-theme-bonbon .mma-bonbon-cover-piece-pawn::before,
+  #mma-window.mma-theme-bonbon .mma-bonbon-cover-piece:nth-child(3)::before,
+  #mma-window.mma-theme-bonbon .mma-discovery-marker span {
+    animation: none !important;
+    translate: none !important;
+    rotate: none !important;
+  }
+}

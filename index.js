@@ -15,7 +15,7 @@ const EXTENSION_PROMPT_KEY = 'marauders_map_active_context';
 const FOOTSTEP_LIMIT = 10;
 const DEBUG_LOG_LIMIT = 40;
 const memoryDebugLogs = [];
-const EXTENSION_VERSION = '2.7.6';
+const EXTENSION_VERSION = '2.7.7';
 const SHARED_NOTEBOOK_KEYS = Object.freeze(['managedItems', 'footstepProfiles', 'trackedPeople', 'recommendations', 'searchResults']);
 const DISCOVERY_HISTORY_LIMIT = 30;
 const UNCOLLECTED_RECOMMENDATION_LIMIT = 24;
@@ -115,7 +115,7 @@ const THEME_OPTIONS = Object.freeze({
         readyHint: '',
         loaderTitle: 'Bonbon Board',
         discoveryUi: {
-            icon: '🗝️',
+            icon: '🔑',
             name: '열쇠 카드',
             question: '열쇠 카드를 사용할까요?',
             confirm: '사용하기',
@@ -5249,6 +5249,7 @@ function renderSpellScreen() {
     }
     const memory = ensureMemory();
     const theme = getThemeConfig();
+    const discoveryUi = getDiscoveryUiConfig();
     const modern = isModernTheme();
     const bonbon = isBonbonTheme();
     applyThemeClass();
@@ -5272,7 +5273,7 @@ function renderSpellScreen() {
                 <div class="mma-bonbon-box-cover" aria-label="Bonbon Board 게임 상자 표지">
                     <div class="mma-bonbon-cover-pieces" aria-hidden="true">
                         <span class="mma-bonbon-cover-piece mma-bonbon-cover-piece-die">⚄</span>
-                        <span class="mma-bonbon-cover-piece mma-bonbon-cover-piece-key-card">🗝️</span>
+                        <span class="mma-bonbon-cover-piece mma-bonbon-cover-piece-key-card">${escapeHtml(discoveryUi.icon)}</span>
                         <span class="mma-bonbon-cover-piece mma-bonbon-cover-piece-pawn"></span>
                         <span class="mma-bonbon-cover-piece mma-bonbon-cover-piece-tile"></span>
                     </div>
@@ -5507,6 +5508,9 @@ function renderCanvas() {
         foot.className = `mma-footstep ${isModernTheme() ? 'mma-modern-tracker' : (isBonbonTheme() ? `mma-bonbon-piece mma-bonbon-piece-${index % 4}` : '')}`.trim();
         foot.style.left = `${footPos.x}%`;
         foot.style.top = `${footPos.y}%`;
+        if (isBonbonTheme()) {
+            foot.style.setProperty('--mma-bonbon-sway-delay', `${-((index % 5) * 0.37)}s`);
+        }
         foot.title = `${fp.visibleName ? fp.label : '???'} — ${fp.status || ''}`;
         foot.dataset.footstepId = fp.id;
         foot.innerHTML = isModernTheme()
