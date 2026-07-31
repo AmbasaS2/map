@@ -4611,7 +4611,7 @@ button.mma-footstep:focus-visible em {
     0 28px 70px rgba(84, 50, 45, .4),
     inset 0 0 0 5px rgba(255, 250, 240, .55),
     inset 0 -12px 0 rgba(195, 111, 127, .12) !important;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Pretendard', 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif !important;
+  font-family: inherit !important;
 }
 
 #mma-window.mma-theme-bonbon::before {
@@ -4641,7 +4641,7 @@ button.mma-footstep:focus-visible em {
 #mma-window.mma-theme-bonbon input,
 #mma-window.mma-theme-bonbon select,
 #mma-window.mma-theme-bonbon textarea {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Pretendard', 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif !important;
+  font-family: inherit !important;
 }
 
 #mma-window.mma-theme-bonbon ::selection {
@@ -5662,7 +5662,7 @@ button.mma-footstep:focus-visible em {
   background: linear-gradient(145deg, #fffdf5, #fae5c1);
   color: var(--mma-bonbon-cocoa);
   box-shadow: 0 6px 0 #b9806d, 0 14px 30px rgba(72, 46, 40, .25), inset 0 2px rgba(255, 255, 255, .9);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Pretendard', 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
+  font-family: inherit !important;
   font-weight: 720;
 }
 
@@ -5980,14 +5980,14 @@ button.mma-footstep:focus-visible em {
   border-radius: 20px !important;
   background: var(--mma-bb-cream) !important;
   box-shadow: 0 1px 2px rgba(55, 35, 42, .16) !important;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Pretendard', 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif !important;
+  font-family: inherit !important;
   font-synthesis: none;
 }
 
 #mma-window.mma-theme-bonbon *,
 #mma-window.mma-theme-bonbon *::before,
 #mma-window.mma-theme-bonbon *::after {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Pretendard', 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif !important;
+  font-family: inherit !important;
   font-synthesis: none;
   text-shadow: none !important;
 }
@@ -7170,30 +7170,31 @@ button.mma-footstep:focus-visible em {
   }
 }
 
-/* v2.7.7 Bonbon Panna Blueberry motion polish */
+/* v2.7.8 Bonbon Panna muted-mauve polish */
 #mma-window.mma-theme-bonbon,
 #mma-root.mma-theme-bonbon {
-  --mma-bb-fig: #7871b5;
-  --mma-bb-fig-deep: #5e588f;
-  --mma-bb-fig-soft: #a59fcf;
-  --mma-bb-chocolate: #80675d;
-  --mma-bb-chocolate-deep: #4a443d;
-  --mma-bb-chocolate-soft: #9a877f;
+  --mma-bb-fig: #9b718a;
+  --mma-bb-fig-deep: #704b5e;
+  --mma-bb-fig-soft: #d1b1bc;
+  --mma-bb-rose: #c28fa1;
+  --mma-bb-chocolate: #876f66;
+  --mma-bb-chocolate-deep: #4f4145;
+  --mma-bb-chocolate-soft: #876f66;
   --mma-bb-ivory: #fffcf8;
   --mma-bb-cream: #faf6ef;
-  --mma-bb-cream-deep: #f1e9dd;
-  --mma-bb-pistachio: #c6d0ad;
-  --mma-bb-pistachio-deep: #758467;
-  --mma-bb-line: #d6c5ab;
-  --mma-bb-line-soft: rgba(214, 197, 171, .62);
-  --mma-bb-soft-shadow: rgba(74, 68, 61, .09);
+  --mma-bb-cream-deep: #f3e9e7;
+  --mma-bb-pistachio: #cbd3b8;
+  --mma-bb-pistachio-deep: #78866d;
+  --mma-bb-line: #d8c2c5;
+  --mma-bb-line-soft: rgba(216, 194, 197, .62);
+  --mma-bb-soft-shadow: rgba(79, 65, 69, .09);
 }
 
 #mma-window.mma-theme-bonbon {
-  color: #4a443d !important;
-  border-color: #d6c5ab !important;
+  color: #4f4145 !important;
+  border-color: #d8c2c5 !important;
   background: #faf6ef !important;
-  box-shadow: 0 1px 2px rgba(74, 68, 61, .11) !important;
+  box-shadow: 0 1px 2px rgba(79, 65, 69, .11) !important;
 }
 
 #mma-window.mma-theme-bonbon::after {
@@ -7201,7 +7202,7 @@ button.mma-footstep:focus-visible em {
 }
 
 #mma-root.mma-theme-bonbon #mma-overlay {
-  background: rgba(74, 68, 61, .5) !important;
+  background: rgba(79, 65, 69, .5) !important;
 }
 
 #mma-window.mma-theme-bonbon .mma-brand,
@@ -7213,7 +7214,7 @@ button.mma-footstep:focus-visible em {
 #mma-window.mma-theme-bonbon .mma-section-title,
 #mma-window.mma-theme-bonbon .mma-notebook-section summary,
 #mma-window.mma-theme-bonbon .mma-person-signal-block h4 {
-  color: #5e588f !important;
+  color: #704b5e !important;
 }
 
 #mma-window.mma-theme-bonbon .mma-info-block p,
@@ -7225,92 +7226,92 @@ button.mma-footstep:focus-visible em {
 #mma-window.mma-theme-bonbon .mma-person-signal-block li,
 #mma-window.mma-theme-bonbon .mma-panel-note,
 #mma-window.mma-theme-bonbon .mma-empty {
-  color: #4a443d !important;
+  color: #4f4145 !important;
 }
 
-/* Panna game box with blueberry and milk-chocolate track chips. */
+/* Panna game box with muted mauve, rose-wine and pistachio track chips. */
 #mma-window.mma-theme-bonbon .mma-bonbon-box-cover {
-  border-color: #d6c5ab !important;
+  border-color: #d8c2c5 !important;
   background: #fffcf8 !important;
-  box-shadow: 0 1px 2px rgba(74, 68, 61, .09) !important;
+  box-shadow: 0 1px 2px rgba(79, 65, 69, .09) !important;
 }
 
 #mma-window.mma-theme-bonbon .mma-bonbon-box-cover::before {
   background:
-    repeating-linear-gradient(90deg, #7871b5 0 34px, #fffcf8 34px 36px, #80675d 36px 70px, #fffcf8 70px 72px, #c6d0ad 72px 106px, #fffcf8 106px 108px) top / 100% 28px no-repeat,
-    repeating-linear-gradient(90deg, #80675d 0 34px, #fffcf8 34px 36px, #c6d0ad 36px 70px, #fffcf8 70px 72px, #7871b5 72px 106px, #fffcf8 106px 108px) bottom / 100% 28px no-repeat,
-    repeating-linear-gradient(0deg, #c6d0ad 0 34px, #fffcf8 34px 36px, #7871b5 36px 70px, #fffcf8 70px 72px, #80675d 72px 106px, #fffcf8 106px 108px) left / 28px 100% no-repeat,
-    repeating-linear-gradient(0deg, #7871b5 0 34px, #fffcf8 34px 36px, #80675d 36px 70px, #fffcf8 70px 72px, #c6d0ad 72px 106px, #fffcf8 106px 108px) right / 28px 100% no-repeat !important;
-  box-shadow: inset 0 0 0 1px #d6c5ab !important;
+    repeating-linear-gradient(90deg, #9b718a 0 34px, #fffcf8 34px 36px, #c28fa1 36px 70px, #fffcf8 70px 72px, #cbd3b8 72px 106px, #fffcf8 106px 108px) top / 100% 28px no-repeat,
+    repeating-linear-gradient(90deg, #c28fa1 0 34px, #fffcf8 34px 36px, #cbd3b8 36px 70px, #fffcf8 70px 72px, #9b718a 72px 106px, #fffcf8 106px 108px) bottom / 100% 28px no-repeat,
+    repeating-linear-gradient(0deg, #cbd3b8 0 34px, #fffcf8 34px 36px, #9b718a 36px 70px, #fffcf8 70px 72px, #c28fa1 72px 106px, #fffcf8 106px 108px) left / 28px 100% no-repeat,
+    repeating-linear-gradient(0deg, #9b718a 0 34px, #fffcf8 34px 36px, #c28fa1 36px 70px, #fffcf8 70px 72px, #cbd3b8 72px 106px, #fffcf8 106px 108px) right / 28px 100% no-repeat !important;
+  box-shadow: inset 0 0 0 1px #d8c2c5 !important;
 }
 
 #mma-window.mma-theme-bonbon .mma-bonbon-box-cover::after {
-  border-color: rgba(214, 197, 171, .68) !important;
+  border-color: rgba(216, 194, 197, .68) !important;
   background: #faf6ef !important;
 }
 
 #mma-window.mma-theme-bonbon .mma-bonbon-cover-title {
-  color: #5e588f !important;
+  color: #704b5e !important;
 }
 
 #mma-window.mma-theme-bonbon .mma-bonbon-cover-copy,
 #mma-window.mma-theme-bonbon .mma-bonbon-cover-meta {
-  color: #80675d !important;
+  color: #876f66 !important;
 }
 
 #mma-window.mma-theme-bonbon .mma-bonbon-cover-meta {
-  border-color: #d6c5ab !important;
+  border-color: #d8c2c5 !important;
   background: #fffcf8 !important;
 }
 
 #mma-window.mma-theme-bonbon .mma-bonbon-cover-piece:nth-child(1),
 #mma-window.mma-theme-bonbon .mma-bonbon-cover-piece-die {
-  border-color: #d6c5ab !important;
+  border-color: #d8c2c5 !important;
   background: #fffcf8 !important;
-  color: #7871b5 !important;
+  color: #9b718a !important;
 }
 
 #mma-window.mma-theme-bonbon .mma-bonbon-cover-piece:nth-child(2),
 #mma-window.mma-theme-bonbon .mma-bonbon-cover-piece-key-card {
-  border-color: #a59fcf !important;
+  border-color: #d1b1bc !important;
   background: #fffcf8 !important;
-  color: #7871b5 !important;
+  color: #9b718a !important;
 }
 
 #mma-window.mma-theme-bonbon .mma-bonbon-cover-piece:nth-child(3),
 #mma-window.mma-theme-bonbon .mma-bonbon-cover-piece-pawn {
-  color: #7871b5 !important;
+  color: #9b718a !important;
 }
 
 #mma-window.mma-theme-bonbon .mma-bonbon-cover-piece:nth-child(4),
 #mma-window.mma-theme-bonbon .mma-bonbon-cover-piece-tile {
-  border-color: #758467 !important;
-  background: #c6d0ad !important;
+  border-color: #78866d !important;
+  background: #cbd3b8 !important;
 }
 
 #mma-window.mma-theme-bonbon .mma-bonbon-box-cover .mma-spell-button {
-  border-color: #7871b5 !important;
-  background: #7871b5 !important;
+  border-color: #704b5e !important;
+  background: #704b5e !important;
   color: #fffcf8 !important;
 }
 
 #mma-window.mma-theme-bonbon .mma-bonbon-box-cover .mma-spell-button:hover,
 #mma-window.mma-theme-bonbon .mma-bonbon-box-cover .mma-spell-button:focus-visible {
-  border-color: #5e588f !important;
-  background: #5e588f !important;
-  outline-color: rgba(204, 198, 228, .8) !important;
+  border-color: #704b5e !important;
+  background: #704b5e !important;
+  outline-color: rgba(225, 208, 214, .8) !important;
 }
 
-/* Panna surfaces and consistent blueberry controls. */
+/* Panna surfaces and consistent deep-wine controls. */
 #mma-window.mma-theme-bonbon .mma-toolbar,
 #mma-window.mma-theme-bonbon .mma-world-summary {
-  border-color: #d6c5ab !important;
+  border-color: #d8c2c5 !important;
   background: #fffcf8 !important;
-  color: #4a443d !important;
+  color: #4f4145 !important;
 }
 
 #mma-window.mma-theme-bonbon .mma-region {
-  color: #80675d !important;
+  color: #876f66 !important;
 }
 
 #mma-window.mma-theme-bonbon .mma-region span,
@@ -7320,7 +7321,7 @@ button.mma-footstep:focus-visible em {
 #mma-window.mma-theme-bonbon .mma-card-hint,
 #mma-window.mma-theme-bonbon .mma-search-auto-save-note,
 #mma-window.mma-theme-bonbon .mma-last-checked {
-  color: #9a877f !important;
+  color: #876f66 !important;
 }
 
 #mma-window.mma-theme-bonbon .mma-managed-button,
@@ -7332,9 +7333,9 @@ button.mma-footstep:focus-visible em {
 #mma-window.mma-theme-bonbon .mma-custom-search button,
 #mma-window.mma-theme-bonbon .mma-search-tabs button,
 #mma-window.mma-theme-bonbon .mma-discovery-confirm-actions button {
-  border-color: #d6c5ab !important;
+  border-color: #d8c2c5 !important;
   background: #fffcf8 !important;
-  color: #5e588f !important;
+  color: #704b5e !important;
 }
 
 #mma-window.mma-theme-bonbon .mma-managed-button:hover,
@@ -7355,95 +7356,95 @@ button.mma-footstep:focus-visible em {
 #mma-window.mma-theme-bonbon .mma-search-tabs button:focus-visible,
 #mma-window.mma-theme-bonbon .mma-discovery-confirm-actions button:hover,
 #mma-window.mma-theme-bonbon .mma-discovery-confirm-actions button:focus-visible {
-  border-color: #a59fcf !important;
+  border-color: #d1b1bc !important;
   background: #faf6ef !important;
-  color: #5e588f !important;
+  color: #704b5e !important;
 }
 
 #mma-window.mma-theme-bonbon .mma-search-tabs button.active,
 #mma-window.mma-theme-bonbon .mma-search-tabs button[aria-selected="true"],
 #mma-window.mma-theme-bonbon .mma-action-choice.active,
 #mma-window.mma-theme-bonbon .mma-event-actions button.active {
-  border-color: #7871b5 !important;
-  background: #7871b5 !important;
+  border-color: #704b5e !important;
+  background: #704b5e !important;
   color: #fffcf8 !important;
 }
 
-/* Blueberry board track with a quiet panna center. */
+/* Muted berry board track with a quiet Panna center. */
 #mma-window.mma-theme-bonbon .mma-map-canvas {
-  border-color: #d6c5ab !important;
+  border-color: #d8c2c5 !important;
   background:
-    linear-gradient(90deg, transparent calc(50% - .5px), rgba(128, 103, 93, .07) 50%, transparent calc(50% + .5px)),
-    linear-gradient(transparent calc(50% - .5px), rgba(128, 103, 93, .07) 50%, transparent calc(50% + .5px)),
+    linear-gradient(90deg, transparent calc(50% - .5px), rgba(135, 111, 102, .07) 50%, transparent calc(50% + .5px)),
+    linear-gradient(transparent calc(50% - .5px), rgba(135, 111, 102, .07) 50%, transparent calc(50% + .5px)),
     #faf6ef !important;
 }
 
 #mma-window.mma-theme-bonbon .mma-bonbon-board-track::before {
-  border-color: rgba(214, 197, 171, .62) !important;
+  border-color: rgba(216, 194, 197, .62) !important;
   background: rgba(255, 252, 248, .8) !important;
 }
 
 #mma-window.mma-theme-bonbon .mma-bonbon-board-rail-top {
-  background: repeating-linear-gradient(90deg, #7871b5 0 42px, #fffcf8 42px 44px, #80675d 44px 86px, #fffcf8 86px 88px, #c6d0ad 88px 130px, #fffcf8 130px 132px) !important;
+  background: repeating-linear-gradient(90deg, #9b718a 0 42px, #fffcf8 42px 44px, #c28fa1 44px 86px, #fffcf8 86px 88px, #cbd3b8 88px 130px, #fffcf8 130px 132px) !important;
 }
 
 #mma-window.mma-theme-bonbon .mma-bonbon-board-rail-right {
-  background: repeating-linear-gradient(0deg, #c6d0ad 0 42px, #fffcf8 42px 44px, #7871b5 44px 86px, #fffcf8 86px 88px, #80675d 88px 130px, #fffcf8 130px 132px) !important;
+  background: repeating-linear-gradient(0deg, #cbd3b8 0 42px, #fffcf8 42px 44px, #9b718a 44px 86px, #fffcf8 86px 88px, #c28fa1 88px 130px, #fffcf8 130px 132px) !important;
 }
 
 #mma-window.mma-theme-bonbon .mma-bonbon-board-rail-bottom {
-  background: repeating-linear-gradient(90deg, #80675d 0 42px, #fffcf8 42px 44px, #c6d0ad 44px 86px, #fffcf8 86px 88px, #7871b5 88px 130px, #fffcf8 130px 132px) !important;
+  background: repeating-linear-gradient(90deg, #c28fa1 0 42px, #fffcf8 42px 44px, #cbd3b8 44px 86px, #fffcf8 86px 88px, #9b718a 88px 130px, #fffcf8 130px 132px) !important;
 }
 
 #mma-window.mma-theme-bonbon .mma-bonbon-board-rail-left {
-  background: repeating-linear-gradient(0deg, #7871b5 0 42px, #fffcf8 42px 44px, #80675d 44px 86px, #fffcf8 86px 88px, #c6d0ad 88px 130px, #fffcf8 130px 132px) !important;
+  background: repeating-linear-gradient(0deg, #9b718a 0 42px, #fffcf8 42px 44px, #c28fa1 44px 86px, #fffcf8 86px 88px, #cbd3b8 88px 130px, #fffcf8 130px 132px) !important;
 }
 
 #mma-window.mma-theme-bonbon .mma-bonbon-board-corner-top-left {
-  background: #7871b5 !important;
+  background: #9b718a !important;
 }
 
 #mma-window.mma-theme-bonbon .mma-bonbon-board-corner-top-right,
 #mma-window.mma-theme-bonbon .mma-bonbon-board-corner-bottom-left {
-  background: #c6d0ad !important;
+  background: #cbd3b8 !important;
 }
 
 #mma-window.mma-theme-bonbon .mma-bonbon-board-corner-bottom-right {
-  background: #80675d !important;
+  background: #c28fa1 !important;
 }
 
 #mma-window.mma-theme-bonbon .mma-node {
-  border-color: #d6c5ab !important;
+  border-color: #d8c2c5 !important;
   background: #fffcf8 !important;
-  color: #4a443d !important;
+  color: #4f4145 !important;
 }
 
 #mma-window.mma-theme-bonbon .mma-node:hover,
 #mma-window.mma-theme-bonbon .mma-node:focus-visible {
-  border-color: #a59fcf !important;
+  border-color: #d1b1bc !important;
   background: #faf6ef !important;
-  outline-color: rgba(204, 198, 228, .76) !important;
+  outline-color: rgba(225, 208, 214, .76) !important;
 }
 
 #mma-window.mma-theme-bonbon .mma-node.selected {
-  border-color: #5e588f !important;
-  background: #7871b5 !important;
+  border-color: #704b5e !important;
+  background: #704b5e !important;
   color: #fffcf8 !important;
-  box-shadow: 0 1px 2px rgba(120, 113, 181, .14) !important;
+  box-shadow: 0 1px 2px rgba(155, 113, 138, .14) !important;
 }
 
 #mma-window.mma-theme-bonbon .mma-node.current-location::before {
-  color: #758467 !important;
+  color: #78866d !important;
   animation: mma-bonbon-current-panna-sway 3.7s ease-in-out infinite !important;
 }
 
 #mma-window.mma-theme-bonbon .mma-node.current-location::after {
-  border-color: #758467 !important;
+  border-color: #78866d !important;
 }
 
 #mma-window.mma-theme-bonbon .mma-event-badge {
-  background: #c6d0ad !important;
-  color: #4a443d !important;
+  background: #cbd3b8 !important;
+  color: #4f4145 !important;
 }
 
 @keyframes mma-bonbon-current-panna-sway {
@@ -7453,13 +7454,13 @@ button.mma-footstep:focus-visible em {
 
 /* Slow tabletop-piece motion; delay comes from each generated person. */
 #mma-window.mma-theme-bonbon .mma-footstep.mma-bonbon-piece {
-  color: #7871b5 !important;
+  color: #9b718a !important;
   animation: none !important;
 }
 
 #mma-window.mma-theme-bonbon .mma-bonbon-pawn,
 #mma-window.mma-theme-bonbon .mma-bonbon-mini-pawn {
-  color: #7871b5 !important;
+  color: #9b718a !important;
 }
 
 #mma-window.mma-theme-bonbon .mma-footstep.mma-bonbon-piece .mma-bonbon-pawn {
@@ -7476,7 +7477,7 @@ button.mma-footstep:focus-visible em {
 #mma-window.mma-theme-bonbon .mma-bonbon-cover-piece-pawn::before,
 #mma-window.mma-theme-bonbon .mma-bonbon-cover-piece:nth-child(3)::before {
   display: block;
-  color: #7871b5 !important;
+  color: #9b718a !important;
   animation: mma-bonbon-cover-panna-sway 3.8s ease-in-out infinite !important;
   transform-origin: 50% 90%;
 }
@@ -7488,12 +7489,12 @@ button.mma-footstep:focus-visible em {
 
 /* Panna cards, detail panels, notebook and status chips. */
 #mma-window.mma-theme-bonbon .mma-side-panel {
-  border-color: #d6c5ab !important;
-  background: #f1e9dd !important;
+  border-color: #d8c2c5 !important;
+  background: #f3e9e7 !important;
 }
 
 #mma-window.mma-theme-bonbon .mma-place-header {
-  border-bottom-color: #d6c5ab !important;
+  border-bottom-color: #d8c2c5 !important;
 }
 
 #mma-window.mma-theme-bonbon .mma-info-block,
@@ -7503,39 +7504,39 @@ button.mma-footstep:focus-visible em {
 #mma-window.mma-theme-bonbon .recommendation-card,
 #mma-window.mma-theme-bonbon .search-history-card,
 #mma-window.mma-theme-bonbon .mma-discovery-list-card {
-  border-color: #d6c5ab !important;
+  border-color: #d8c2c5 !important;
   background: #fffcf8 !important;
-  color: #4a443d !important;
+  color: #4f4145 !important;
 }
 
 #mma-window.mma-theme-bonbon .mma-event-card.injected,
 #mma-window.mma-theme-bonbon .mma-event-card.observed {
-  border-left-color: #758467 !important;
+  border-left-color: #78866d !important;
 }
 
 #mma-window.mma-theme-bonbon .mma-event-card.held {
-  border-left-color: #7871b5 !important;
+  border-left-color: #9b718a !important;
 }
 
 #mma-window.mma-theme-bonbon .mma-status,
 #mma-window.mma-theme-bonbon .mma-status.injected,
 #mma-window.mma-theme-bonbon .mma-status.observed,
 #mma-window.mma-theme-bonbon .mma-quest-reward {
-  border-color: #758467 !important;
-  background: rgba(198, 208, 173, .4) !important;
-  color: #4a443d !important;
+  border-color: #78866d !important;
+  background: rgba(203, 211, 184, .4) !important;
+  color: #4f4145 !important;
 }
 
 #mma-window.mma-theme-bonbon .mma-status.held {
-  border-color: #a59fcf !important;
-  background: rgba(204, 198, 228, .36) !important;
-  color: #5e588f !important;
+  border-color: #d1b1bc !important;
+  background: rgba(225, 208, 214, .36) !important;
+  color: #704b5e !important;
 }
 
 #mma-window.mma-theme-bonbon .mma-status.ignored {
-  border-color: #d6c5ab !important;
-  background: rgba(128, 103, 93, .08) !important;
-  color: #80675d !important;
+  border-color: #d8c2c5 !important;
+  background: rgba(135, 111, 102, .08) !important;
+  color: #876f66 !important;
 }
 
 #mma-window.mma-theme-bonbon .mma-panel-note,
@@ -7549,38 +7550,38 @@ button.mma-footstep:focus-visible em {
 #mma-window.mma-theme-bonbon textarea,
 #mma-window.mma-theme-bonbon .mma-custom-search input,
 #mma-window.mma-theme-bonbon .mma-theme-picker select {
-  border-color: #d6c5ab !important;
+  border-color: #d8c2c5 !important;
   background: #fffcf8 !important;
-  color: #4a443d !important;
+  color: #4f4145 !important;
 }
 
 #mma-window.mma-theme-bonbon .mma-notebook-section summary,
 #mma-window.mma-theme-bonbon .mma-search-tabs {
-  border-color: #d6c5ab !important;
+  border-color: #d8c2c5 !important;
   background: #faf6ef !important;
 }
 
 #mma-window.mma-theme-bonbon .mma-notebook-section summary small,
 #mma-window.mma-theme-bonbon .mma-person-signal-meta small,
 #mma-window.mma-theme-bonbon .mma-person-signal-status {
-  border-color: #ccc6e4 !important;
-  background: rgba(204, 198, 228, .28) !important;
-  color: #5e588f !important;
+  border-color: #e1d0d6 !important;
+  background: rgba(225, 208, 214, .28) !important;
+  color: #704b5e !important;
 }
 
 #mma-window.mma-theme-bonbon input:focus,
 #mma-window.mma-theme-bonbon select:focus,
 #mma-window.mma-theme-bonbon textarea:focus {
-  border-color: #7871b5 !important;
-  outline-color: rgba(204, 198, 228, .62) !important;
+  border-color: #9b718a !important;
+  outline-color: rgba(225, 208, 214, .62) !important;
 }
 
-/* Milk-and-blueberry key card for the gold key emoji. */
+/* Milk-and-mauve key card for the gold key emoji. */
 #mma-window.mma-theme-bonbon .mma-map-discovery-trigger,
 #mma-window.mma-theme-bonbon .mma-board-key-card-trigger {
-  border-color: #ccc6e4 !important;
+  border-color: #e1d0d6 !important;
   background: #fffcf8 !important;
-  color: #7871b5 !important;
+  color: #9b718a !important;
   box-shadow: none !important;
 }
 
@@ -7595,13 +7596,13 @@ button.mma-footstep:focus-visible em {
 #mma-window.mma-theme-bonbon .mma-map-discovery-trigger:focus-visible,
 #mma-window.mma-theme-bonbon .mma-board-key-card-trigger:hover,
 #mma-window.mma-theme-bonbon .mma-board-key-card-trigger:focus-visible {
-  border-color: #7871b5 !important;
-  background: rgba(204, 198, 228, .28) !important;
-  outline-color: rgba(204, 198, 228, .72) !important;
+  border-color: #9b718a !important;
+  background: rgba(225, 208, 214, .28) !important;
+  outline-color: rgba(225, 208, 214, .72) !important;
 }
 
 #mma-window.mma-theme-bonbon .mma-discovery-marker span {
-  border-color: #d6c5ab !important;
+  border-color: #d8c2c5 !important;
   background: #fffcf8 !important;
   animation: mma-bonbon-discovery-panna-float 3.5s ease-in-out infinite !important;
   animation-delay: var(--mma-discovery-delay, 0s) !important;
@@ -7609,7 +7610,7 @@ button.mma-footstep:focus-visible em {
 
 #mma-window.mma-theme-bonbon .mma-discovery-marker:hover span,
 #mma-window.mma-theme-bonbon .mma-discovery-marker:focus-visible span {
-  border-color: #a59fcf !important;
+  border-color: #d1b1bc !important;
   background: #faf6ef !important;
 }
 
@@ -7621,20 +7622,20 @@ button.mma-footstep:focus-visible em {
 #mma-window.mma-theme-bonbon .mma-discovery-confirm,
 #mma-window.mma-theme-bonbon .mma-discovery-list-card,
 #mma-window.mma-theme-bonbon .mma-discovery-card-icon {
-  border-color: #d6c5ab !important;
+  border-color: #d8c2c5 !important;
   background: #fffcf8 !important;
-  color: #4a443d !important;
+  color: #4f4145 !important;
 }
 
 #mma-window.mma-theme-bonbon .mma-discovery-confirm::before {
   content: "🔑" !important;
-  border-color: #ccc6e4 !important;
+  border-color: #e1d0d6 !important;
   background: #fffcf8 !important;
-  color: #7871b5 !important;
+  color: #9b718a !important;
 }
 
 #mma-window.mma-theme-bonbon .mma-discovery-confirm h3 {
-  color: #5e588f !important;
+  color: #704b5e !important;
 }
 
 /* Three visible diagonal resize rails. */
@@ -7644,41 +7645,41 @@ button.mma-footstep:focus-visible em {
   width: 21px;
   height: 21px;
   border-radius: 0 0 6px 0;
-  background: repeating-linear-gradient(135deg, transparent 0 4px, rgba(120, 113, 181, .78) 4px 6px, transparent 6px 9px) !important;
+  background: repeating-linear-gradient(135deg, transparent 0 4px, rgba(155, 113, 138, .78) 4px 6px, transparent 6px 9px) !important;
 }
 
 #mma-window.mma-theme-bonbon #mma-busy {
-  background: rgba(74, 68, 61, .45) !important;
+  background: rgba(79, 65, 69, .45) !important;
   color: #fffcf8 !important;
 }
 
 #mma-window.mma-theme-bonbon .mma-spinner {
   border-color: rgba(255, 252, 248, .55) !important;
-  border-top-color: #7871b5 !important;
-  border-right-color: #c6d0ad !important;
+  border-top-color: #9b718a !important;
+  border-right-color: #cbd3b8 !important;
 }
 
 #mma-window.mma-theme-bonbon .mma-failure-screen,
 #mma-window.mma-theme-bonbon .mma-failure-screen .mma-info-block,
 #mma-window.mma-theme-bonbon .mma-map-toast.mma-map-toast-bonbon,
 #mma-root.mma-theme-bonbon .mma-map-toast.mma-map-toast-bonbon {
-  border-color: #d6c5ab !important;
+  border-color: #d8c2c5 !important;
   background: #fffcf8 !important;
-  color: #4a443d !important;
+  color: #4f4145 !important;
 }
 
 #mma-window.mma-theme-bonbon .mma-map-toast.mma-map-toast-success,
 #mma-window.mma-theme-bonbon .mma-map-toast.mma-map-toast-info,
 #mma-root.mma-theme-bonbon .mma-map-toast.mma-map-toast-success,
 #mma-root.mma-theme-bonbon .mma-map-toast.mma-map-toast-info {
-  border-left-color: #758467 !important;
+  border-left-color: #78866d !important;
 }
 
 #mma-window.mma-theme-bonbon .mma-map-toast.mma-map-toast-warning,
 #mma-window.mma-theme-bonbon .mma-map-toast.mma-map-toast-error,
 #mma-root.mma-theme-bonbon .mma-map-toast.mma-map-toast-warning,
 #mma-root.mma-theme-bonbon .mma-map-toast.mma-map-toast-error {
-  border-left-color: #7871b5 !important;
+  border-left-color: #9b718a !important;
 }
 
 @media (prefers-reduced-motion: reduce) {

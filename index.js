@@ -15,7 +15,7 @@ const EXTENSION_PROMPT_KEY = 'marauders_map_active_context';
 const FOOTSTEP_LIMIT = 10;
 const DEBUG_LOG_LIMIT = 40;
 const memoryDebugLogs = [];
-const EXTENSION_VERSION = '2.7.7';
+const EXTENSION_VERSION = '2.7.8';
 const SHARED_NOTEBOOK_KEYS = Object.freeze(['managedItems', 'footstepProfiles', 'trackedPeople', 'recommendations', 'searchResults']);
 const DISCOVERY_HISTORY_LIMIT = 30;
 const UNCOLLECTED_RECOMMENDATION_LIMIT = 24;
@@ -68,6 +68,7 @@ const THEME_OPTIONS = Object.freeze({
         completeText: '지도가 모두 그려졌습니다.',
         readyHint: '주문을 한 번 누르면 지도가 활성화된다.',
         loaderTitle: "Marauder's Map",
+        locationInfoIcon: '🎨',
         discoveryUi: {
             icon: '🪄',
             name: 'Revelio',
@@ -79,18 +80,19 @@ const THEME_OPTIONS = Object.freeze({
     },
     modern: {
         key: 'modern',
-        label: 'Location tracker (Modern AU)',
-        shortLabel: 'Location tracker',
+        label: 'S.H.I.E.L.D. Field Locator (MCU AU)',
+        shortLabel: 'S.H.I.E.L.D. LOCATOR',
         menuIcon: '📍',
-        menuTitle: 'Location tracker',
+        menuTitle: 'S.H.I.E.L.D. Field Locator',
         activationVariant: 'warning',
         closeText: '×',
-        idleNote: '로케이션 트래커는 합법적인 동의하에 위치 추적 서비스를 지원합니다.',
+        idleNote: 'S.H.I.E.L.D. Field Locator는 합법적인 동의하에 위치 추적 서비스를 지원합니다.',
         activateText: '위치 추적 활성화',
         castingText: '위치 추적 서비스를 활성화하는 중...',
         completeText: '모든 타겟의 위치가 파악되었습니다.',
         readyHint: '',
-        loaderTitle: 'Location tracker',
+        loaderTitle: 'S.H.I.E.L.D. LOCATOR',
+        locationInfoIcon: '⌖',
         discoveryUi: {
             icon: '📡',
             name: '주변 상황 탐색',
@@ -114,6 +116,7 @@ const THEME_OPTIONS = Object.freeze({
         completeText: '게임판 준비가 끝났습니다.',
         readyHint: '',
         loaderTitle: 'Bonbon Board',
+        locationInfoIcon: '🎨',
         discoveryUi: {
             icon: '🔑',
             name: '열쇠 카드',
@@ -5167,7 +5170,7 @@ function createRoot() {
     root.id = EXTENSION_ROOT_ID;
     root.innerHTML = `
         <div id="mma-overlay" class="mma-hidden" aria-hidden="true">
-            <div id="mma-window" role="dialog" aria-label="Map / Location tracker / Bonbon Board">
+            <div id="mma-window" role="dialog" aria-label="Map / S.H.I.E.L.D. Field Locator / Bonbon Board">
                 <div id="mma-busy" class="mma-hidden"><span class="mma-spinner"></span><span id="mma-busy-text">지도 확인 중...</span></div>
                 <div id="mma-content"></div>
             </div>
@@ -5254,11 +5257,11 @@ function renderSpellScreen() {
     const bonbon = isBonbonTheme();
     applyThemeClass();
     const activationNotice = modern ? `
-                <div class="mma-tracker-warning" aria-label="Location tracker notice">
+                <div class="mma-tracker-warning" aria-label="S.H.I.E.L.D. Field Locator notice">
                     <div class="mma-warning-title">경 고 문</div>
                     <p class="mma-warning-copy">실제 사람의 위치를 수집·이용·제공하는 행위는 관련 법령과 서비스 약관의 적용을 받을 수 있습니다. 위치 추적 서비스를 이용할 때에는 목적, 보관 기간, 제공 범위를 사전에 고지하고, 당사자의 명시적인 동의를 받아야 합니다.</p>
                     <p class="mma-warning-copy">상대방의 동의 없이 위치를 확인하거나 제3자에게 공유하는 행위는 위치정보 관련 법령, 개인정보 보호 규정, 통신 관련 규정 등에 따라 법적 책임이 발생할 수 있습니다. 실제 서비스 이용 시에는 적법한 권한과 동의를 확보한 뒤 이용하시기 바랍니다.</p>
-                    <p class="mma-warning-copy">로케이션 트래커는 이 앱을 사용함으로써 발생하는 문제에 대하여 책임지지 않습니다.</p>
+                    <p class="mma-warning-copy">S.H.I.E.L.D. Field Locator는 이 앱을 사용함으로써 발생하는 문제에 대하여 책임지지 않습니다.</p>
                     <p class="mma-warning-copy">RP 속 인물들은 허구의 인물이기에 처벌은 받지 않습니다.</p>
                     <p class="mma-warning-question">위치 추적을 활성화하시겠습니까?</p>
                 </div>` : '';
@@ -5874,7 +5877,7 @@ function renderLocationPanel(locationId) {
                 <button title="이 장소만 다시 새로고침" data-action="refresh-location">🔄</button>
             </header>
             <section class="mma-info-block">
-                <h4>🎨</h4>
+                <h4>${escapeHtml(getThemeConfig().locationInfoIcon || '🎨')}</h4>
                 <p>${escapeHtml(buildDisplaySituation(location, relatedEvents))}</p>
             </section>
             <section class="mma-info-block">
@@ -6562,7 +6565,7 @@ function setupExtensionButtonInSettings() {
                     <label class="mma-settings-label" for="mma-theme-setting">Theme</label>
                     <select id="mma-theme-setting" class="text_pole">
                         <option value="marauder" ${getThemeKey() === 'marauder' ? 'selected' : ''}>Marauder's Map (HP AU)</option>
-                        <option value="modern" ${getThemeKey() === 'modern' ? 'selected' : ''}>Location tracker (Modern AU)</option>
+                        <option value="modern" ${getThemeKey() === 'modern' ? 'selected' : ''}>S.H.I.E.L.D. Field Locator (MCU AU)</option>
                         <option value="bonbon" ${getThemeKey() === 'bonbon' ? 'selected' : ''}>Bonbon Board</option>
                     </select>
                 </div>
