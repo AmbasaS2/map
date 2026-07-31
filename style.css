@@ -2938,11 +2938,12 @@ button.mma-footstep:focus-visible em {
   margin: 0 !important;
 }
 
-/* v2.7.0: on-demand discovery markers, confirmation, and detail cards. */
-.mma-discovery-marker {
+/* On-demand discovery trigger, markers, confirmation, and detail cards. */
+.mma-map-discovery-trigger {
   position: absolute;
-  z-index: 8;
-  transform: translate(-50%, -50%);
+  z-index: 20;
+  top: 9px;
+  right: 9px;
   display: grid;
   place-items: center;
   width: 30px;
@@ -2951,40 +2952,115 @@ button.mma-footstep:focus-visible em {
   min-height: 30px;
   margin: 0;
   padding: 0;
-  border: 1px solid rgba(70, 38, 16, .42);
+  border: 1px solid rgba(70, 38, 16, .32);
   border-radius: 999px;
   appearance: none;
-  background: rgba(255, 241, 201, .92);
+  background: rgba(255, 241, 201, .82);
   color: var(--mma-ink);
-  box-shadow: 0 5px 14px rgba(61, 31, 10, .22), inset 0 0 8px rgba(255, 255, 255, .42);
+  box-shadow: 0 4px 12px rgba(61, 31, 10, .18), inset 0 0 7px rgba(255, 255, 255, .34);
   font: inherit;
-  font-size: 15px;
+  font-size: 16px;
   line-height: 1;
   cursor: pointer;
   pointer-events: auto;
   transition: transform .14s ease, background-color .14s ease, box-shadow .14s ease;
 }
 
-.mma-discovery-marker:hover,
-.mma-discovery-marker:focus-visible {
-  transform: translate(-50%, -50%) scale(1.1);
-  background: rgba(255, 249, 225, .98);
-  box-shadow: 0 0 0 3px rgba(102, 60, 22, .13), 0 7px 17px rgba(61, 31, 10, .26);
+.mma-map-discovery-trigger span {
+  pointer-events: none;
+}
+
+.mma-map-discovery-trigger:hover,
+.mma-map-discovery-trigger:focus-visible {
+  transform: translateY(-1px);
+  background: rgba(255, 249, 225, .96);
+  box-shadow: 0 0 0 3px rgba(102, 60, 22, .11), 0 6px 15px rgba(61, 31, 10, .21);
   outline: none;
 }
 
-#mma-window.mma-theme-modern .mma-discovery-marker {
-  border-color: rgba(59, 130, 246, .4);
-  background: rgba(255, 255, 255, .94);
-  color: #1f2937;
-  box-shadow: 0 5px 15px rgba(37, 99, 235, .16), 0 0 0 1px rgba(255, 255, 255, .72) inset;
+.mma-map-discovery-trigger:disabled {
+  cursor: default;
+  opacity: .52;
+  transform: none;
 }
 
-#mma-window.mma-theme-modern .mma-discovery-marker:hover,
-#mma-window.mma-theme-modern .mma-discovery-marker:focus-visible {
-  border-color: rgba(239, 68, 68, .5);
+#mma-window.mma-theme-modern .mma-map-discovery-trigger {
+  border-color: rgba(59, 130, 246, .32);
+  background: rgba(255, 255, 255, .88);
+  color: #1f2937;
+  box-shadow: 0 4px 13px rgba(37, 99, 235, .13), 0 0 0 1px rgba(255, 255, 255, .66) inset;
+  font-family: inherit;
+}
+
+#mma-window.mma-theme-modern .mma-map-discovery-trigger:hover,
+#mma-window.mma-theme-modern .mma-map-discovery-trigger:focus-visible {
   background: #fff;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, .13), 0 8px 18px rgba(15, 23, 42, .16);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, .11), 0 6px 16px rgba(15, 23, 42, .14);
+}
+
+.mma-discovery-marker {
+  position: absolute;
+  z-index: 8;
+  transform: translate(-50%, -50%);
+  display: grid;
+  place-items: center;
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
+  min-height: 32px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  appearance: none;
+  background: transparent;
+  color: var(--mma-ink);
+  box-shadow: none;
+  font: inherit;
+  line-height: 1;
+  cursor: pointer;
+  pointer-events: auto;
+  outline: none;
+}
+
+.mma-discovery-marker span {
+  display: block;
+  pointer-events: none;
+  font-size: 19px;
+  line-height: 1;
+  filter: drop-shadow(0 2px 3px rgba(61, 31, 10, .26));
+  animation: mma-discovery-float 3.45s ease-in-out infinite;
+  animation-delay: var(--mma-discovery-delay, 0s);
+  will-change: transform;
+  transition: filter .14s ease;
+}
+
+.mma-discovery-marker:hover span,
+.mma-discovery-marker:focus-visible span {
+  filter: drop-shadow(0 3px 5px rgba(61, 31, 10, .4)) brightness(1.06);
+}
+
+.mma-discovery-marker:focus-visible {
+  outline: 2px dashed rgba(70, 38, 16, .58);
+  outline-offset: 1px;
+}
+
+#mma-window.mma-theme-modern .mma-discovery-marker span {
+  filter: drop-shadow(0 2px 4px rgba(37, 99, 235, .24));
+}
+
+#mma-window.mma-theme-modern .mma-discovery-marker:hover span,
+#mma-window.mma-theme-modern .mma-discovery-marker:focus-visible span {
+  filter: drop-shadow(0 3px 6px rgba(37, 99, 235, .38)) brightness(1.06);
+}
+
+#mma-window.mma-theme-modern .mma-discovery-marker:focus-visible {
+  outline-color: rgba(37, 99, 235, .58);
+}
+
+@keyframes mma-discovery-float {
+  0%, 100% { transform: translate3d(0, 1px, 0) rotate(-1.5deg); }
+  50% { transform: translate3d(0, -4px, 0) rotate(1.5deg); }
 }
 
 .mma-discovery-confirm-overlay {
@@ -2994,17 +3070,17 @@ button.mma-footstep:focus-visible em {
   display: grid;
   place-items: center;
   box-sizing: border-box;
-  padding: 18px;
+  padding: 12px;
   background: rgba(30, 17, 8, .38);
   backdrop-filter: blur(2px);
 }
 
 .mma-discovery-confirm {
-  width: min(360px, calc(100% - 24px));
-  max-height: calc(100% - 24px);
+  width: min(296px, calc(100% - 20px));
+  max-height: calc(100% - 20px);
   overflow: auto;
   box-sizing: border-box;
-  padding: 18px;
+  padding: 13px;
   border: 1px solid rgba(70, 38, 16, .34);
   border-radius: 18px 10px 20px 12px;
   background: linear-gradient(145deg, #f3deb1, #d8b875);
@@ -3013,29 +3089,29 @@ button.mma-footstep:focus-visible em {
 }
 
 .mma-discovery-confirm h3 {
-  margin: 0 0 16px;
+  margin: 0 0 11px;
   font-family: inherit;
-  font-size: calc(17px * var(--mma-font-scale, 1));
-  line-height: 1.45;
+  font-size: calc(13px * var(--mma-font-scale, 1));
+  line-height: 1.4;
 }
 
 .mma-discovery-confirm-actions {
   display: flex;
   justify-content: flex-end;
   flex-wrap: wrap;
-  gap: 7px;
+  gap: 5px;
 }
 
 .mma-discovery-confirm-actions button {
-  min-height: 34px;
+  min-height: 30px;
   margin: 0;
-  padding: 6px 13px;
+  padding: 5px 10px;
   border: 1px solid rgba(70, 38, 16, .3);
   border-radius: 10px;
   background: rgba(255, 244, 211, .62);
   color: inherit;
   font: inherit;
-  font-size: calc(12.5px * var(--mma-font-scale, 1));
+  font-size: calc(11.5px * var(--mma-font-scale, 1));
   cursor: pointer;
 }
 
@@ -3195,12 +3271,25 @@ button.mma-footstep:focus-visible em {
 }
 
 @media (max-width: 700px) {
-  .mma-discovery-marker {
+  .mma-map-discovery-trigger {
+    top: 7px;
+    right: 7px;
     width: 28px;
     min-width: 28px;
     height: 28px;
     min-height: 28px;
-    font-size: 14px;
+    font-size: 15px;
+  }
+
+  .mma-discovery-marker {
+    width: 30px;
+    min-width: 30px;
+    height: 30px;
+    min-height: 30px;
+  }
+
+  .mma-discovery-marker span {
+    font-size: 18px;
   }
 
   .mma-discovery-confirm-overlay {
@@ -3208,9 +3297,9 @@ button.mma-footstep:focus-visible em {
   }
 
   .mma-discovery-confirm {
-    width: min(340px, 100%);
-    max-height: calc(100% - 12px);
-    padding: 15px;
+    width: min(296px, 100%);
+    max-height: calc(100% - 10px);
+    padding: 13px;
   }
 
   .mma-discovery-actions {
@@ -3247,7 +3336,7 @@ button.mma-footstep:focus-visible em {
     grid-column: 1;
     grid-row: 1;
     display: grid;
-    grid-template-columns: repeat(6, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
     gap: 3px;
     width: 100%;
     min-width: 0;
@@ -3277,9 +3366,9 @@ button.mma-footstep:focus-visible em {
   }
 
   .mma-discovery-confirm {
-    width: 100%;
+    width: min(296px, 100%);
     max-height: calc(100% - 8px);
-    padding: 13px;
+    padding: 12px;
   }
 
   .mma-discovery-confirm-actions button {
@@ -3414,7 +3503,77 @@ button.mma-footstep:focus-visible em {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .mma-discovery-marker {
+  .mma-map-discovery-trigger {
     transition: none;
   }
+
+  .mma-discovery-marker span {
+    animation: none;
+    transition: none;
+  }
+}
+
+/* v2.7.3: one inherited type scale for person-search results */
+#mma-window .mma-person-search-result-panel,
+#mma-window .mma-person-search-result-panel * {
+  font-family: inherit;
+}
+
+#mma-window .mma-person-search-result-panel .mma-place-header strong {
+  font-size: calc(14px * var(--mma-font-scale, 1)) !important;
+  line-height: 1.3;
+}
+
+#mma-window .person-search-card {
+  gap: 9px;
+  font-size: calc(12.5px * var(--mma-font-scale, 1));
+}
+
+#mma-window .person-search-card .mma-event-title > span {
+  display: none;
+}
+
+#mma-window .person-search-card .mma-event-title b {
+  font-size: calc(13px * var(--mma-font-scale, 1)) !important;
+  line-height: 1.35;
+}
+
+#mma-window .person-search-card .mma-event-location {
+  font-size: calc(11.5px * var(--mma-font-scale, 1)) !important;
+  line-height: 1.4;
+}
+
+#mma-window .person-search-card .mma-person-signal-summary,
+#mma-window .person-search-card .mma-person-signal-block p,
+#mma-window .person-search-card .mma-person-signal-block ul {
+  margin: 0;
+  font-size: calc(12.5px * var(--mma-font-scale, 1)) !important;
+  line-height: 1.58 !important;
+}
+
+#mma-window .person-search-card .mma-person-signal-block {
+  display: grid;
+  gap: 5px;
+  border-top: 1px solid rgba(70, 40, 16, .12);
+  padding-top: 8px;
+}
+
+#mma-window .person-search-card .mma-person-signal-block h4 {
+  margin: 0;
+  font-size: calc(12px * var(--mma-font-scale, 1)) !important;
+  line-height: 1.35;
+}
+
+#mma-window .person-search-card .mma-person-signal-block ul {
+  padding-left: 18px;
+}
+
+#mma-window .person-search-card .mma-search-auto-save-note {
+  opacity: .66;
+  font-size: calc(10.5px * var(--mma-font-scale, 1));
+  line-height: 1.35;
+}
+
+#mma-window.mma-theme-modern .person-search-card .mma-person-signal-block {
+  border-top-color: rgba(99, 135, 170, .2);
 }

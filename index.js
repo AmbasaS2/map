@@ -15,7 +15,7 @@ const EXTENSION_PROMPT_KEY = 'marauders_map_active_context';
 const FOOTSTEP_LIMIT = 10;
 const DEBUG_LOG_LIMIT = 40;
 const memoryDebugLogs = [];
-const EXTENSION_VERSION = '2.7.2';
+const EXTENSION_VERSION = '2.7.3';
 const SHARED_NOTEBOOK_KEYS = Object.freeze(['managedItems', 'footstepProfiles', 'trackedPeople', 'recommendations', 'searchResults']);
 const DISCOVERY_HISTORY_LIMIT = 30;
 const UNCOLLECTED_RECOMMENDATION_LIMIT = 24;
@@ -96,6 +96,7 @@ const EMPTY_MEMORY = Object.freeze({
     discoveryHistory: [],
     discoveryGeneratedAt: null,
     generatedAt: null,
+    mapRevision: null,
     lastAction: null,
 });
 
@@ -113,6 +114,7 @@ let mapResizeState = null;
 // Serialize metadata writes so fast consecutive UI actions cannot finish out of order.
 let saveMemoryQueue = Promise.resolve();
 let saveMemorySequence = 0;
+let mapRevisionSequence = 0;
 // Only one map/selected-location generation may commit at a time.
 let activeMapGeneration = null;
 let activeDiscoveryConfirm = null;
@@ -141,6 +143,38 @@ function rememberCurrentChatSignature() {
     const signature = getStableChatSignature();
     if (signature) lastKnownChatSignature = signature;
     return signature;
+}
+
+function assertChatSignatureUnchanged(startSignature, operation = 'request') {
+    const endSignature = getStableChatSignature();
+    if (startSignature && endSignature && startSignature !== endSignature) {
+        pushDebugLog(`${operation}.cancelled.chat_changed`, '요청 중 채팅이 바뀌어 결과를 저장하지 않았습니다.', {
+            startChatSignature: startSignature,
+            endChatSignature: endSignature,
+        });
+        throw createMapGenerationCancelledError('chat changed during request');
+    }
+}
+
+function assertMapSnapshotUnchanged(startMap, operation = 'request', footstepSnapshot = null) {
+    const currentMap = ensureMemory().map;
+    let changed = Boolean(startMap && currentMap !== startMap);
+    if (!changed && footstepSnapshot) {
+        const live = currentMap?.footsteps?.find(item => String(item.id) === String(footstepSnapshot.id));
+        changed = !live
+            || String(live.locationId || '') !== String(footstepSnapshot.locationId || '')
+            || String(live.status || '').replace(/\s+/g, ' ').trim() !== String(footstepSnapshot.status || '').replace(/\s+/g, ' ').trim();
+    }
+    if (!changed) return;
+    pushDebugLog(`${operation}.cancelled.map_changed`, '요청 중 지도가 갱신되어 이전 지도 기준 결과를 저장하지 않았습니다.', {
+        expectedFootstepId: footstepSnapshot?.id || '',
+    });
+    throw createMapGenerationCancelledError('map changed during request');
+}
+
+function createMapRevisionToken() {
+    mapRevisionSequence += 1;
+    return `map-${Date.now().toString(36)}-${mapRevisionSequence.toString(36)}`;
 }
 
 
@@ -500,16 +534,16 @@ function getDiscoveryUiConfig() {
             name: '주변 상황 탐색',
             question: '주변 상황을 탐색할까요?',
             confirm: '탐색',
-            loader: '주변 위치와 최근 활동을 분석하는 중…',
-            panelTitle: '주변에서 포착된 장면',
+            loader: '주변의 존재와 변화를 포착하는 중…',
+            panelTitle: '주변에서 포착된 것',
         }
         : {
             icon: '🪄',
             name: 'Revelio',
             question: 'Revelio를 외울까요?',
             confirm: 'Revelio',
-            loader: '지도에 감춰진 장면을 드러내는 중…',
-            panelTitle: 'Revelio로 드러난 장면',
+            loader: '지도에 감춰진 것을 드러내는 중…',
+            panelTitle: 'Revelio로 드러난 것',
         };
 }
 function getMapActivationCompleteText() {
@@ -754,6 +788,7 @@ async function restorePreviousMap() {
     }
 
     memory.map = clone(snapshot.map);
+    memory.mapRevision = createMapRevisionToken();
     reconcileTransientDiscoveries(memory, memory.map);
     memory.selectedLocationId = snapshot.selectedLocationId || snapshot.map.currentLocationId || snapshot.map.locations[0]?.id || null;
     memory.generatedAt = snapshot.generatedAt || nowStamp();
@@ -898,6 +933,7 @@ function ensureMemory() {
     if (!Array.isArray(memory.searchResults)) memory.searchResults = [];
     if (!Array.isArray(memory.discoveries)) memory.discoveries = [];
     if (!Array.isArray(memory.discoveryHistory)) memory.discoveryHistory = [];
+    if (isValidMapData(memory.map) && !memory.mapRevision) memory.mapRevision = createMapRevisionToken();
     const cleanedSharedNotebooks = purgeLegacySharedMapBackups();
     const cleanedCurrentChat = purgeLegacyMapBackupsFromChat(memory);
     memory.previousMap = normalizePreviousMapSnapshot(memory.previousMap);
@@ -1432,7 +1468,9 @@ function getMapTopFallbacks(map = {}, locations = []) {
 function isPlaceholderLocationName(value) {
     const name = String(value || '').replace(/\s+/g, ' ').trim();
     if (!name) return true;
-    return /^(?:(?:장소|위치|로케이션|location|place)\s*#?\d*|unknown(?: location)?|알 수 없는 (?:장소|위치))$/i.test(name);
+    if (name.length > 80) return true;
+    return /^(?:(?:장소|위치|로케이션|location|place)\s*#?\d*|unknown(?: location)?|알 수 없는 (?:장소|위치)|위치 (?:신호 )?흐림|(?:정확한 )?(?:장소|위치)(?:는|가)?\s*(?:불명|미상|모름|확인되지 않음|확인 불가)|추적 (?:불가|실패)|미상|불명)$/i.test(name)
+        || /(?:어딘가|어느 곳|정확한 장소는? (?:불명|미상)|장소를? 알 수 없|위치를? 알 수 없|확실하지 않은 (?:장소|위치))/i.test(name);
 }
 
 function normalizeMap(raw, options = {}) {
@@ -1560,10 +1598,12 @@ function normalizeMap(raw, options = {}) {
 
     let footsteps = Array.isArray(map.footsteps) ? map.footsteps.slice(0, FOOTSTEP_LIMIT).map((fp, index) => {
         if (!fp || typeof fp !== 'object' || Array.isArray(fp)) return null;
+        const resolvedLocationId = resolveLocationId(fp);
+        if (!resolvedLocationId) return null;
         return {
             id: String(fp.id || `foot-${safeId(fp.label || fp.name || fp.person || 'unknown')}-${index + 1}`),
             label: simplifyFootstepLabel(fp.label || fp.name || fp.person || '???'),
-            locationId: resolveLocationId(fp) || currentLocationId,
+            locationId: resolvedLocationId,
             status: String(fp.status || fp.activity || '움직임이 희미하다.'),
             visibleName: fp.visibleName !== false && !/^\?\?\?$/.test(String(fp.label || fp.name || '')),
         };
@@ -1676,26 +1716,41 @@ const LOCATION_SCHEMA = {
     },
 };
 
+const DISCOVERY_CATEGORIES = ['person', 'creature', 'object', 'message', 'place_change', 'incident'];
+const DISCOVERY_CATEGORY_FALLBACK_EMOJI = {
+    person: '👤',
+    creature: '🐾',
+    object: '📦',
+    message: '✉️',
+    place_change: '🚪',
+    incident: '⚠️',
+};
+
 const DISCOVERY_ITEM_SCHEMA = {
     type: 'object',
     properties: {
-        category: { type: 'string' },
+        category: { type: 'string', enum: DISCOVERY_CATEGORIES },
+        emoji: { type: 'string' },
         title: { type: 'string' },
         locationName: { type: 'string' },
+        focus: { type: 'string' },
+        focusContext: { type: 'string' },
+        observation: { type: 'string' },
+        stakes: { type: 'string' },
+        interactions: { type: 'array', minItems: 2, maxItems: 3, items: { type: 'string' } },
         participants: { type: 'array', items: { type: 'string' } },
-        body: { type: 'string' },
-        anchors: { type: 'array', items: { type: 'string' } },
+        sourceAnchors: { type: 'array', minItems: 1, maxItems: 4, items: { type: 'string' } },
         motifKey: { type: 'string' },
         continuationOf: { type: 'string' },
     },
-    required: ['category', 'title', 'locationName', 'participants', 'body', 'anchors', 'motifKey', 'continuationOf'],
+    required: ['category', 'emoji', 'title', 'locationName', 'focus', 'focusContext', 'observation', 'stakes', 'interactions', 'participants', 'sourceAnchors', 'motifKey', 'continuationOf'],
 };
 
 function getDiscoverySchema(outputMode = getOutputModeKey()) {
     const mode = normalizeOutputMode(outputMode);
     return {
-        name: mode === 'saver' ? 'SurroundingScenesSaverModel' : 'SurroundingScenesBasicModel',
-        description: 'Distinct Korean surrounding scenes grounded in the supplied roleplay continuity.',
+        name: mode === 'saver' ? 'MapDiscoveriesSaverModel' : 'MapDiscoveriesBasicModel',
+        description: 'Concrete interactive discoveries newly revealed around the supplied roleplay map.',
         strict: true,
         value: {
             '$schema': 'http://json-schema.org/draft-04/schema#',
@@ -1723,23 +1778,63 @@ function normalizeDiscoveryText(value) {
 
 function normalizeDiscoveryCategory(value) {
     const key = normalizeDiscoveryText(value);
-    const categories = ['person', 'creature', 'relationship', 'object', 'message', 'place', 'environment'];
-    const exact = categories.find(category => key === category);
+    const exact = DISCOVERY_CATEGORIES.find(category => key === category);
     if (exact) return exact;
     if (/인물|npc|person/.test(key)) return 'person';
     if (/동물|생물|크리처|creature|animal/.test(key)) return 'creature';
-    if (/관계|relationship/.test(key)) return 'relationship';
     if (/물건|아이템|object|item/.test(key)) return 'object';
     if (/메시지|연락|방문|배달|message|visit|delivery/.test(key)) return 'message';
-    if (/장소|place/.test(key)) return 'place';
-    return 'environment';
+    if (/장소|변화|place change|place/.test(key)) return 'place_change';
+    if (/사건|사고|징후|소동|위험|incident|event|disturbance|hazard|signal/.test(key)) return 'incident';
+    return '';
+}
+
+const DISCOVERY_EMOJI_FOCUS_RULES = [
+    { pattern: /(?:고양이|길고양이|cat)/i, allowed: ['🐈', '🐈‍⬛', '🐱', '🐾'], fallback: '🐈' },
+    { pattern: /(?:강아지|(?:검은|하얀|흰|갈색|다친|사나운|길 잃은)\s+개(?:가|는|를|와|과|에게|한테|$|[,.!?])|dog|puppy)/i, allowed: ['🐕', '🐶', '🐾'], fallback: '🐕' },
+    { pattern: /(?:조류|부엉이|올빼미|새끼\s*새|새\s+(?:한|두|세|네)\s*마리|(?:검은|하얀|흰|갈색|작은|다친|길 잃은)\s+새(?:가|는|를|의|떼|$|[,.!?])|(?:^|\s)새(?:가|를|의|떼)|bird|owl)/i, allowed: ['🐦', '🦉', '🦅', '🐥', '🪽', '🐾'], fallback: '🐦' },
+    { pattern: /(?:편지|봉투|우편|서신|letter|envelope|mail)/i, allowed: ['✉️', '💌', '📩', '📨', '📧', '📮'], fallback: '✉️' },
+    { pattern: /(?:소포|택배|꾸러미|배송 상자|package|parcel)/i, allowed: ['📦', '🎁'], fallback: '📦' },
+    { pattern: /(?:출입문|비밀문|문짝|(?:^|\s)문(?:이|은|을|의|과|앞|뒤|틈|손잡이|\s|$)|door|gate)/i, allowed: ['🚪'], fallback: '🚪' },
+    { pattern: /(?:열쇠|key)/i, allowed: ['🗝️', '🔑'], fallback: '🗝️' },
+    { pattern: /(?:약병|물약|시약|medicine|potion|vial)/i, allowed: ['🧪', '💊', '⚗️'], fallback: '🧪' },
+    { pattern: /(?:수첩|일지|(?:^|\s)책(?:이|은|을|의|과|속|\s|$)|book|notebook|journal)/i, allowed: ['📖', '📕', '📓', '📔'], fallback: '📖' },
+    { pattern: /(?:전화|휴대전화|메시지|문자|phone|call|text message)/i, allowed: ['📱', '☎️', '📞', '💬'], fallback: '📱' },
+    { pattern: /(?:불길|화재|불이 붙|fire|flame)/i, allowed: ['🔥', '🧯'], fallback: '🔥' },
+];
+
+function normalizeDiscoveryEmoji(value, category, focusText = '') {
+    const compact = String(value || '').trim().replace(/\s+/g, '');
+    const pictographs = compact.match(/\p{Extended_Pictographic}/gu) || [];
+    let graphemeCount = Array.from(compact).length;
+    try {
+        graphemeCount = [...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(compact)].length;
+    } catch {
+        // Array.from remains a conservative fallback in older WebViews.
+    }
+    let candidate = compact && pictographs.length >= 1 && graphemeCount === 1 && Array.from(compact).length <= 8 && !/[a-z0-9가-힣]/iu.test(compact)
+        ? compact
+        : (DISCOVERY_CATEGORY_FALLBACK_EMOJI[normalizeDiscoveryCategory(category)] || '🔎');
+    const focusRule = DISCOVERY_EMOJI_FOCUS_RULES.find(rule => rule.pattern.test(String(focusText || '')));
+    if (focusRule && !focusRule.allowed.includes(candidate)) return focusRule.fallback;
+
+    const normalizedCategory = normalizeDiscoveryCategory(category);
+    const abstractMarkers = new Set(['🔎', '🔍', '✨', '⭐', '🌟', '💫', '❓', '❔', '🪢']);
+    if (abstractMarkers.has(candidate)) {
+        candidate = DISCOVERY_CATEGORY_FALLBACK_EMOJI[normalizedCategory] || '🔎';
+    }
+    if (normalizedCategory === 'message' && !['✉️', '💌', '📩', '📨', '📧', '📮', '📱', '☎️', '📞', '💬'].includes(candidate)) return '✉️';
+    if (normalizedCategory === 'person' && ['🐾', '🐈', '🐕', '🐦', '✉️', '💌', '📦', '🚪', '⚠️'].includes(candidate)) return '👤';
+    if (normalizedCategory === 'creature' && ['👤', '✉️', '💌', '📦', '🚪', '⚠️'].includes(candidate)) return '🐾';
+    return candidate;
 }
 
 function makeDiscoveryFingerprint(item = {}) {
     const people = (item.participants || []).map(normalizeDiscoveryText).filter(Boolean).sort().slice(0, 4).join('+');
     const motif = normalizeDiscoveryText(item.motifKey || item.title).split(' ').slice(0, 12).join(' ');
     const location = normalizeDiscoveryText(item.locationName || item.locationId);
-    return [normalizeDiscoveryCategory(item.category), people, location, motif].join('|');
+    const focus = normalizeDiscoveryText(item.focus || item.title).split(' ').slice(0, 10).join(' ');
+    return [normalizeDiscoveryCategory(item.category), focus, people, location, motif].join('|');
 }
 
 function discoveryTextSimilarity(left, right) {
@@ -1762,35 +1857,130 @@ function isDuplicateDiscovery(candidate, previous) {
     const premiseSimilarity = Math.max(
         discoveryTextSimilarity(candidate.motifKey || candidate.title, previous.motifKey || previous.titleKey),
         discoveryTextSimilarity(candidate.title, previous.title || previous.titleKey),
+        discoveryTextSimilarity(candidate.observation, previous.observation || previous.body),
     );
     return premiseSimilarity >= 0.62 && ((sameCategory && sameLocation) || sharedPerson);
 }
 
+function discoveryContainmentSimilarity(left, right) {
+    const a = new Set(normalizeDiscoveryText(left).split(' ').filter(token => token.length > 1));
+    const b = new Set(normalizeDiscoveryText(right).split(' ').filter(token => token.length > 1));
+    if (!a.size || !b.size) return 0;
+    let overlap = 0;
+    a.forEach(token => { if (b.has(token)) overlap += 1; });
+    return overlap / Math.min(a.size, b.size);
+}
+
+function discoverySimilarity(left, right) {
+    return Math.max(discoveryTextSimilarity(left, right), discoveryContainmentSimilarity(left, right));
+}
+
+function discoveryHasNamedProtagonistFocus(item = {}) {
+    const names = [getCurrentUserName(), getCurrentCharacterName()].map(normalizeDiscoveryText).filter(Boolean);
+    const focus = normalizeDiscoveryText(item.focus);
+    const participants = (item.participants || []).map(normalizeDiscoveryText);
+    return names.some(name => focus.includes(name) || participants.includes(name));
+}
+
+function discoveryIsCurrentSceneSummary(item = {}, map = {}) {
+    if (String(item.locationId || '') !== String(map.currentLocationId || '')) return false;
+    const names = [getCurrentUserName(), getCurrentCharacterName()].map(normalizeDiscoveryText).filter(Boolean);
+    const focus = normalizeDiscoveryText(item.focus);
+    const mentionsProtagonist = names.some(name => focus.includes(name));
+    if (!mentionsProtagonist) return false;
+    let remainder = ` ${focus} `;
+    names.forEach(name => { remainder = remainder.replaceAll(name, ' '); });
+    remainder = remainder.replace(/(두 사람|대화|관계|분위기|시선|표정|접촉|상황|사이의|사이|그들|그녀들|그들의|그녀들의)/g, ' ').replace(/\s+/g, ' ').trim();
+    remainder = remainder.split(' ').filter(token => token.length > 1).join(' ');
+    const concreteExternalState = /(불씨|화재|연기|파손|분실|도난|고장|붕괴|부상|혈흔|잠김|누출|알람|소포|편지|메시지|동물|생물|물건|장치|문|통로|사고|위험)/.test(normalizeDiscoveryText(`${item.focus} ${item.stakes}`));
+    return item.category === 'person' || !remainder || (item.category === 'incident' && !concreteExternalState);
+}
+
+function discoveryLooksAnonymous(item = {}) {
+    const focus = normalizeDiscoveryText(item.focus);
+    const title = normalizeDiscoveryText(item.title);
+    return /(^| )(?:누군가|정체불명|정체 모를|알 수 없는|이름 모를|낯선 인물|의문의 인물|감시자|그림자)(?: |$)/.test(`${focus} ${title}`);
+}
+
+function discoveryLooksLikeRoutineMovement(item = {}) {
+    const text = normalizeDiscoveryText(`${item.title} ${item.focus} ${item.observation}`);
+    const routine = /(분주한 발걸음|일상적인 이동|평범한 이동|오가는 사람|지나가는 사람|귀가하는|복귀하는|이동 중인 학생|통행 중인)/.test(text);
+    const concreteChange = /(갇혀|다쳐|고장|사라져|깨져|잠겨|막혀|연기|화재|혈흔|도난|울려|흔들려|추격|위험|떨어져|찢어져|긴급|도움|충돌)/.test(text);
+    return routine && !concreteChange;
+}
+
+function discoveryHasUsefulInteractions(interactions = []) {
+    const lowValue = /^(지켜보기|관찰하기|무시하기|기다리기|아무것도 하지 않기|지켜본다|관찰한다|무시한다|기다린다)$/;
+    return interactions.filter(value => !lowValue.test(normalizeDiscoveryText(value))).length >= 2;
+}
+
+function discoveryAnchorsHaveContinuitySupport(sourceAnchors = [], map = {}) {
+    const continuity = [];
+    (map.locations || []).forEach(location => {
+        continuity.push(location.name, location.situation, location.details, ...(location.present || []), ...(location.clues || []));
+    });
+    (map.footsteps || []).forEach(footstep => continuity.push(footstep.label, footstep.status));
+    (map.events || []).forEach(event => continuity.push(event.title, event.summary, event.details));
+    continuity.push(getCharacterSummary(), getPersonaSummary(), ...getChatSnapshot(10).split(/\n\s*\n/));
+    const usable = continuity.filter(Boolean);
+    return sourceAnchors.some(anchor => usable.some(source => discoverySimilarity(anchor, source) >= 0.18));
+}
+
+function discoveryMatchesExistingMapContent(item, map) {
+    const candidate = `${item.title} ${item.focus} ${item.observation} ${item.stakes}`;
+    const location = (map.locations || []).find(entry => entry.id === item.locationId);
+    const locationTexts = [location?.situation, location?.details].filter(Boolean);
+    if (locationTexts.some(text => discoverySimilarity(candidate, text) >= 0.72)) return 'current location retelling';
+
+    const questDuplicate = (map.events || []).some(event => {
+        const eventText = `${event.title || ''} ${event.summary || ''} ${event.details || ''}`;
+        return discoverySimilarity(candidate, eventText) >= 0.68;
+    });
+    if (questDuplicate) return 'existing quest duplicate';
+
+    const focus = normalizeDiscoveryText(item.focus);
+    const footstepDuplicate = (map.footsteps || []).some(footstep => {
+        const label = normalizeDiscoveryText(footstep.label);
+        if (!label || !(focus === label || focus.startsWith(`${label} `))) return false;
+        return discoverySimilarity(item.observation, footstep.status) >= 0.74;
+    });
+    if (footstepDuplicate) return 'existing footstep duplicate';
+
+    const recentMessages = getChatSnapshot(10).split(/\n\s*\n/).filter(Boolean);
+    if (recentMessages.some(text => discoverySimilarity(candidate, text) >= 0.78)) return 'recent roleplay retelling';
+    return '';
+}
+
 function discoveryFingerprintParts(item = {}) {
     return {
+        id: String(item.id || item.historyId || ''),
         fingerprint: item.fingerprint || makeDiscoveryFingerprint(item),
         category: normalizeDiscoveryCategory(item.category),
+        focus: String(item.focus || item.title || ''),
         focalParticipants: (item.participants || []).slice(0, 4),
         locationName: String(item.locationName || ''),
         motifKey: String(item.motifKey || item.title || ''),
         titleKey: normalizeDiscoveryText(item.title),
+        observation: stripLong(item.observation || item.body || '', 320),
+        stakes: stripLong(item.stakes || '', 160),
         createdAt: nowStamp(),
         outcome: String(item.outcome || 'shown'),
     };
 }
 
 function normalizeDiscoveries(raw, map, history = [], outputMode = getOutputModeKey()) {
-    if (!isValidMapData(map)) throw new Error('주변 장면을 연결할 지도 정보가 없습니다.');
+    if (!isValidMapData(map)) throw new Error('주변 발견을 연결할 지도 정보가 없습니다.');
     const mode = normalizeOutputMode(outputMode);
     const maximum = mode === 'saver' ? 5 : 7;
     const source = Array.isArray(raw?.items) ? raw.items : (Array.isArray(raw?.discoveries) ? raw.discoveries : []);
     const locationById = new Map(map.locations.map(location => [String(location.id), location]));
     const locationByName = new Map(map.locations.map(location => [normalizeDiscoveryText(location.name), location]));
-    const accepted = [];
+    const candidates = [];
     const rejected = [];
     const stamp = Date.now();
+    const historyIds = new Map((history || []).filter(entry => entry?.id).map(entry => [String(entry.id), entry]));
 
-    for (let index = 0; index < source.length && accepted.length < maximum; index++) {
+    for (let index = 0; index < source.length; index++) {
         const item = source[index];
         if (!item || typeof item !== 'object' || Array.isArray(item)) {
             rejected.push({ index, reason: 'invalid object' });
@@ -1799,44 +1989,121 @@ function normalizeDiscoveries(raw, map, history = [], outputMode = getOutputMode
         const location = locationById.get(String(item.locationId || ''))
             || locationByName.get(normalizeDiscoveryText(item.locationName));
         const title = String(item.title || '').replace(/\s+/g, ' ').trim();
-        const body = String(item.body || item.scene || item.details || '').replace(/\s+/g, ' ').trim();
+        const focus = String(item.focus || item.subject || '').replace(/\s+/g, ' ').trim();
+        const focusContext = String(item.focusContext || item.subjectContext || item.identity || '').replace(/\s+/g, ' ').trim();
+        const observation = String(item.observation || item.body || item.scene || item.details || '').replace(/\s+/g, ' ').trim();
+        const stakes = String(item.stakes || item.unresolvedState || item.consequence || '').replace(/\s+/g, ' ').trim();
+        const interactions = uniqueStrings(item.interactions || item.actions || item.options || [], 3).filter(value => value.length >= 3 && value.length <= 100);
         const rawParticipants = Array.isArray(item.participants) ? item.participants : (Array.isArray(item.people) ? item.people : []);
-        const rawAnchors = Array.isArray(item.anchors) ? item.anchors : (Array.isArray(item.references) ? item.references : []);
+        const rawAnchors = Array.isArray(item.sourceAnchors) ? item.sourceAnchors : (Array.isArray(item.anchors) ? item.anchors : (Array.isArray(item.references) ? item.references : []));
         const participants = uniqueStrings(rawParticipants, 8);
-        const anchors = uniqueStrings(rawAnchors, 8);
-        if (!location || !title || !body) {
-            rejected.push({ index, reason: !location ? 'unknown location' : (!title ? 'empty title' : 'empty body') });
+        const sourceAnchors = uniqueStrings(rawAnchors, 4);
+        const category = normalizeDiscoveryCategory(item.category);
+        if (!category) {
+            rejected.push({ index, reason: 'unsupported or abstract category' });
+            continue;
+        }
+        if (!location || !title || !focus || !focusContext || !observation || !stakes) {
+            rejected.push({ index, reason: !location ? 'unknown location' : (!title ? 'empty title' : (!focus ? 'empty focus' : (!focusContext ? 'empty focus context' : (!observation ? 'empty observation' : 'empty stakes')))) });
+            continue;
+        }
+        if (observation.length < 60 || stakes.length < 12 || sourceAnchors.length < 1 || !discoveryHasUsefulInteractions(interactions)) {
+            rejected.push({ index, reason: observation.length < 60 ? 'observation too thin' : (stakes.length < 12 ? 'stakes too thin' : (sourceAnchors.length < 1 ? 'missing source anchor' : 'no useful interactions')) });
+            continue;
+        }
+        const continuationOf = String(item.continuationOf || '').trim();
+        const continuedEntry = continuationOf ? historyIds.get(continuationOf) : null;
+        if (continuationOf && !continuedEntry) {
+            rejected.push({ index, reason: 'unknown continuation id', continuationOf });
             continue;
         }
         const normalized = {
             id: `discovery-${stamp}-${index + 1}-${safeId(title, 'scene')}`,
             type: 'discovery',
-            category: normalizeDiscoveryCategory(item.category),
+            category,
+            emoji: normalizeDiscoveryEmoji(item.emoji, category, `${title} ${focus} ${focusContext}`),
             title,
             locationId: location.id,
             locationName: location.name,
+            focus,
+            focusContext,
+            observation,
+            stakes,
+            interactions,
             participants,
-            body,
-            anchors,
+            sourceAnchors,
             motifKey: String(item.motifKey || title).replace(/\s+/g, ' ').trim(),
-            continuationOf: String(item.continuationOf || '').trim(),
+            continuationOf,
             createdAt: nowStamp(),
         };
+        if (discoveryLooksAnonymous(normalized)) {
+            rejected.push({ index, reason: 'anonymous watcher or subject' });
+            continue;
+        }
+        if (discoveryLooksLikeRoutineMovement(normalized)) {
+            rejected.push({ index, reason: 'routine movement only' });
+            continue;
+        }
+        if (discoveryIsCurrentSceneSummary(normalized, map)) {
+            rejected.push({ index, reason: 'current protagonist scene summary' });
+            continue;
+        }
+        if (!discoveryAnchorsHaveContinuitySupport(normalized.sourceAnchors, map)) {
+            rejected.push({ index, reason: 'unsupported source anchors' });
+            continue;
+        }
+        const existingMatch = discoveryMatchesExistingMapContent(normalized, map);
+        if (existingMatch) {
+            rejected.push({ index, reason: existingMatch });
+            continue;
+        }
+        if (continuedEntry) {
+            const relatedContinuation = normalizeDiscoveryText(continuedEntry.locationName) === normalizeDiscoveryText(normalized.locationName)
+                || discoverySimilarity(continuedEntry.focus || '', normalized.focus) >= 0.45
+                || discoverySimilarity(continuedEntry.motifKey || '', normalized.motifKey) >= 0.45;
+            if (!relatedContinuation || discoverySimilarity(continuedEntry.observation || '', normalized.observation) >= 0.82) {
+                rejected.push({ index, reason: !relatedContinuation ? 'unrelated continuation' : 'unchanged continuation', continuationOf });
+                continue;
+            }
+        }
         normalized.fingerprint = makeDiscoveryFingerprint(normalized);
-        const repeatedInBatch = accepted.some(previous => isDuplicateDiscovery(normalized, previous));
+        const repeatedInBatch = candidates.some(previous => isDuplicateDiscovery(normalized, previous));
         const repeatedInHistory = !normalized.continuationOf && (history || []).some(previous => isDuplicateDiscovery(normalized, previous));
         const repeated = repeatedInBatch || repeatedInHistory;
         if (repeated) {
             rejected.push({ index, reason: 'duplicate', fingerprint: normalized.fingerprint });
             continue;
         }
-        accepted.push(normalized);
+        candidates.push(normalized);
     }
 
+    const accepted = [];
+    const usedCategories = new Set();
+    const categoryCounts = new Map();
+    const locationCounts = new Map();
+    let protagonistFocused = 0;
+    const canSelect = (item, distinctCategoryPass) => {
+        if (accepted.length >= maximum) return false;
+        if (distinctCategoryPass && usedCategories.has(item.category)) return false;
+        if ((categoryCounts.get(item.category) || 0) >= 2) return false;
+        if ((locationCounts.get(item.locationId) || 0) >= 2) return false;
+        if (discoveryHasNamedProtagonistFocus(item) && protagonistFocused >= 1) return false;
+        return true;
+    };
+    const select = item => {
+        accepted.push(item);
+        usedCategories.add(item.category);
+        categoryCounts.set(item.category, (categoryCounts.get(item.category) || 0) + 1);
+        locationCounts.set(item.locationId, (locationCounts.get(item.locationId) || 0) + 1);
+        if (discoveryHasNamedProtagonistFocus(item)) protagonistFocused += 1;
+    };
+    candidates.forEach(item => { if (canSelect(item, true)) select(item); });
+    candidates.forEach(item => { if (!accepted.includes(item) && canSelect(item, false)) select(item); });
+
     if (rejected.length) {
-        pushDebugLog('discovery.normalize.discarded', '중복되거나 연결할 수 없는 주변 장면만 제외했습니다.', { rejected, accepted: accepted.length });
+        pushDebugLog('discovery.normalize.discarded', '중복되거나 실제 발견으로 사용할 수 없는 항목을 제외했습니다.', { rejected, accepted: accepted.length });
     }
-    if (!accepted.length) throw new Error('사용할 수 있는 주변 장면을 읽지 못했습니다.');
+    if (!accepted.length) throw new Error('사용할 수 있는 구체적인 발견을 읽지 못했습니다.');
     return accepted;
 }
 
@@ -1871,15 +2138,7 @@ function updateDiscoveryHistoryOutcome(memory, discovery, outcome) {
 }
 
 function getDiscoveryCategoryIcon(category) {
-    return {
-        person: '💬',
-        creature: '🐾',
-        relationship: '🪢',
-        object: '✦',
-        message: '✉️',
-        place: '🚪',
-        environment: '◇',
-    }[normalizeDiscoveryCategory(category)] || '✦';
+    return DISCOVERY_CATEGORY_FALLBACK_EMOJI[normalizeDiscoveryCategory(category)] || '🔎';
 }
 
 function buildDiscoveryPrompt(outputMode = getOutputModeKey()) {
@@ -1891,45 +2150,65 @@ function buildDiscoveryPrompt(outputMode = getOutputModeKey()) {
         const footsteps = (map.footsteps || [])
             .filter(footstep => footstep.locationId === location.id)
             .map(footstep => `${footstep.label}: ${footstep.status}`);
-        return `- ${location.name}\n  Current scene: ${stripLong(location.situation, 420)}\n  Present: ${(location.present || []).join(', ') || '(none visible)'}\n  Movement: ${footsteps.join(' / ') || '(none)'}`;
+        return `- ${location.name}\n  Known baseline: ${stripLong(location.situation, 300)}\n  Additional known details: ${stripLong(location.details, 220)}\n  Present: ${(location.present || []).join(', ') || '(none visible)'}\n  Movement already represented by footsteps: ${footsteps.join(' / ') || '(none)'}\n  Existing local anchors: ${(location.clues || []).join(' / ') || '(none)'}`;
+    }).join('\n');
+    const existingQuests = (map?.events || []).map(event => {
+        const location = (map.locations || []).find(entry => entry.id === event.locationId);
+        return `- ${event.title} @ ${location?.name || event.locationId || '(unknown)'}: ${stripLong(`${event.summary || ''} ${event.details || ''}`, 260)}`;
     }).join('\n');
     const history = (memory.discoveryHistory || []).slice(0, DISCOVERY_HISTORY_LIMIT).map(entry => ({
+        id: entry.id,
         category: entry.category,
+        focus: entry.focus,
         focalParticipants: entry.focalParticipants,
         locationName: entry.locationName,
         motifKey: entry.motifKey,
         titleKey: entry.titleKey,
+        observation: entry.observation,
+        stakes: entry.stakes,
         outcome: entry.outcome,
     }));
     return `
-Create ${config.discoveryRange} distinct surrounding scenes currently unfolding in the supplied roleplay world.
+Create ${config.discoveryRange} distinct discoveries that become newly visible around the supplied roleplay map.
 
-Use the recent roleplay as the primary source, followed by the character card, persona, current area, and reflected context.
+A discovery is one concrete person, creature, object, message, changed place, or sign of an incident that is not yet represented by the returned locations, footsteps, or quests. Treat the map, recent roleplay, character card, and persona as continuity evidence. Every result adds one new external state that follows from that evidence.
 
-Each scene:
-- centers on a concrete situation already in motion;
-- names the exact returned location where it is occurring;
-- uses confirmed named participants whenever the context provides them;
-- connects to at least one confirmed person, place, object, relationship, promise, conflict, or recent event and records those facts in anchors;
-- states who is present, where they are, what they are doing now, and what remains unsettled;
-- is written as 4 to 6 complete natural Korean narrative sentences, approximately 250 to 400 Korean characters;
-- provides a scene with enough immediate action, emotional relevance, practical consequence, or world activity to enter directly or keep as meaningful background context.
+Every discovery must answer four practical questions:
+1. focus and focusContext: exactly what was found, who or what it is, and why it belongs at this location;
+2. observation: what is visibly or audibly happening now, in 2 to 4 natural Korean sentences with concrete sensory and behavioral details;
+3. stakes: the specific thing that is unresolved or likely to change soon;
+4. interactions: 2 to 3 materially different things a character could attempt, inspect, ask, move, help, stop, open, follow, repair, deliver, or otherwise engage with.
 
-Across the set, vary category, focal participants, location, central object, premise, and emotional tone. Draw from person, relationship, known object, animal or creature, message or visit or delivery, changed familiar place, and the current world's institution or environment according to the supplied continuity.
+Use sourceAnchors for 1 to 4 confirmed continuity facts that support the discovery. These are internal grounding data, so keep them concise and factual. Give every item one relevant, intuitive emoji for its actual focus, such as 🐈 or 🐾 for an animal, 💌 or ✉️ for a letter, 👤 or a fitting person emoji for a person, 🚪 for a door, or 📦 for a parcel. The emoji is a miniature label for the literal focus: a reader should be able to guess what was found without a category legend.
 
-Use one newly named participant with a clear role only when the supplied context needs one. Choose fresh focal combinations and premises from the recent history. When actual roleplay has advanced an earlier scene, fill continuationOf with the earlier motif or title and describe its changed current state.
+Set allocation:
+- Use only person, creature, object, message, place_change, and incident categories.
+- Use as many distinct categories, focal subjects, locations, and premises as the supplied continuity supports before repeating a category.
+- No location receives more than two discoveries.
+- At most one discovery directly focuses on the Current user or Current character. Allocate the remaining discoveries to surrounding named people, specific creatures, known objects, incoming messages or visitors, changed places, and active incident signs elsewhere on the map.
+- A person discovery contains a specific new problem, decision, exchange, mistake, opportunity, or change beyond that person's already shown location and movement.
+- A newly introduced person has a specific name or clearly identified role, a concrete reason to be here now, and enough identity in focusContext for the user to understand them immediately.
+- Ordinary movement and atmosphere stay in the map and footsteps. A discovery adds a concrete subject, a changing state, and useful ways to interact.
 
-Return category, title, locationName, participants, body, anchors, motifKey, and continuationOf for every item. Internal IDs, marker placement, and roleplay reflection text are added locally.
+Use continuationOf only when this is a changed continuation of one exact discovery id supplied in Recent discovery history. Otherwise return an empty string. A continuation must advance that earlier state rather than repeat it.
+
+Return category, emoji, title, locationName, focus, focusContext, observation, stakes, interactions, participants, sourceAnchors, motifKey, and continuationOf for every item. Internal IDs, marker placement, and roleplay reflection text are added locally.
+
+Current user: ${getCurrentUserName()}
+Current character: ${getCurrentCharacterName()}
 
 [Current area]
 Region: ${map?.regionName || ''}
 Time: ${map?.timeHint || ''}
 ${mapContext || '(no locations)'}
 
+[Quests already represented on the map]
+${existingQuests || '(none)'}
+
 [Reflected context]
 ${buildActiveInjectionSummary() || '(none)'}
 
-[Recent scene history]
+[Recent discovery history]
 ${JSON.stringify(history, null, 2)}
 
 [Character card]
@@ -1955,6 +2234,7 @@ const FOOTSTEP_PROFILE_SCHEMA = {
             name: { type: 'string' },
             gender: { type: 'string' },
             age: { type: 'string' },
+            ageBasis: { type: 'string' },
             characterInfo: { type: 'string' },
             currentMood: { type: 'string' },
             currentLocation: { type: 'string' },
@@ -1967,7 +2247,7 @@ const FOOTSTEP_PROFILE_SCHEMA = {
             hooks: { type: 'array', items: { type: 'string' } },
             injectionText: { type: 'string' },
         },
-        required: ['name', 'gender', 'age', 'characterInfo', 'currentMood', 'currentLocation', 'currentActivity', 'relationshipWithUser', 'lastEncounterWithUser', 'currentTask', 'thoughts', 'pocketContents', 'hooks', 'injectionText'],
+        required: ['name', 'gender', 'age', 'ageBasis', 'characterInfo', 'currentMood', 'currentLocation', 'currentActivity', 'relationshipWithUser', 'lastEncounterWithUser', 'currentTask', 'thoughts', 'pocketContents', 'hooks', 'injectionText'],
     },
 };
 
@@ -2145,14 +2425,19 @@ Rules:
 - Footstep name/title: ${displayName}
 - Footstep location: ${location?.name || footstep.locationId || 'unknown location'}
 - Footstep status hint: ${footstep.status || 'movement is faint'}
-- If the name is ???, do not reveal the identity. Still write a visible/estimated gender and age band from observable clues; do not use unknown labels.
-- gender is required. For every named NPC/person, write the best concrete or estimated gender from name, title, role, canon/common knowledge, character card, and recent roleplay. Do not write unknown, 불명, 미상, 알 수 없음, N/A, or 확인 불가.
-- age is required. Write exact age when clear; otherwise write the best useful estimate such as "10대 후반", "학생 나이", "20대 초반", "30대", "성인", "중년", "노년", or "현재 시점 기준 성인". Do not write unknown, 불명, 미상, 알 수 없음, N/A, or 확인 불가.
+- If the name is ???, do not reveal the identity. Describe only traits supported by the visible signal and current setting.
+- Determine gender from explicit roleplay facts, established identity, pronouns, title, or observable presentation. Never infer gender from the spelling of a name alone. If there is no sound basis, write "장면에서 확인되지 않음".
+- Determine age in this order: an explicit age or birth date in the supplied continuity; a stated school year or life stage combined with the current map time; established setting chronology for a clearly identified recurring character; then an observable age band. Never infer age from a name alone.
+- For a clearly identified established character, use well-established setting chronology even when the character card does not repeat their age. Compare the established birth period or life stage with the supplied map year/time and return the narrowest plausible numerical age or age band rather than collapsing every adult to "성인".
+- When chronology is the basis, ageBasis must state the concrete years, school year, career stage, or other checkable calculation used. Do not write only "established chronology" or the person's name. Do not use "중년" or "노년" when a numerical range can be calculated.
+- In a school setting, prefer a supported school year with a compatible age range, such as "5학년(15~16세)". A student or stated school year must never be described as middle-aged or elderly.
+- If the evidence supports only a range, give the narrowest defensible range. If none of the supplied facts supports even a range, write "정확한 나이는 확인되지 않음" rather than inventing one.
+- ageBasis is required and briefly names the fact used for age: explicit RP statement, school year, map date, established chronology, role/title, or visible clue. Do not cite the person's name by itself as evidence.
 - characterInfo should explain who this person is and their visible role in the scene in 3 to 5 sentences.
 - currentMood, currentLocation, and currentActivity must reflect recent roleplay when possible.
 - currentActivity should be character-specific and scene-friendly: use believable visible habits, props, duties, quirks, or canon-flavored actions when they fit the scene. Do not reduce everyone to bland distant observation.
 - relationshipWithUser should describe the current relationship, distance, tension, or possible connection with {{user}} in 3 to 5 sentences. Do not invent impossible direct contact or unsupported intimacy.
-- lastEncounterWithUser must follow recent chat first. If direct contact is plausible due to shared school, house, family, workplace, village, routine, or social circle, create a reasonable last contact. If contact is truly impossible, state that clearly.
+- lastEncounterWithUser must follow confirmed recent roleplay. A shared school, house, workplace, village, routine, or social circle does not by itself prove a direct meeting; when none is shown, state that no direct encounter is confirmed.
 - currentActivity should be 5 to 8 sentences with concrete visible details: where they stand, what they hold, who they avoid or seek, and where they may move next.
 - currentTask should name at least one thing they are trying to do, find, hide, or avoid.
 - thoughts should be 4 to 6 sentences, inferred from observable behavior and current context. Do not become omniscient.
@@ -2163,11 +2448,19 @@ Rules:
 [Current location]
 ${JSON.stringify(location || {}, null, 2)}
 
+[Current world and time]
+- Region: ${map?.regionName || '(not supplied)'}
+- Map time: ${map?.timeHint || '(not supplied)'}
+- Area state: ${map?.worldSummary || '(not supplied)'}
+
 [Current map memory]
 ${summarizeMapMemory(memory)}
 
 [Character card summary]
 ${getCharacterSummary() || '(unavailable)'}
+
+[Persona]
+${getPersonaSummary() || '(unavailable)'}
 
 [Recent chat]
 ${getChatSnapshot() || '(no recent chat)'}
@@ -2187,8 +2480,18 @@ const PERSON_SEARCH_SCHEMA = {
         properties: {
             name: { type: 'string' },
             isOnMap: { type: 'boolean' },
+            gender: { type: 'string' },
+            age: { type: 'string' },
+            ageBasis: { type: 'string' },
+            characterInfo: { type: 'string' },
+            currentMood: { type: 'string' },
             currentLocation: { type: 'string' },
             currentActivity: { type: 'string' },
+            relationshipWithUser: { type: 'string' },
+            lastEncounterWithUser: { type: 'string' },
+            currentTask: { type: 'string' },
+            thoughts: { type: 'string' },
+            pocketContents: { type: 'array', items: { type: 'string' } },
             confidence: { type: 'string' },
             summary: { type: 'string' },
             reason: { type: 'string' },
@@ -2196,7 +2499,22 @@ const PERSON_SEARCH_SCHEMA = {
             hooks: { type: 'array', items: { type: 'string' } },
             injectionText: { type: 'string' },
         },
-        required: ['name', 'isOnMap', 'currentLocation', 'currentActivity', 'confidence', 'summary', 'reason', 'trackerReaction', 'hooks', 'injectionText'],
+        required: ['name', 'isOnMap', 'gender', 'age', 'ageBasis', 'characterInfo', 'currentMood', 'currentLocation', 'currentActivity', 'relationshipWithUser', 'lastEncounterWithUser', 'currentTask', 'thoughts', 'pocketContents', 'confidence', 'summary', 'reason', 'trackerReaction', 'hooks', 'injectionText'],
+    },
+};
+
+const AGE_EVIDENCE_SCHEMA = {
+    name: 'RoleplayPersonAgeEvidenceModel',
+    description: 'A compact age estimate with a checkable chronology basis.',
+    strict: true,
+    value: {
+        '$schema': 'http://json-schema.org/draft-04/schema#',
+        type: 'object',
+        properties: {
+            age: { type: 'string' },
+            ageBasis: { type: 'string' },
+        },
+        required: ['age', 'ageBasis'],
     },
 };
 
@@ -2258,30 +2576,128 @@ const RECOMMENDATION_SCHEMA = {
     },
 };
 
-function buildPersonSearchPrompt(query) {
+function buildPersonSearchPrompt(query, knownMapResult = null) {
     const memory = ensureMemory();
+    const map = memory.map;
+    const knownMapRule = knownMapResult
+        ? `The current map confirms this person at ${knownMapResult.currentLocation}. Return isOnMap as true and keep currentLocation at that confirmed place while expanding the person's concrete present state.`
+        : 'The current map was checked before this request. Return isOnMap as false; this request is locating a person who does not already have a matching map signal.';
     return `
-Use the supplied roleplay continuity to locate the person the user searched for.
+Use the supplied roleplay continuity to locate the person the user searched for and return one complete, scene-ready person signal. The result must be useful on its own; it will be cached and reused if the user places it on the map.
 Search query: ${query}
 
 Rules:
 - Write ordinary descriptive text in Korean. Preserve recurring character and place names in the display form used by the current roleplay.
 - Write injectionText only in English.
-- If recent roleplay shows the person's movement, use that first.
-- If the person appeared recently but is not on the map, logically infer their current location.
-- If information is weak, hidden, or tracking is impossible, say so honestly.
-- trackerReaction should describe how this person might notice or react to being tracked in 1 to 3 observable sentences. Do not write deep inner confession.
+- ${knownMapRule}
+- Use confirmed recent movement first. Otherwise infer the most plausible current location from the current time, established routine, role, obligations, unresolved events, last known place, and setting continuity. Do not move the person into the protagonists' current scene merely to make the result convenient.
+- currentLocation must be a concrete place in the current world. confidence states how firm the location estimate is, and reason identifies the supplied facts that support it.
+- summary and characterInfo together identify who this person is, why this location makes sense now, and what makes the signal worth opening. Do not merely say that a location was found.
+- currentActivity is 4 to 6 concrete Korean sentences. Show where the person is positioned, what they are holding or handling, the specific person/object/problem receiving their attention, what they are trying to accomplish, and the next movement that is already becoming likely.
+- currentTask names the immediate thing they are trying to finish, find, deliver, prevent, hide, decide, or avoid.
+- currentMood and thoughts are evidence-bounded inferences from observable behavior. Do not write omniscient secrets or a deep inner confession.
+- relationshipWithUser and lastEncounterWithUser use only confirmed continuity. Shared membership in a school, workplace, family, village, or social group does not prove a direct encounter.
+- pocketContents contains 2 to 5 scene-relevant things in a hand, pocket, bag, clothing, or immediate belongings. Each item carries a brief concrete use or clue, not decorative filler.
+- hooks contains 2 to 4 specific followable signals tied to this person, place, object, task, or next movement. Avoid generic possibilities such as "they may talk to someone" or unrelated background events.
+- Determine gender from explicit roleplay facts, established identity, pronouns, title, or observable presentation. Never infer gender from the spelling of a name alone. If there is no sound basis, write "장면에서 확인되지 않음".
+- Determine age in this order: an explicit age or birth date in the supplied continuity; a stated school year or life stage combined with the current map time; established setting chronology for a clearly identified recurring character; then an observable age band. Never infer age from a name alone.
+- For a clearly identified established character, use well-established setting chronology even when the character card does not repeat their age. Compare the established birth period or life stage with the supplied map year/time and return the narrowest plausible numerical age or age band rather than collapsing every adult to "성인".
+- When chronology is the basis, ageBasis must state the concrete years, school year, career stage, or other checkable calculation used. Do not write only "established chronology" or the person's name. Do not use "중년" or "노년" when a numerical range can be calculated.
+- In a school setting, prefer a supported school year with a compatible age range, such as "5학년(15~16세)". A student or stated school year must never be described as middle-aged or elderly.
+- If the evidence supports only a range, give the narrowest defensible range. If none of the supplied facts supports even a range, write "정확한 나이는 확인되지 않음" rather than inventing one.
+- ageBasis briefly names the exact basis used for age. A person's name by itself is never age evidence.
+- trackerReaction records only an already observable reaction to the signal or surveillance. If no reaction is established, write "아직 추적 반응 없음" without inventing one.
+- injectionText preserves the location, visible activity, immediate task, relevant people/objects, and followable signals as English roleplay context.
+
+[Current world and time]
+- Region: ${map?.regionName || '(not supplied)'}
+- Map time: ${map?.timeHint || '(not supplied)'}
+- Area state: ${map?.worldSummary || '(not supplied)'}
 
 [Current map memory]
 ${summarizeMapMemory(memory)}
 
+[Confirmed map signal for this search]
+${knownMapResult ? JSON.stringify({ name: knownMapResult.name, currentLocation: knownMapResult.currentLocation, currentActivity: knownMapResult.currentActivity, reason: knownMapResult.reason }, null, 2) : '(none; locate from continuity)'}
+
 [Character card summary]
 ${getCharacterSummary() || '(unavailable)'}
+
+[Persona]
+${getPersonaSummary() || '(unavailable)'}
 
 [Recent chat]
 ${getChatSnapshot(10) || '(no recent chat)'}
 
 Return JSON only.`;
+}
+
+function ageBasisHasConcreteChronology(value) {
+    const basis = String(value || '').replace(/\s+/g, ' ').trim();
+    return /(?:^|[^0-9])(?:18|19|20)\d{2}(?:[^0-9]|$)|(?:^|[^0-9])(?:[1-9]\d?|1[01]\d|120)\s*(?:세|살)(?:[^0-9]|$)|(?:^|[^0-9])(?:[1-9]|1\d|20)\s*학년/.test(basis);
+}
+
+function ageEvidenceNeedsRepair(raw = {}) {
+    const age = String(raw?.age || '').replace(/\s+/g, ' ').trim();
+    const basis = String(raw?.ageBasis || '').replace(/\s+/g, ' ').trim();
+    const unknown = !age || /(?:불명|미상|알 수 없음|알수없음|unknown|확인 불가|확인불가|정확한 나이는 확인되지 않음)/i.test(age);
+    const chronologyClaim = /(?:확립|공식|원작|설정|연대기|출생|established|canon|chronolog|birth)/i.test(basis);
+    return unknown || (chronologyClaim && !ageBasisHasConcreteChronology(basis));
+}
+
+function buildAgeEvidenceRepairPrompt(name, raw = {}) {
+    const memory = ensureMemory();
+    const map = memory.map;
+    return `
+Resolve the age evidence for this clearly identified roleplay person.
+Target: ${name || raw?.name || '(unnamed target)'}
+Previous age: ${raw?.age || '(not supplied)'}
+Previous basis: ${raw?.ageBasis || '(not supplied)'}
+
+Use the supplied roleplay facts first. If this is an established recurring character whose chronology is well established, use that established birth period or life stage even when the character card omits it, and calculate against the current world year or time. Return the narrowest defensible numerical age or range. ageBasis must show the checkable years, stated age, or school year used for the calculation. If no such evidence exists, return "정확한 나이는 확인되지 않음" and explain that no concrete basis is available.
+
+[Current world and time]
+- Region: ${map?.regionName || '(not supplied)'}
+- Map time: ${map?.timeHint || '(not supplied)'}
+- Area state: ${map?.worldSummary || '(not supplied)'}
+
+[Character card]
+${getCharacterSummary() || '(unavailable)'}
+
+[Recent roleplay]
+${getChatSnapshot(10) || '(no recent roleplay)'}
+
+Return JSON only.`;
+}
+
+async function repairAgeEvidenceIfNeeded(raw, name = '') {
+    const obj = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+    if (!ageEvidenceNeedsRepair(obj)) return obj;
+    try {
+        const response = await generateQuietWithSelectedProfile(
+            buildAgeEvidenceRepairPrompt(name || obj.name, obj),
+            AGE_EVIDENCE_SCHEMA,
+            { maxTokens: 700 },
+        );
+        const repaired = parseJson(response, 'person.age.repair');
+        if (!repaired || !ageBasisHasConcreteChronology(repaired.ageBasis)) {
+            pushDebugLog('person.age.repair.insufficient', '연령 재검증에서도 계산 가능한 근거를 확인하지 못했습니다.', {
+                name: name || obj.name || '',
+            });
+            return obj;
+        }
+        return {
+            ...obj,
+            age: String(repaired.age || obj.age || ''),
+            ageBasis: String(repaired.ageBasis || obj.ageBasis || ''),
+        };
+    } catch (error) {
+        pushDebugLog('person.age.repair.error', '연령 근거 재검증 요청에 실패해 원래 결과를 사용합니다.', {
+            name: name || obj.name || '',
+            error: serializeForDebug(error),
+        });
+        return obj;
+    }
 }
 
 function buildTrackRefreshPrompt(tracked) {
@@ -2348,26 +2764,162 @@ ${getChatSnapshot(10) || '(no recent chat)'}
 Return JSON only.`;
 }
 
+function getSchoolYearAgeLabel(grade, contextText = '') {
+    const year = Number(grade);
+    if (!Number.isFinite(year) || year < 1 || year > 20) return '학생 연령대';
+    const schoolLabel = `${year}학년`;
+    if (year <= 7 && /(?:호그와트|마법학교|wizarding school|magic school)/i.test(String(contextText || ''))) {
+        return `${schoolLabel}(${year + 10}~${year + 11}세)`;
+    }
+    return `${schoolLabel}(학생 연령대)`;
+}
+
+function normalizePersonAge(rawAge, ageBasis, options = {}) {
+    const raw = String(rawAge || '').replace(/\s+/g, ' ').trim();
+    const basis = String(ageBasis || '').replace(/\s+/g, ' ').trim();
+    const identity = String(options.name || '').replace(/\s+/g, ' ').trim().toLowerCase();
+    const mapContext = String(options.contextText || '').replace(/\s+/g, ' ').trim();
+    const subjectText = String(options.subjectText || '').replace(/\s+/g, ' ').trim();
+    const proofText = `${raw} ${basis}`.trim();
+    const evidenceText = `${proofText} ${subjectText}`.trim();
+    const gradeMatch = evidenceText.match(/(?:^|[^0-9])([1-9]|1\d|20)\s*학년/);
+    const studentEvidence = Boolean(gradeMatch) || /(?:재학생|학생\s*신분|학생으로\s*재학|학생\s*나이|학생\s*연령대)/.test(evidenceText);
+    const elderlyClaim = /(?:노년|노인|고령|elderly|(?:6|7|8|9)0\s*대|(?:[6-9]\d|1\d{2})\s*(?:세|살))/i.test(raw);
+    const adultAgeClaim = /(?:중년|장년|성인|middle[ -]?aged|adult|40\s*대|50\s*대|(?:4|5)0\s*(?:세|살))/i.test(raw);
+    const explicitAgeMatch = evidenceText.match(/(?:^|[^0-9])([1-9]\d?|1[01]\d|120)\s*(?:세|살)(?:[^0-9]|$)/);
+    const explicitAge = explicitAgeMatch ? Number(explicitAgeMatch[1]) : null;
+    const mapYearMatch = mapContext.match(/(?:^|[^0-9])((?:18|19|20)\d{2})\s*년?/);
+    const birthYearMatch = evidenceText.match(/((?:18|19|20)\d{2})\s*년(?:생|에\s*태어)/);
+    const calculatedAge = mapYearMatch && birthYearMatch
+        ? Number(mapYearMatch[1]) - Number(birthYearMatch[1])
+        : null;
+    const decadeMatch = raw.match(/([1-9])0\s*대/);
+    const claimedDecade = decadeMatch ? Number(decadeMatch[1]) * 10 : null;
+    const schoolAgeContext = /(?:호그와트|마법학교|초등|중학교|고등학교|미성년|청소년|wizarding school|magic school|secondary school|high school)/i.test(`${mapContext} ${basis} ${subjectText}`);
+    const youngStudentEvidence = studentEvidence && schoolAgeContext && (!gradeMatch || Number(gradeMatch[1]) <= 7);
+    const nameOnlyBasis = Boolean(identity) && (
+        basis.toLowerCase() === identity
+        || (/(?:이름|name)/i.test(basis) && !/(?:학년|출생|태어|나이|연령|연대|외견|주름|백발|직함|역할)/.test(basis))
+    );
+    const supportsOlderAge = (
+        (Number.isFinite(explicitAge) && explicitAge >= 60)
+        || (Number.isFinite(calculatedAge) && calculatedAge >= 60)
+        || /(?:(?:6|7|8|9)0\s*대|(?:[6-9]\d|1\d{2})\s*(?:세|살)|노인으로\s*명시|고령으로\s*명시|깊은\s*주름|백발)/i.test(`${basis} ${subjectText}`)
+    );
+    const unsupportedChronologyClaim = /(?:확립|공식|원작|설정|연대기|출생|established|canon|chronolog|birth)/i.test(basis)
+        && !ageBasisHasConcreteChronology(basis);
+
+    if (youngStudentEvidence && (adultAgeClaim || elderlyClaim)) {
+        return gradeMatch
+            ? getSchoolYearAgeLabel(gradeMatch[1], mapContext)
+            : '학생 연령대(정확한 나이는 확인되지 않음)';
+    }
+    if (studentEvidence && elderlyClaim) {
+        return gradeMatch
+            ? getSchoolYearAgeLabel(gradeMatch[1], mapContext)
+            : '학생 연령대(정확한 나이는 확인되지 않음)';
+    }
+    if (elderlyClaim && Number.isFinite(explicitAge) && explicitAge < 60) {
+        return `${explicitAge}세`;
+    }
+    if (elderlyClaim && Number.isFinite(calculatedAge) && calculatedAge > 0 && calculatedAge < 60) {
+        return `${Math.max(0, calculatedAge - 1)}~${calculatedAge}세`;
+    }
+    if (Number.isFinite(calculatedAge) && calculatedAge > 0 && calculatedAge < 121
+        && Number.isFinite(claimedDecade)
+        && (calculatedAge < claimedDecade || calculatedAge >= claimedDecade + 10)) {
+        return `${Math.max(0, calculatedAge - 1)}~${calculatedAge}세`;
+    }
+    if (elderlyClaim && !supportsOlderAge) {
+        return Number.isFinite(calculatedAge) && calculatedAge > 0
+            ? `${Math.max(0, calculatedAge - 1)}~${calculatedAge}세`
+            : '정확한 나이는 확인되지 않음';
+    }
+    if (unsupportedChronologyClaim) return '정확한 나이는 확인되지 않음';
+    if (!raw || /(불명|미상|알 수 없음|알수없음|unknown|n\/a|확인 불가|확인불가)/i.test(raw) || nameOnlyBasis) {
+        if (gradeMatch) return getSchoolYearAgeLabel(gradeMatch[1], mapContext);
+        if (Number.isFinite(calculatedAge) && calculatedAge > 0 && calculatedAge < 121) {
+            return `${Math.max(0, calculatedAge - 1)}~${calculatedAge}세`;
+        }
+        return '정확한 나이는 확인되지 않음';
+    }
+    return raw;
+}
+
 function normalizeSearchResult(raw, query, extra = {}) {
     const obj = raw && typeof raw === 'object' ? raw : {};
+    const pick = (key, fallback = '') => extra[key] ?? obj[key] ?? fallback;
+    const memory = ensureMemory();
+    const map = memory.map;
+    const name = String(pick('name', query));
+    const ageBasis = String(pick('ageBasis', '별도 연령 근거가 확인되지 않음'));
+    const ageContext = [
+        map?.regionName,
+        map?.timeHint,
+        map?.worldSummary,
+        pick('currentLocation'),
+        pick('characterInfo'),
+    ].filter(Boolean).join(' ');
     return {
-        id: extra.id || `search:${safeId(query)}:${Date.now()}`,
+        id: pick('id', `search:${safeId(query)}:${Date.now()}`),
         type: 'person-search',
         query,
-        name: String(obj.name || extra.name || query),
-        isOnMap: Boolean(extra.isOnMap ?? obj.isOnMap),
-        footstepId: extra.footstepId || '',
-        locationId: extra.locationId || '',
-        currentLocation: String(obj.currentLocation || extra.currentLocation || '위치 신호 흐림'),
-        currentActivity: String(obj.currentActivity || extra.currentActivity || '현재 행동이 또렷하지 않음'),
-        confidence: String(obj.confidence || extra.confidence || '중간'),
-        summary: String(obj.summary || extra.summary || '검색 결과가 아직 충분히 또렷하지 않다.'),
-        reason: String(obj.reason || extra.reason || ''),
-        trackerReaction: String(obj.trackerReaction || extra.trackerReaction || '추적 반응이 아직 잡히지 않는다.'),
-        hooks: normalizeStringArray(obj.hooks || extra.hooks || [], [], 5),
-        injectionText: String(obj.injectionText || extra.injectionText || ''),
-        createdAt: nowStamp(),
+        name,
+        isOnMap: Boolean(pick('isOnMap', false)),
+        footstepId: String(pick('footstepId', '')),
+        locationId: String(pick('locationId', '')),
+        gender: String(pick('gender', '장면에서 확인되지 않음')),
+        age: normalizePersonAge(pick('age'), ageBasis, { name, contextText: ageContext, subjectText: pick('characterInfo') }),
+        ageBasis,
+        characterInfo: String(pick('characterInfo', pick('summary', `${name}에 대한 현재 신호를 확인하고 있다.`))),
+        currentMood: String(pick('currentMood', '표정과 행동에서 뚜렷한 기분을 확인하기 어려움')),
+        currentLocation: String(pick('currentLocation', '위치 신호 흐림')),
+        currentActivity: String(pick('currentActivity', '현재 행동이 또렷하지 않음')),
+        relationshipWithUser: String(pick('relationshipWithUser', '직접 확인된 관계 정보 없음')),
+        lastEncounterWithUser: String(pick('lastEncounterWithUser', '최근 직접 마주친 기록은 확인되지 않음')),
+        currentTask: String(pick('currentTask', '당장 하려는 일은 아직 또렷하지 않음')),
+        thoughts: String(pick('thoughts', '관찰 가능한 행동만으로는 속내를 단정할 수 없음')),
+        pocketContents: normalizeStringArray(pick('pocketContents', []), [], 6),
+        confidence: String(pick('confidence', '중간')),
+        summary: String(pick('summary', pick('characterInfo', '검색 결과가 아직 충분히 또렷하지 않다.'))),
+        reason: String(pick('reason', '')),
+        trackerReaction: String(pick('trackerReaction', '아직 추적 반응 없음')),
+        hooks: normalizeStringArray(pick('hooks', []), [], 5),
+        injectionText: String(pick('injectionText', '')),
+        mapGeneratedAt: String(pick('mapGeneratedAt', getMapLinkStamp(memory))),
+        createdAt: String(pick('createdAt', nowStamp())),
     };
+}
+
+function getMapLinkStamp(memory = ensureMemory(), mapOverride = null) {
+    const map = mapOverride || memory?.map;
+    if (!map) return '';
+    if ((!mapOverride || mapOverride === memory?.map) && memory?.mapRevision) {
+        return String(memory.mapRevision);
+    }
+    const source = JSON.stringify({
+        regionName: map.regionName || '',
+        timeHint: map.timeHint || '',
+        currentLocationId: map.currentLocationId || '',
+        locations: (map.locations || []).map(location => [
+            location.id || '',
+            location.name || '',
+            location.situation || '',
+            location.details || '',
+        ]),
+        footsteps: (map.footsteps || []).map(footstep => [
+            footstep.id || '',
+            footstep.label || '',
+            footstep.locationId || '',
+            footstep.status || '',
+        ]),
+    });
+    let hash = 2166136261;
+    for (let index = 0; index < source.length; index++) {
+        hash ^= source.charCodeAt(index);
+        hash = Math.imul(hash, 16777619);
+    }
+    return `${String(memory.generatedAt || 'undated')}|${(hash >>> 0).toString(36)}`;
 }
 
 function findPersonInMap(query) {
@@ -2378,16 +2930,31 @@ function findPersonInMap(query) {
     const footstep = (map.footsteps || []).find(fp => String(fp.label || '').toLowerCase().includes(needle));
     if (footstep) {
         const loc = map.locations.find(l => l.id === footstep.locationId);
+        const savedProfile = memory.footstepProfiles?.[footstep.id] || null;
+        const cached = savedProfile && isFootstepProfileCurrent(savedProfile, footstep, map) ? savedProfile : null;
         return normalizeSearchResult({}, query, {
             isOnMap: true,
             footstepId: footstep.id,
             locationId: footstep.locationId,
-            name: footstep.visibleName ? footstep.label : '???',
-            currentLocation: loc?.name || '알 수 없는 위치',
-            currentActivity: footstep.status || '지도 위에 위치 신호가 보임',
+            name: cached?.name || (footstep.visibleName ? footstep.label : '???'),
+            gender: cached?.gender,
+            age: cached?.age,
+            ageBasis: cached?.ageBasis,
+            characterInfo: cached?.characterInfo || `${footstep.visibleName ? footstep.label : '이 인물'}의 위치 신호가 ${loc?.name || '현재 지도'}에서 직접 확인된다.`,
+            currentMood: cached?.currentMood,
+            currentLocation: cached?.currentLocation || loc?.name || '알 수 없는 위치',
+            currentActivity: cached?.currentActivity || footstep.status || '지도 위에 위치 신호가 보임',
+            relationshipWithUser: cached?.relationshipWithUser,
+            lastEncounterWithUser: cached?.lastEncounterWithUser,
+            currentTask: cached?.currentTask,
+            thoughts: cached?.thoughts,
+            pocketContents: cached?.pocketContents || [],
             confidence: '높음',
-            summary: `${footstep.visibleName ? footstep.label : '???'}의 위치가 현재 지도 위에 표시되어 있다.`,
+            summary: cached?.characterInfo || `${footstep.visibleName ? footstep.label : '???'}의 위치와 움직임이 현재 지도 위에서 직접 확인된다.`,
             reason: '현재 지도 발자국/위치 신호에서 직접 확인됨.',
+            trackerReaction: cached?.trackerReaction || '아직 추적 반응 없음',
+            hooks: cached?.hooks || loc?.clues || [],
+            injectionText: cached?.injectionText || '',
         });
     }
     for (const loc of map.locations || []) {
@@ -2398,10 +2965,13 @@ function findPersonInMap(query) {
                 locationId: loc.id,
                 name: person,
                 currentLocation: loc.name,
-                currentActivity: `${loc.name} 근처에 있는 인물 목록에서 확인됨`,
+                characterInfo: `${person}은(는) ${loc.name}에 실제로 있는 인물로 확인된다. ${stripLong(loc.situation || '', 280)}`,
+                currentActivity: stripLong(loc.details || loc.situation || `${loc.name}의 현장에 머물고 있다.`, 420),
                 confidence: '중간',
-                summary: `${person}은(는) 현재 지도 발자국에는 없지만 ${loc.name}의 주변 인물 목록에 나타난다.`,
+                summary: `${person}은(는) 별도 발자국은 없지만 ${loc.name}의 현장 인물 목록에서 확인된다.`,
                 reason: '현재 지도 장소 카드의 present 목록에서 확인됨.',
+                currentTask: (loc.clues || [])[0] || `${loc.name}에서 진행 중인 상황에 관여하고 있다.`,
+                hooks: loc.clues || [],
             });
         }
     }
@@ -2413,11 +2983,64 @@ async function openPersonSearch() {
 }
 
 async function handlePersonSearch(query) {
+    try {
     const memory = ensureMemory();
     if (!memory.map) await generateMap(false);
-    const found = findPersonInMap(query);
+    const startMap = memory.map;
+    const startChatSignature = rememberCurrentChatSignature?.() || getStableChatSignature();
+    let found = findPersonInMap(query);
     if (found) {
-        memory.searchResults.unshift(found);
+        if (found.footstepId) {
+            const footstep = memory.map?.footsteps?.find(item => item.id === found.footstepId);
+            const savedProfile = footstep ? memory.footstepProfiles?.[footstep.id] : null;
+            if (footstep && (!savedProfile || !isFootstepProfileCurrent(savedProfile, footstep, memory.map))) {
+                const profile = await getOrGenerateFootstepProfile(footstep.id);
+                if (!profile) return;
+                assertChatSignatureUnchanged(startChatSignature, 'search.person');
+                assertMapSnapshotUnchanged(startMap, 'search.person', {
+                    id: footstep.id,
+                    locationId: footstep.locationId,
+                    status: footstep.status,
+                });
+                if (profile) {
+                    found = normalizeSearchResult(found, query, {
+                        ...profile,
+                        isOnMap: true,
+                        footstepId: footstep.id,
+                        locationId: footstep.locationId,
+                        confidence: '높음',
+                        summary: profile.characterInfo,
+                        reason: '현재 지도 발자국/위치 신호와 상세 상태에서 확인됨.',
+                    });
+                }
+            }
+        } else if (found.locationId) {
+            const confirmed = found;
+            let enriched = false;
+            await withLoader(`${query}의 현재 신호를 확인하는 중...`, async () => {
+                const modeConfig = getOutputModeConfig();
+                const rawText = await generateQuietWithSelectedProfile(buildPersonSearchPrompt(query, confirmed), PERSON_SEARCH_SCHEMA, { maxTokens: modeConfig.personSearchMaxTokens });
+                assertChatSignatureUnchanged(startChatSignature, 'search.person');
+                assertMapSnapshotUnchanged(startMap, 'search.person');
+                const parsed = parseJson(rawText, 'search.person.map_present');
+                if (!parsed) throw new Error('지도 인물 검색 응답을 JSON 형식으로 읽지 못했습니다.');
+                const ageChecked = await repairAgeEvidenceIfNeeded(parsed, parsed.name || query);
+                assertChatSignatureUnchanged(startChatSignature, 'search.person');
+                assertMapSnapshotUnchanged(startMap, 'search.person');
+                found = normalizeSearchResult(ageChecked, query, {
+                    isOnMap: true,
+                    footstepId: '',
+                    locationId: confirmed.locationId,
+                    currentLocation: confirmed.currentLocation,
+                    confidence: '높음',
+                    reason: [confirmed.reason, parsed.reason].filter(Boolean).join(' '),
+                });
+                enriched = true;
+            });
+            if (!enriched) return;
+        }
+        assertMapSnapshotUnchanged(startMap, 'search.person');
+        memory.searchResults = [found, ...(memory.searchResults || [])];
         const saved = await saveMemory(memory);
         pushDebugLog(saved ? 'search.person.store.success' : 'search.person.store.save_failed', saved
             ? '지도에서 찾은 인물 검색 기록을 저장했습니다.'
@@ -2434,8 +3057,15 @@ async function handlePersonSearch(query) {
         let rawText = '';
         const modeConfig = getOutputModeConfig();
         rawText = await generateQuietWithSelectedProfile(buildPersonSearchPrompt(query), PERSON_SEARCH_SCHEMA, { maxTokens: modeConfig.personSearchMaxTokens });
-        result = normalizeSearchResult(parseJson(rawText), query);
-        memory.searchResults.unshift(result);
+        assertChatSignatureUnchanged(startChatSignature, 'search.person');
+        assertMapSnapshotUnchanged(startMap, 'search.person');
+        const parsed = parseJson(rawText, 'search.person');
+        if (!parsed) throw new Error('인물 검색 응답을 JSON 형식으로 읽지 못했습니다.');
+        const ageChecked = await repairAgeEvidenceIfNeeded(parsed, parsed.name || query);
+        assertChatSignatureUnchanged(startChatSignature, 'search.person');
+        assertMapSnapshotUnchanged(startMap, 'search.person');
+        result = normalizeSearchResult(ageChecked, query, { isOnMap: false });
+        memory.searchResults = [result, ...(memory.searchResults || [])];
         const saved = await saveMemory(memory);
         pushDebugLog(saved ? 'search.person.store.success' : 'search.person.store.save_failed', saved
             ? '인물 검색 기록을 저장했습니다.'
@@ -2445,33 +3075,76 @@ async function handlePersonSearch(query) {
         });
     });
     if (result) renderPersonSearchResultPanel(result, 'search');
+    } catch (error) {
+        if (isMapGenerationCancelledError(error)) return;
+        throw error;
+    }
+}
+
+function getLivePersonSearchLinks(result, memory = ensureMemory()) {
+    const map = memory?.map;
+    if (!map || !result) return { locationId: '', footstepId: '' };
+    const resultMapGeneratedAt = String(result.mapGeneratedAt || '');
+    const currentMapGeneratedAt = getMapLinkStamp(memory);
+    if (!resultMapGeneratedAt || !currentMapGeneratedAt || resultMapGeneratedAt !== currentMapGeneratedAt) {
+        return { locationId: '', footstepId: '' };
+    }
+    const locationId = (map.locations || []).some(location => location.id === result.locationId)
+        ? String(result.locationId)
+        : '';
+    const footstep = (map.footsteps || []).find(item => item.id === result.footstepId);
+    const expectedName = normalizeDiscoveryText(simplifyFootstepLabel(result.name));
+    const liveName = normalizeDiscoveryText(footstep?.label);
+    const samePerson = !expectedName || !liveName || expectedName === liveName || expectedName.includes(liveName) || liveName.includes(expectedName);
+    const footstepId = footstep && samePerson && (!locationId || footstep.locationId === locationId)
+        ? String(footstep.id)
+        : '';
+    return { locationId, footstepId };
 }
 
 function renderPersonSearchResultPanel(result, origin = 'search') {
     const panel = document.getElementById('mma-side-panel');
     if (!panel || !result) return;
     const backTitle = origin === 'notebook' ? '수첩으로 돌아가기' : '인물 찾기로 돌아가기';
+    const liveLinks = getLivePersonSearchLinks(result);
     panel.innerHTML = `
-        <div class="mma-action-panel">
+        <div class="mma-action-panel mma-person-search-result-panel">
             <header class="mma-place-header">
                 <div><span class="mma-place-icon">🔎</span><strong>인물 검색</strong></div>
                 <button title="${escapeHtml(backTitle)}" data-action="back">↩️</button>
             </header>
             <article class="mma-event-card person-search-card">
                 <div class="mma-event-title"><b>${escapeHtml(result.name)}</b><span>${result.isOnMap ? '지도 확인' : '추정'}</span></div>
-                ${isModernTheme() ? `<div class="mma-person-signal-meta"><small class="mma-person-signal-status">${result.isOnMap ? '지도에서 확인' : '위치 추정'}</small><small>신뢰도 ${escapeHtml(result.confidence || '중간')}</small></div>` : ''}
+                <div class="mma-person-signal-meta"><small class="mma-person-signal-status">${result.isOnMap ? '지도에서 확인' : '위치 추정'}</small><small>신뢰도 ${escapeHtml(result.confidence || '중간')}</small>${result.age ? `<small>${escapeHtml(result.age)}</small>` : ''}</div>
                 <div class="mma-event-location">${isModernTheme() ? '●' : '📍'} ${escapeHtml(result.currentLocation)}</div>
-                <p>${escapeHtml(result.summary)}</p>
-                <p class="mma-event-detail"><b>현재 행동</b>: ${escapeHtml(result.currentActivity)}</p>
-                ${result.reason ? `<p class="mma-event-detail"><b>근거</b>: ${escapeHtml(result.reason)}</p>` : ''}
-                <p class="mma-event-detail"><b>추적 반응</b>: ${escapeHtml(result.trackerReaction)}</p>
-                ${result.hooks?.length ? `<ul>${result.hooks.map(h => `<li>${escapeHtml(h)}</li>`).join('')}</ul>` : ''}
+                <p class="mma-person-signal-summary">${escapeHtml(result.characterInfo || result.summary)}</p>
+                <section class="mma-person-signal-block">
+                    <h4>인물 정보</h4>
+                    <ul>
+                        <li><b>성별:</b> ${escapeHtml(result.gender || '장면에서 확인되지 않음')}</li>
+                        <li><b>나이:</b> ${escapeHtml(result.age || '정확한 나이는 확인되지 않음')}</li>
+                        ${result.ageBasis ? `<li><b>나이 판단 근거:</b> ${escapeHtml(result.ageBasis)}</li>` : ''}
+                        <li><b>현재 기분:</b> ${escapeHtml(result.currentMood || '뚜렷하게 확인되지 않음')}</li>
+                    </ul>
+                </section>
+                <section class="mma-person-signal-block">
+                    <h4>현재 신호</h4>
+                    <p>${escapeHtml(result.currentActivity)}</p>
+                    ${result.currentTask ? `<p><b>당장 하려는 일:</b> ${escapeHtml(result.currentTask)}</p>` : ''}
+                </section>
+                ${result.relationshipWithUser ? `<section class="mma-person-signal-block"><h4>유저와의 관계</h4><p>${escapeHtml(result.relationshipWithUser)}</p></section>` : ''}
+                ${result.lastEncounterWithUser ? `<section class="mma-person-signal-block"><h4>가장 최근 마주친 순간</h4><p>${escapeHtml(result.lastEncounterWithUser)}</p></section>` : ''}
+                ${result.thoughts ? `<section class="mma-person-signal-block"><h4>현재 생각</h4><p>${escapeHtml(result.thoughts)}</p></section>` : ''}
+                ${result.pocketContents?.length ? `<section class="mma-person-signal-block"><h4>소지품</h4><ul>${result.pocketContents.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul></section>` : ''}
+                ${result.reason ? `<section class="mma-person-signal-block"><h4>판단 근거</h4><p>${escapeHtml(result.reason)}</p></section>` : ''}
+                ${result.hooks?.length ? `<section class="mma-person-signal-block"><h4>따라갈 만한 단서</h4><ul>${result.hooks.map(h => `<li>${escapeHtml(h)}</li>`).join('')}</ul></section>` : ''}
                 <div class="mma-event-actions">
-                    ${result.locationId ? '<button data-action="show-location">위치 보기</button>' : ''}
-                    ${result.footstepId ? '<button data-action="open-footstep">상태 보기</button>' : '<button data-action="add-footstep">지도에 표시</button>'}
-                    <button data-action="track-person">👁 추적</button>
-                    <button data-action="save-search">📓 검색 기록</button>
+                    ${liveLinks.locationId ? '<button data-action="show-location">위치 보기</button>' : ''}
+                    ${liveLinks.footstepId ? '<button data-action="open-footstep">상세 보기</button>' : '<button data-action="add-footstep">지도에 표시</button>'}
+                    <button data-action="track-person" title="이 인물의 이후 위치 변화를 수첩에서 다시 확인합니다.">👁 이후 동선 추적</button>
+                    <button data-action="open-search-history">📓 기록 보기</button>
                 </div>
+                <small class="mma-search-auto-save-note">검색 결과는 수첩에 자동 저장됩니다.</small>
             </article>
         </div>
     `;
@@ -2479,34 +3152,96 @@ function renderPersonSearchResultPanel(result, origin = 'search') {
         if (origin === 'notebook') renderNotebookPanel();
         else renderRecommendationPanel('person');
     });
-    panel.querySelector('[data-action="show-location"]')?.addEventListener('click', () => selectLocation(result.locationId));
-    panel.querySelector('[data-action="open-footstep"]')?.addEventListener('click', () => handleFootstepClick(result.footstepId));
+    panel.querySelector('[data-action="show-location"]')?.addEventListener('click', () => selectLocation(liveLinks.locationId));
+    panel.querySelector('[data-action="open-footstep"]')?.addEventListener('click', () => handleFootstepClick(liveLinks.footstepId));
     panel.querySelector('[data-action="add-footstep"]')?.addEventListener('click', () => addSearchResultToMap(result));
     panel.querySelector('[data-action="track-person"]')?.addEventListener('click', () => trackPersonFromResult(result));
-    panel.querySelector('[data-action="save-search"]')?.addEventListener('click', () => { toast('검색 기록은 수첩에 자동 저장되어 있습니다.', 'success'); renderNotebookPanel(); });
+    panel.querySelector('[data-action="open-search-history"]')?.addEventListener('click', () => renderNotebookPanel());
 }
 
 async function addSearchResultToMap(result) {
     const memory = ensureMemory();
     const map = memory.map;
     if (!map || !result) return;
-    let locationId = result.locationId;
+    const resultMapGeneratedAt = String(result.mapGeneratedAt || '');
+    const currentMapGeneratedAt = getMapLinkStamp(memory);
+    const belongsToCurrentMap = Boolean(resultMapGeneratedAt && currentMapGeneratedAt && resultMapGeneratedAt === currentMapGeneratedAt);
+    let locationId = belongsToCurrentMap && (map.locations || []).some(location => location.id === result.locationId)
+        ? result.locationId
+        : '';
     if (!locationId) {
-        const byName = (map.locations || []).find(l => result.currentLocation && result.currentLocation.includes(l.name));
-        locationId = byName?.id || memory.selectedLocationId || map.currentLocationId || map.locations[0]?.id;
+        const searchedLocation = String(result.currentLocation || '').replace(/\s+/g, ' ').trim();
+        if (isPlaceholderLocationName(searchedLocation)) {
+            toast('검색 결과에 지도에 표시할 구체적인 장소가 없습니다.', 'info');
+            return;
+        }
+        const searchedLocationKey = normalizeDiscoveryText(searchedLocation);
+        const byName = (map.locations || []).find(location => {
+            const locationKey = normalizeDiscoveryText(location.name);
+            return searchedLocationKey && locationKey && searchedLocationKey === locationKey;
+        });
+        if (byName) {
+            locationId = byName.id;
+        } else if ((map.locations || []).length < 12) {
+            const location = {
+                id: `search-loc-${safeId(searchedLocation, 'place')}-${Date.now()}`,
+                name: searchedLocation,
+                icon: '📍',
+                situation: String(result.currentActivity || result.summary || `${result.name}의 현재 위치 신호가 이곳에서 확인된다.`).trim(),
+                details: [result.characterInfo, result.currentTask ? `현재 하려는 일: ${result.currentTask}` : '', result.reason ? `위치 판단 근거: ${result.reason}` : ''].filter(Boolean).join(' '),
+                present: uniqueStrings([result.name], 1),
+                clues: uniqueStrings(result.hooks || [], 4),
+                eventIds: [],
+                injectionText: '',
+                source: 'person-search',
+                createdAt: nowStamp(),
+            };
+            map.locations.push(location);
+            locationId = location.id;
+        } else {
+            toast(`${searchedLocation}은(는) 현재 지도 범위 밖이라 엉뚱한 장소에 표시하지 않았습니다.`, 'info');
+            return;
+        }
     }
     if (!locationId) return;
-    const fp = {
+    const footstepLabel = simplifyFootstepLabel(result.name);
+    const existingFootstep = (map.footsteps || []).find(item => item.locationId === locationId
+        && String(item.label || '').toLowerCase() === String(footstepLabel || '').toLowerCase());
+    const fp = existingFootstep || {
         id: `search-foot-${safeId(result.name)}-${Date.now()}`,
-        label: simplifyFootstepLabel(result.name),
+        label: footstepLabel,
         locationId,
         status: result.currentActivity || result.summary || '검색으로 추가된 위치 신호',
         visibleName: !/^\?\?\?$/.test(String(result.name || '')),
     };
-    map.footsteps = uniqueFootsteps([fp, ...(map.footsteps || [])]).slice(0, FOOTSTEP_LIMIT);
+    fp.status = result.currentActivity || result.summary || fp.status || '검색으로 추가된 위치 신호';
+    map.footsteps = uniqueFootsteps([fp, ...(map.footsteps || []).filter(item => item.id !== fp.id)]);
     result.footstepId = fp.id;
     result.locationId = locationId;
-    await saveMemory();
+    const cachedProfile = normalizeFootstepProfile({
+        name: result.name,
+        gender: result.gender,
+        age: result.age,
+        ageBasis: result.ageBasis,
+        characterInfo: result.characterInfo || result.summary,
+        currentMood: result.currentMood,
+        currentLocation: result.currentLocation,
+        currentActivity: result.currentActivity,
+        relationshipWithUser: result.relationshipWithUser,
+        lastEncounterWithUser: result.lastEncounterWithUser,
+        currentTask: result.currentTask,
+        thoughts: result.thoughts,
+        pocketContents: result.pocketContents,
+        hooks: result.hooks,
+        injectionText: result.injectionText,
+    }, fp);
+    memory.footstepProfiles = { ...(memory.footstepProfiles || {}), [fp.id]: cachedProfile };
+    result.mapGeneratedAt = getMapLinkStamp(memory);
+    const saved = await saveMemory(memory);
+    if (!saved) {
+        toast('위치 신호를 저장하지 못했습니다. 잠시 뒤 다시 시도해 주세요.', 'warning');
+        return;
+    }
     renderMapView();
     selectLocation(locationId);
     toast(`${result.name}의 위치 신호를 지도에 표시했습니다.`, 'success');
@@ -2549,7 +3284,7 @@ function trackFootstep(footstepId) {
     };
     upsertTrackedPerson(tracked);
     saveMemory();
-    toast(`${tracked.name} 추적을 시작했습니다.`, 'success');
+    toast(`${tracked.name}의 이후 동선을 수첩에서 추적합니다.`, 'success');
     renderNotebookPanel();
 }
 
@@ -2573,7 +3308,7 @@ function trackPersonFromResult(result) {
     };
     upsertTrackedPerson(tracked);
     saveMemory();
-    toast(`${tracked.name} 추적을 시작했습니다.`, 'success');
+    toast(`${tracked.name}의 이후 동선을 수첩에서 추적합니다.`, 'success');
     renderNotebookPanel();
 }
 
@@ -3202,13 +3937,13 @@ The JSON must include location, events, and footsteps for the refreshed location
         return `${getJsonOnlyInstruction(jsonSchema)}
 
 Never return only an empty object {}.
-The JSON must include name, characterInfo, currentMood, currentLocation, currentActivity, relationshipWithUser, lastEncounterWithUser, currentTask, thoughts, pocketContents, hooks, and injectionText.`;
+The JSON must include name, gender, age, ageBasis, characterInfo, currentMood, currentLocation, currentActivity, relationshipWithUser, lastEncounterWithUser, currentTask, thoughts, pocketContents, hooks, and injectionText.`;
     }
     if (jsonSchema === PERSON_SEARCH_SCHEMA) {
         return `${getJsonOnlyInstruction(jsonSchema)}
 
 Never return only an empty object {}.
-The JSON must include name, isOnMap, currentLocation, currentActivity, confidence, summary, reason, trackerReaction, hooks, and injectionText.`;
+The JSON must include name, isOnMap, gender, age, ageBasis, characterInfo, currentMood, currentLocation, currentActivity, relationshipWithUser, lastEncounterWithUser, currentTask, thoughts, pocketContents, confidence, summary, reason, trackerReaction, hooks, and injectionText.`;
     }
     if (jsonSchema === TRACK_REFRESH_SCHEMA) {
         return `${getJsonOnlyInstruction(jsonSchema)}
@@ -3222,11 +3957,11 @@ The JSON must include name, currentLocation, movementSummary, currentActivity, t
 Never return only an empty object {}.
 The JSON must include category and items. Put at least 3 recommendation items in items.`;
     }
-    if (String(jsonSchema?.name || '').startsWith('SurroundingScenes')) {
+    if (/^(?:MapDiscoveries|SurroundingScenes)/.test(String(jsonSchema?.name || ''))) {
         return `${getJsonOnlyInstruction(jsonSchema)}
 
 Never return only an empty object {}.
-The JSON must include items. Each item includes category, title, locationName, participants, body, anchors, motifKey, and continuationOf.`;
+The JSON must include items. Each item includes category, emoji, title, locationName, focus, focusContext, observation, stakes, interactions, participants, sourceAnchors, motifKey, and continuationOf.`;
     }
     return `${getJsonOnlyInstruction(jsonSchema)}
 
@@ -3558,6 +4293,7 @@ async function generateMap(force = false) {
             assertCurrentMapGeneration(job);
             if (rollbackSnapshot) commitPreviousMapSnapshot(freshMemory, rollbackSnapshot);
             freshMemory.map = normalizedMap;
+            freshMemory.mapRevision = createMapRevisionToken();
             freshMemory.discoveries = [];
             freshMemory.selectedLocationId = normalizedMap.currentLocationId;
             freshMemory.generatedAt = nowStamp();
@@ -3669,7 +4405,7 @@ async function generateDiscoveries() {
     const job = beginMapGeneration('discoveries');
     if (!job) return;
     const startChatSignature = rememberCurrentChatSignature?.() || getStableChatSignature();
-    pushDebugLog('discovery.generate.start', '주변 장면 요청을 시작했습니다.', {
+    pushDebugLog('discovery.generate.start', '주변 발견 요청을 시작했습니다.', {
         jobId: job.id,
         outputMode,
         maxTokens: modeConfig.discoveryMaxTokens,
@@ -3684,7 +4420,7 @@ async function generateDiscoveries() {
             });
             assertCurrentMapGeneration(job);
             const parsed = parseJson(rawText, 'discovery.generate');
-            if (!parsed) throw new Error('모델 응답을 주변 장면 JSON 형식으로 읽지 못했습니다.');
+            if (!parsed) throw new Error('모델 응답을 주변 발견 JSON 형식으로 읽지 못했습니다.');
             const endChatSignature = getStableChatSignature();
             if (startChatSignature && endChatSignature && startChatSignature !== endChatSignature) {
                 cancelActiveMapGeneration('chat changed during discovery generation');
@@ -3702,7 +4438,7 @@ async function generateDiscoveries() {
             assertCurrentMapGeneration(job);
             const expectedMinimum = outputMode === 'saver' ? 3 : 5;
             if (items.length < expectedMinimum) {
-                pushDebugLog('discovery.generate.partial', '목표 개수보다 적지만 유효한 주변 장면을 표시합니다.', {
+                pushDebugLog('discovery.generate.partial', '목표 개수보다 적지만 유효한 주변 발견을 표시합니다.', {
                     outputMode,
                     accepted: items.length,
                     targetMinimum: expectedMinimum,
@@ -3713,7 +4449,7 @@ async function generateDiscoveries() {
                 renderDiscoveryListPanel();
             }
             toast(`${ui.panelTitle} ${items.length}개를 표시했습니다.`, 'success');
-            pushDebugLog('discovery.generate.success', '주변 장면을 저장했습니다.', {
+            pushDebugLog('discovery.generate.success', '주변 발견을 저장했습니다.', {
                 outputMode,
                 count: items.length,
                 history: memory.discoveryHistory.length,
@@ -3757,6 +4493,7 @@ async function refreshLocation(locationId) {
             assertCurrentMapGeneration(job);
             if (rollbackSnapshot) commitPreviousMapSnapshot(memory, rollbackSnapshot);
             memory.map = normalized;
+            memory.mapRevision = createMapRevisionToken();
             // Do not pull the user back to this place if they chose another
             // location or opened the notebook while this request was running.
             if (!memory.selectedLocationId) memory.selectedLocationId = locationId;
@@ -3775,18 +4512,51 @@ async function refreshLocation(locationId) {
 
 
 
+function isFootstepProfileCurrent(profile, footstep, map = ensureMemory().map) {
+    if (!profile || !footstep || !map) return false;
+    const location = (map.locations || []).find(item => item.id === footstep.locationId);
+    const sourceLocationId = String(profile.sourceLocationId || '');
+    const hasSourceStatus = Object.prototype.hasOwnProperty.call(profile, 'sourceStatus');
+    const sourceMapGeneratedAt = String(profile.sourceMapGeneratedAt || '');
+    const sourceStatus = String(profile.sourceStatus || '').replace(/\s+/g, ' ').trim();
+    const liveStatus = String(footstep.status || '').replace(/\s+/g, ' ').trim();
+    // Profiles saved before source provenance existed must be refreshed once.
+    // Otherwise an old activity at the same place can be mistaken for a current signal.
+    if (!sourceLocationId || !hasSourceStatus || !sourceMapGeneratedAt) return false;
+    if (sourceMapGeneratedAt !== getMapLinkStamp(ensureMemory(), map)) return false;
+    if (sourceLocationId && sourceLocationId !== String(footstep.locationId || '')) return false;
+    if (sourceStatus && liveStatus && sourceStatus !== liveStatus) return false;
+    if (!sourceLocationId && profile.currentLocation && location?.name) {
+        const cachedLocation = normalizeDiscoveryText(profile.currentLocation);
+        const liveLocation = normalizeDiscoveryText(location.name);
+        if (cachedLocation && liveLocation && cachedLocation !== liveLocation
+            && !cachedLocation.includes(liveLocation) && !liveLocation.includes(cachedLocation)) return false;
+    }
+    return true;
+}
+
 function normalizeFootstepProfile(raw, footstep) {
     const map = ensureMemory().map;
     const location = map?.locations?.find(l => l.id === footstep.locationId);
     const obj = raw && typeof raw === 'object' ? raw : {};
     const fallbackName = footstep.visibleName === false ? '???' : footstep.label;
     const resolvedName = String(obj.name || fallbackName || '???');
+    const ageBasis = String(obj.ageBasis || '별도 연령 근거가 확인되지 않음');
+    const ageContext = [
+        map?.regionName,
+        map?.timeHint,
+        map?.worldSummary,
+        location?.name,
+        location?.situation,
+        obj.characterInfo,
+    ].filter(Boolean).join(' ');
     return {
         id: footstep.id,
         footstepId: footstep.id,
         name: resolvedName,
-        gender: String(obj.gender || '장면 기준 추정 필요'),
-        age: String(obj.age || '장면 기준 나잇대 추정 필요'),
+        gender: String(obj.gender || '장면에서 확인되지 않음'),
+        age: normalizePersonAge(obj.age, ageBasis, { name: resolvedName, contextText: ageContext, subjectText: obj.characterInfo }),
+        ageBasis,
         characterInfo: String(obj.characterInfo || obj.info || obj.description || `${fallbackName || '이 인물'}에 대한 정보가 아직 또렷하게 읽히지 않는다.`),
         currentMood: String(obj.currentMood || obj.mood || '뚜렷하게 읽히지 않음'),
         currentLocation: String(obj.currentLocation || location?.name || '알 수 없는 위치'),
@@ -3798,6 +4568,9 @@ function normalizeFootstepProfile(raw, footstep) {
         pocketContents: normalizeStringArray(obj.pocketContents || obj.pockets || obj.items || [], ['흐릿하게 번진 작은 인벤토리'], 6),
         hooks: normalizeStringArray(obj.hooks || obj.clues || [], [], 4),
         injectionText: String(obj.injectionText || ''),
+        sourceLocationId: String(obj.sourceLocationId || footstep.locationId || ''),
+        sourceStatus: String(obj.sourceStatus || footstep.status || ''),
+        sourceMapGeneratedAt: String(obj.sourceMapGeneratedAt || getMapLinkStamp()),
         generatedAt: nowStamp(),
     };
 }
@@ -3814,21 +4587,35 @@ async function getOrGenerateFootstepProfile(footstepId) {
     const map = memory.map;
     const footstep = map?.footsteps?.find(fp => fp.id === footstepId);
     if (!footstep) return null;
-    if (memory.footstepProfiles?.[footstepId]) {
+    if (memory.footstepProfiles?.[footstepId] && isFootstepProfileCurrent(memory.footstepProfiles[footstepId], footstep, map)) {
         const saved = memory.footstepProfiles[footstepId];
         const normalized = normalizeFootstepProfile(saved, footstep);
         normalized.generatedAt = saved.generatedAt || normalized.generatedAt;
-        memory.footstepProfiles[footstepId] = normalized;
+        memory.footstepProfiles = { ...(memory.footstepProfiles || {}), [footstepId]: normalized };
         return normalized;
     }
 
     let profile = null;
+    const startChatSignature = rememberCurrentChatSignature?.() || getStableChatSignature();
+    const footstepSnapshot = {
+        id: footstep.id,
+        locationId: footstep.locationId,
+        status: footstep.status,
+    };
     await withLoader(getFootstepLoaderText(footstep), async () => {
         let rawText = '';
         rawText = await generateQuietWithSelectedProfile(buildFootstepProfilePrompt(footstep), FOOTSTEP_PROFILE_SCHEMA, { maxTokens: 5000 });
-        profile = normalizeFootstepProfile(parseJson(rawText), footstep);
-        memory.footstepProfiles[footstepId] = profile;
-        await saveMemory();
+        assertChatSignatureUnchanged(startChatSignature, 'footstep.profile');
+        assertMapSnapshotUnchanged(map, 'footstep.profile', footstepSnapshot);
+        const parsed = parseJson(rawText, 'footstep.profile');
+        if (!parsed) throw new Error('인물 상태 응답을 JSON 형식으로 읽지 못했습니다.');
+        const ageChecked = await repairAgeEvidenceIfNeeded(parsed, parsed.name || footstep.label);
+        assertChatSignatureUnchanged(startChatSignature, 'footstep.profile');
+        assertMapSnapshotUnchanged(map, 'footstep.profile', footstepSnapshot);
+        profile = normalizeFootstepProfile(ageChecked, footstep);
+        memory.footstepProfiles = { ...(memory.footstepProfiles || {}), [footstepId]: profile };
+        const saved = await saveMemory(memory);
+        if (!saved) throw new Error('인물 상태를 저장하지 못했습니다.');
     });
     return profile;
 }
@@ -3847,6 +4634,11 @@ async function handleFootstepClick(footstepId) {
     const memory = ensureMemory();
     const footstep = memory.map?.footsteps?.find(fp => fp.id === footstepId);
     if (!footstep) return;
+    if (memory.footstepProfiles?.[footstepId] && isFootstepProfileCurrent(memory.footstepProfiles[footstepId], footstep, memory.map)) {
+        const profile = await getOrGenerateFootstepProfile(footstepId);
+        if (profile) renderFootstepPanel(footstepId);
+        return;
+    }
     const label = footstep.visibleName === false ? '???' : footstep.label;
     const hint = getFootstepActivationHint(footstep);
     const message = hint
@@ -3917,7 +4709,7 @@ function renderFootstepPanel(footstepId) {
             </section>
             ${profile.hooks?.length ? `<section class="mma-info-block"><h4>✨ 따라갈 만한 단서</h4><ul>${profile.hooks.map(h => `<li>${escapeHtml(h)}</li>`).join('')}</ul></section>` : ''}
             <footer class="mma-place-actions">
-                <button data-action="track">👁 추적</button>
+                <button data-action="track" title="이 인물의 이후 위치 변화를 수첩에서 다시 확인합니다.">👁 이후 동선 추적</button>
                 <button data-action="actions">📓 반영</button>
             </footer>
         </div>
@@ -4439,7 +5231,6 @@ function renderMapView() {
     const memory = ensureMemory();
     const map = memory.map;
     const theme = getThemeConfig();
-    const discoveryUi = getDiscoveryUiConfig();
     applyThemeClass();
     if (!map) {
         pushDebugLog('render.map.noMap', '렌더링할 지도 데이터가 없습니다.');
@@ -4469,7 +5260,6 @@ function renderMapView() {
                         <button title="검색" data-action="recommend">🔎</button>
                         <button title="수첩" data-action="notebook">📓</button>
                         <button title="지도 메모리 보기" data-action="memory">🧠</button>
-                        <button class="mma-discovery-toolbar-button" title="${escapeHtml(discoveryUi.name)}" aria-label="${escapeHtml(discoveryUi.name)}" data-action="discover">${escapeHtml(discoveryUi.icon)}</button>
                     </nav>
                 </div>
             </header>
@@ -4486,7 +5276,6 @@ function renderMapView() {
     content.querySelector('[data-action="recommend"]')?.addEventListener('click', () => renderRecommendationPanel());
     content.querySelector('[data-action="notebook"]')?.addEventListener('click', renderNotebookPanel);
     content.querySelector('[data-action="memory"]')?.addEventListener('click', renderMemoryPanel);
-    content.querySelector('[data-action="discover"]')?.addEventListener('click', requestDiscoveryGeneration);
     renderCanvas();
     selectLocation(memory.selectedLocationId);
     refreshMapGenerationControls();
@@ -4507,6 +5296,21 @@ function renderCanvas() {
     canvas.innerHTML = '<button id="mma-map-resize-handle" type="button" aria-label="지도판 세로 크기 조절" title="위아래로 드래그해 지도판 크기를 조절합니다."></button>';
     wireMapResizeHandle(canvas);
     requestAnimationFrame(() => rememberMapCanvasBaseHeight(canvas));
+
+    const discoveryUi = getDiscoveryUiConfig();
+    const discoverButton = document.createElement('button');
+    discoverButton.type = 'button';
+    discoverButton.className = 'mma-map-discovery-trigger';
+    discoverButton.dataset.action = 'discover';
+    discoverButton.title = discoveryUi.name;
+    discoverButton.setAttribute('aria-label', discoveryUi.name);
+    discoverButton.disabled = Boolean(activeMapGeneration);
+    discoverButton.innerHTML = `<span aria-hidden="true">${escapeHtml(discoveryUi.icon)}</span>`;
+    discoverButton.addEventListener('click', event => {
+        event.stopPropagation();
+        requestDiscoveryGeneration();
+    });
+    canvas.appendChild(discoverButton);
 
     const positions = getNodePositions(locations.length);
     locations.forEach((loc, index) => {
@@ -4531,9 +5335,10 @@ function renderCanvas() {
         const pos = positions[index] || { x: 50, y: 50 };
         return { x: pos.x, y: pos.y, r: 13 };
     });
+    occupiedPoints.push({ x: 95, y: 7, r: 10.5 });
     const footstepCountByLocation = {};
 
-    (map?.footsteps || []).slice(0, FOOTSTEP_LIMIT).forEach((fp, index) => {
+    (map?.footsteps || []).forEach((fp, index) => {
         const locIndex = locations.findIndex(l => l.id === fp.locationId);
         if (locIndex < 0) return;
         const pos = positions[locIndex] || { x: 50, y: 50 };
@@ -4572,10 +5377,11 @@ function renderCanvas() {
         marker.className = 'mma-discovery-marker';
         marker.style.left = `${markerPos.x}%`;
         marker.style.top = `${markerPos.y}%`;
+        marker.style.setProperty('--mma-discovery-delay', `${-((index % 7) * 0.43)}s`);
         marker.dataset.discoveryId = item.id;
         marker.title = item.title;
         marker.setAttribute('aria-label', `${item.title} — ${item.locationName}`);
-        marker.innerHTML = `<span>${escapeHtml(getDiscoveryCategoryIcon(item.category))}</span>`;
+        marker.innerHTML = `<span aria-hidden="true">${escapeHtml(String(item.emoji || '').trim() || getDiscoveryCategoryIcon(item.category))}</span>`;
         marker.addEventListener('click', event => {
             event.stopPropagation();
             renderDiscoveryPanel(item.id);
@@ -4596,13 +5402,17 @@ function renderDiscoveryListPanel() {
                 <div><span class="mma-place-icon">${escapeHtml(ui.icon)}</span><strong>${escapeHtml(ui.panelTitle)}</strong></div>
                 <button title="위치 카드로 돌아가기" data-action="back">↩️</button>
             </header>
-            <p class="mma-panel-note">${items.length ? `${items.length}개의 장면이 현재 지도에 표시됩니다.` : '현재 표시할 장면이 없습니다.'}</p>
+            <p class="mma-panel-note">${items.length ? `${items.length}개의 발견이 현재 지도에 표시됩니다.` : '현재 표시할 발견이 없습니다.'}</p>
             <div class="mma-discovery-list">
-                ${items.map(item => `
+                ${items.map(item => {
+                    const emoji = String(item.emoji || '').trim() || getDiscoveryCategoryIcon(item.category);
+                    const observation = item.observation || item.body || item.summary || '';
+                    return `
                     <button type="button" class="mma-discovery-list-card" data-discovery-open="${escapeHtml(item.id)}">
-                        <span class="mma-discovery-card-icon">${escapeHtml(getDiscoveryCategoryIcon(item.category))}</span>
-                        <span><b>${escapeHtml(item.title)}</b><small>📍 ${escapeHtml(item.locationName)}</small><em>${escapeHtml(stripLong(item.body, 150))}</em></span>
-                    </button>`).join('') || '<p class="mma-empty">표시할 주변 장면이 없습니다.</p>'}
+                        <span class="mma-discovery-card-icon">${escapeHtml(emoji)}</span>
+                        <span><b>${escapeHtml(item.title)}</b><small>📍 ${escapeHtml(item.locationName)}</small><em>${escapeHtml(stripLong(observation, 150))}</em></span>
+                    </button>`;
+                }).join('') || '<p class="mma-empty">표시할 발견이 없습니다.</p>'}
             </div>
         </div>`;
     panel.querySelector('[data-action="back"]')?.addEventListener('click', () => renderLocationPanel(memory.selectedLocationId));
@@ -4621,18 +5431,27 @@ function renderDiscoveryPanel(discoveryId) {
         return;
     }
     const ui = getDiscoveryUiConfig();
+    const emoji = String(item.emoji || '').trim() || getDiscoveryCategoryIcon(item.category);
+    const focus = item.focus || item.title;
+    const focusContext = item.focusContext || '';
+    const observation = item.observation || item.body || item.summary || '';
+    const stakes = item.stakes || '';
+    const interactions = uniqueStrings(item.interactions || [], 3);
     panel.innerHTML = `
         <div class="mma-place-card mma-discovery-panel">
             <header class="mma-place-header">
-                <div><span class="mma-place-icon">${escapeHtml(getDiscoveryCategoryIcon(item.category))}</span><strong>${escapeHtml(item.title)}</strong></div>
+                <div><span class="mma-place-icon">${escapeHtml(emoji)}</span><strong>${escapeHtml(item.title)}</strong></div>
                 <button title="${escapeHtml(ui.panelTitle)} 목록으로 돌아가기" data-action="back">↩️</button>
             </header>
             <div class="mma-event-location">📍 ${escapeHtml(item.locationName)}</div>
             <section class="mma-info-block mma-discovery-body">
-                <p>${escapeHtml(item.body)}</p>
+                <h4>🔎 지금 발견한 것</h4>
+                <p><b>${escapeHtml(focus)}</b>${focusContext ? ` — ${escapeHtml(focusContext)}` : ''}</p>
+                <p>${escapeHtml(observation)}</p>
             </section>
-            ${item.participants?.length ? `<section class="mma-info-block"><h4>👥</h4><ul>${item.participants.map(person => `<li>${escapeHtml(person)}</li>`).join('')}</ul></section>` : ''}
-            ${item.anchors?.length ? `<section class="mma-info-block"><h4>🪢 이어진 내용</h4><ul>${item.anchors.map(anchor => `<li>${escapeHtml(anchor)}</li>`).join('')}</ul></section>` : ''}
+            ${stakes ? `<section class="mma-info-block"><h4>⏳ 현재 걸린 일</h4><p>${escapeHtml(stakes)}</p></section>` : ''}
+            ${interactions.length ? `<section class="mma-info-block"><h4>↗️ 해볼 수 있는 일</h4><ul>${interactions.map(action => `<li>${escapeHtml(action)}</li>`).join('')}</ul></section>` : ''}
+            ${item.participants?.length ? `<section class="mma-info-block"><h4>👥 관련 인물</h4><ul>${item.participants.map(person => `<li>${escapeHtml(person)}</li>`).join('')}</ul></section>` : ''}
             <footer class="mma-place-actions mma-discovery-actions">
                 <div class="mma-event-actions">${renderActionButtons('discovery', item.id)}</div>
                 <button type="button" class="mma-discovery-dismiss" data-discovery-dismiss="${escapeHtml(item.id)}">현재 지도에서 숨기기</button>
@@ -4718,6 +5537,12 @@ function getFootstepPosition(anchor, localIndex, globalIndex, occupiedPoints) {
         if (!hasFootstepCollision(candidate.x, candidate.y, occupiedPoints, 10.5)) return candidate;
     }
 
+    for (let y = 13; y <= 88; y += 7.5) {
+        for (let x = 10; x <= 90; x += 7.5) {
+            if (!hasFootstepCollision(x, y, occupiedPoints, 9)) return { x, y };
+        }
+    }
+
     return {
         x: clampPositionValue(anchor.x + (((globalIndex % 5) - 2) * 3), 8, 92),
         y: clampPositionValue(anchor.y + 12 + (((globalIndex % 4) - 1.5) * 3), 10, 90),
@@ -4728,8 +5553,11 @@ function selectLocation(locationId) {
     const memory = ensureMemory();
     const map = memory.map;
     if (!map) return;
-    const location = map.locations.find(l => l.id === locationId) || map.locations[0];
-    if (!location) return;
+    const location = map.locations.find(l => l.id === locationId) || (!locationId ? map.locations[0] : null);
+    if (!location) {
+        toast('현재 지도에서 해당 위치를 찾을 수 없습니다.', 'info');
+        return;
+    }
     memory.selectedLocationId = location.id;
     saveMemory();
     document.querySelectorAll('.mma-node').forEach(node => node.classList.toggle('selected', node.dataset.id === location.id));
@@ -5020,7 +5848,7 @@ function getManageTargetInfo(type, id) {
             : item?.type === 'footstep' || item?.type === 'tracked'
                 ? '인물'
                 : item?.type === 'discovery'
-                    ? '장면'
+                    ? '발견'
                     : '사건';
         return { title: item?.title || '선택한 항목', locationName: item?.locationName || '알 수 없는 위치', kind, subject: item?.title || '선택한 항목' };
     }
@@ -5030,7 +5858,7 @@ function getManageTargetInfo(type, id) {
     }
     if (type === 'discovery') {
         const item = (memory.discoveries || []).find(entry => entry.id === id);
-        return { title: item?.title || '선택한 장면', locationName: item?.locationName || '알 수 없는 위치', kind: '장면', subject: item?.title || '선택한 장면' };
+        return { title: item?.title || '선택한 발견', locationName: item?.locationName || '알 수 없는 위치', kind: '발견', subject: item?.title || '선택한 발견' };
     }
     if (type === 'recommendation') {
         const item = (memory.recommendations || []).find(x => x.id === id);
@@ -5060,29 +5888,29 @@ function confirmManageAction(type, id, action) {
     const subject = info.subject || info.title;
     const infoText = type === 'tracked'
         ? '이 인물의 최근 동선과 현재 위치 정보가 다음 응답의 배경으로 주입됩니다.'
-        : info.kind === '장면'
-            ? '이 장면의 장소, 인물, 현재 상황이 다음 응답의 배경에 반영됩니다.'
+        : info.kind === '발견'
+            ? '이 발견의 대상, 현재 상태, 다음에 달라질 점이 다음 응답의 배경에 반영됩니다.'
         : info.kind === '인물'
             ? '이 인물의 현재 상태, 행동, 생각 정보가 주입됩니다.'
             : info.kind === '장소'
             ? '장소의 분위기, 인물, 사건 정보가 주입됩니다.'
             : '퀘스트가 벌어지는 위치의 분위기, 인물, 퀘스트 정보가 주입됩니다.';
-    const injectQuestion = info.kind === '장면'
-        ? '이 장면을 반영할까요?'
+    const injectQuestion = info.kind === '발견'
+        ? '이 발견을 반영할까요?'
         : info.kind === '장소'
         ? '장소와 퀘스트를 반영할까요?'
         : info.kind === '사건'
             ? '퀘스트만 반영할까요?'
             : '이 정보를 반영할까요?';
-    const charQuestion = info.kind === '장면'
-        ? `이 장면을 ${charName}이(가) 먼저 눈치채도록 반영할까요?`
+    const charQuestion = info.kind === '발견'
+        ? `이 발견을 ${charName}이(가) 먼저 눈치채도록 반영할까요?`
         : info.kind === '장소'
         ? `장소와 퀘스트를 ${charName}이(가) 먼저 눈치채도록 반영할까요?`
         : info.kind === '사건'
             ? `퀘스트만 ${charName}이(가) 먼저 눈치채도록 반영할까요?`
             : `이 정보를 ${charName}이(가) 먼저 눈치채도록 반영할까요?`;
-    const userQuestion = info.kind === '장면'
-        ? `이 장면을 ${userName}이(가) 먼저 눈치챌 수 있도록 반영할까요?`
+    const userQuestion = info.kind === '발견'
+        ? `이 발견을 ${userName}이(가) 먼저 눈치챌 수 있도록 반영할까요?`
         : info.kind === '장소'
         ? `장소와 퀘스트를 ${userName}이(가) 먼저 눈치챌 수 있도록 반영할까요?`
         : info.kind === '사건'
@@ -5093,7 +5921,7 @@ function confirmManageAction(type, id, action) {
         inject: `${infoText}\n\n${injectQuestion}`,
         char: `${infoText}\n\n${charQuestion}`,
         user: `${infoText}\n\n${userQuestion}`,
-        remove: `${info.title}의 주입 설정만 삭제합니다.\n지도에 표시된 장소, 인물, 퀘스트 자체는 사라지지 않습니다.\n\n삭제할까요?`,
+        remove: `${info.title}의 주입 설정만 삭제합니다.\n지도에 표시된 장소, 인물, 퀘스트, 발견 자체는 사라지지 않습니다.\n\n삭제할까요?`,
     };
     return window.confirm(messages[action] || `${info.title} 항목을 처리할까요?`);
 }
@@ -5225,14 +6053,25 @@ function snapshotManagedItem(type, id, status) {
             title: item.title,
             locationId: item.locationId,
             locationName: item.locationName,
-            summary: item.body,
-            details: '',
+            summary: item.observation || item.body || item.summary || '',
+            details: [
+                `대상: ${item.focus || item.title}${item.focusContext ? ` — ${item.focusContext}` : ''}`,
+                item.stakes ? `현재 걸린 일: ${item.stakes}` : '',
+                item.interactions?.length ? `해볼 수 있는 일: ${item.interactions.join(' / ')}` : '',
+            ].filter(Boolean).join('\n'),
             present: [...(item.participants || [])],
-            clues: [...(item.anchors || [])],
+            clues: [],
             eventSnapshots: [],
             contextText: buildDiscoveryContext(item),
             fingerprint: item.fingerprint,
             category: item.category,
+            emoji: item.emoji,
+            focus: item.focus || item.title,
+            focusContext: item.focusContext || '',
+            observation: item.observation || item.body || item.summary || '',
+            stakes: item.stakes || '',
+            interactions: [...(item.interactions || [])],
+            sourceAnchors: [...(item.sourceAnchors || item.anchors || [])],
             createdAt: nowStamp(),
             updatedAt: nowStamp(),
         };
@@ -5352,12 +6191,22 @@ function buildFootstepContextFallback(profile, loc) {
 }
 
 function buildDiscoveryContext(item) {
-    return `Selected surrounding scene: ${item.title}
+    const focus = item.focus || item.title || 'an identified discovery';
+    const focusContext = item.focusContext || '';
+    const observation = item.observation || item.body || item.summary || '';
+    const stakes = item.stakes || '';
+    const interactions = uniqueStrings(item.interactions || [], 3);
+    const sourceAnchors = uniqueStrings(item.sourceAnchors || item.anchors || [], 4);
+    return `Selected map discovery: ${item.title}
 Location: ${item.locationName}
+Focus: ${focus}${focusContext ? ` — ${focusContext}` : ''}
 People present: ${(item.participants || item.present || []).join(', ')}
-Current scene: ${item.body || item.summary || ''}
+What is currently observable: ${observation}
+What is unresolved or likely to change soon: ${stakes}
+Possible ways characters may engage: ${interactions.join(' / ')}
+Continuity basis: ${sourceAnchors.join(' / ')}
 
-When the roleplay is at this location or naturally involves one of these people or objects, use this scene as surrounding context.`;
+Maintain this as a current world state at the stated location. When the roleplay reaches this location or naturally connects to its focus, make the observable state available through concrete action, sound, dialogue, movement, or physical detail. Let the state develop from the characters' actual responses, using the listed interactions as possibilities.`;
 }
 
 function buildActiveInjectionSummary() {
@@ -5458,7 +6307,7 @@ function renderMemoryPanel() {
                 <p><b>현재 지도:</b> ${escapeHtml(map?.regionName || '없음')}</p>
                 <p><b>생성 시각:</b> ${escapeHtml(memory.generatedAt || '아직 없음')}</p>
                 <p><b>현재 위치:</b> ${escapeHtml(locations.find(l => l.id === map?.currentLocationId)?.name || '알 수 없음')}</p>
-                <p><b>주변 장면:</b> ${discoveryCount}개</p>
+                <p><b>주변 발견:</b> ${discoveryCount}개</p>
                 <p><b>저장된 반영 데이터:</b> ${managed.length}개 · <b>활성:</b> ${activeCount}개</p>
             </section>
             <section class="mma-info-block">
