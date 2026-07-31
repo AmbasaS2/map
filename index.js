@@ -15,7 +15,7 @@ const EXTENSION_PROMPT_KEY = 'marauders_map_active_context';
 const FOOTSTEP_LIMIT = 10;
 const DEBUG_LOG_LIMIT = 40;
 const memoryDebugLogs = [];
-const EXTENSION_VERSION = '2.7.13';
+const EXTENSION_VERSION = '2.7.14';
 const SHARED_NOTEBOOK_KEYS = Object.freeze(['managedItems', 'footstepProfiles', 'trackedPeople', 'recommendations', 'searchResults']);
 const DISCOVERY_HISTORY_LIMIT = 30;
 const UNCOLLECTED_RECOMMENDATION_LIMIT = 24;
@@ -5478,15 +5478,24 @@ function renderCanvas() {
         const node = document.createElement('button');
         const selectedClass = loc.id === memory.selectedLocationId ? 'selected' : '';
         const currentClass = loc.id === map.currentLocationId ? 'current-location' : '';
-        node.className = `mma-node ${selectedClass} ${currentClass}`.trim();
+        const bonbonClass = isBonbonTheme() ? 'mma-bonbon-location-card' : '';
+        node.type = 'button';
+        node.className = `mma-node ${bonbonClass} ${selectedClass} ${currentClass}`.trim();
         node.style.left = `${pos.x}%`;
         node.style.top = `${pos.y}%`;
         node.dataset.id = loc.id;
+        const locationQuestCount = (map.events || []).filter(event => event.locationId === loc.id && event.status !== 'ignored').length;
+        const locationLabel = [
+            loc.name,
+            currentClass ? '현재 위치' : '',
+            locationQuestCount ? `퀘스트 ${locationQuestCount}개` : '',
+        ].filter(Boolean).join(' — ');
+        node.title = locationLabel;
+        node.setAttribute('aria-label', locationLabel);
         if (currentClass) {
             node.setAttribute('aria-current', 'location');
-            node.title = `${loc.name} — 현재 위치`;
         }
-        node.innerHTML = `<b>${escapeHtml(loc.icon || '📍')}</b><span>${escapeHtml(loc.name)}</span>${eventBadgeForLocation(loc.id)}`;
+        node.innerHTML = `<b aria-hidden="true">${escapeHtml(loc.icon || '📍')}</b><span class="mma-node-label">${escapeHtml(loc.name)}</span>${eventBadgeForLocation(loc.id)}`;
         node.addEventListener('click', () => selectLocation(loc.id));
         canvas.appendChild(node);
     });

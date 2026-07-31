@@ -9175,3 +9175,112 @@ button.mma-footstep:focus-visible em {
     height: 10px;
   }
 }
+
+/* v2.7.14 Bonbon icon spaces, readable people, and filled current place */
+#mma-window.mma-theme-bonbon .mma-node.mma-bonbon-location-card {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 38px;
+  min-width: 38px;
+  max-width: 38px;
+  height: 38px;
+  min-height: 38px;
+  padding: 0 !important;
+  gap: 0 !important;
+  overflow: visible;
+  border: 1px solid var(--mma-bb-chocolate) !important;
+  border-radius: 12px !important;
+  background: var(--mma-bb-ivory) !important;
+  color: var(--mma-bb-text) !important;
+  box-shadow: 0 1px 2px rgba(81, 64, 57, .1) !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-node.mma-bonbon-location-card .mma-node-label {
+  display: none !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-node.mma-bonbon-location-card > b {
+  display: block;
+  font-size: calc(18px * var(--mma-font-scale, 1)) !important;
+  line-height: 1 !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-node.mma-bonbon-location-card .mma-event-badge {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  min-width: 16px !important;
+  height: 16px !important;
+  padding: 0 3px !important;
+  border: 1px solid var(--mma-bb-ivory) !important;
+  border-radius: 999px !important;
+  background: var(--mma-bb-fig) !important;
+  color: var(--mma-bb-ivory) !important;
+  font-size: 9px !important;
+  line-height: 1 !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-node.mma-bonbon-location-card:hover,
+#mma-window.mma-theme-bonbon .mma-node.mma-bonbon-location-card:focus-visible {
+  border-color: var(--mma-bb-fig-deep) !important;
+  background: var(--mma-bb-cream) !important;
+  outline: 2px solid rgba(183, 107, 139, .24) !important;
+  outline-offset: 2px;
+  transform: translate(-50%, -50%) !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-node.mma-bonbon-location-card.selected {
+  border: 2px solid var(--mma-bb-fig-deep) !important;
+  background: var(--mma-bb-fig-soft) !important;
+  color: var(--mma-bb-text) !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-node.mma-bonbon-location-card.current-location,
+#mma-window.mma-theme-bonbon .mma-node.mma-bonbon-location-card.selected.current-location {
+  border: 2px solid var(--mma-bb-pistachio-deep) !important;
+  background: var(--mma-bb-pistachio) !important;
+  color: var(--mma-bb-text) !important;
+  box-shadow: 0 2px 5px rgba(110, 123, 86, .18) !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-node.mma-bonbon-location-card.current-location::before,
+#mma-window.mma-theme-bonbon .mma-node.mma-bonbon-location-card.current-location::after {
+  content: none !important;
+  display: none !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-footstep.mma-bonbon-piece {
+  opacity: 1;
+}
+
+#mma-window.mma-theme-bonbon .mma-footstep.mma-bonbon-piece em {
+  max-width: min(110px, 24vw) !important;
+  color: var(--mma-bb-text) !important;
+  font-size: inherit !important;
+  line-height: 1.16 !important;
+}
+
+#mma-window.mma-theme-bonbon button.mma-footstep:hover em,
+#mma-window.mma-theme-bonbon button.mma-footstep:focus-visible em {
+  color: var(--mma-bb-text) !important;
+}
+
+@media (max-width: 700px) {
+  #mma-window.mma-theme-bonbon .mma-node.mma-bonbon-location-card {
+    width: 34px;
+    min-width: 34px;
+    max-width: 34px;
+    height: 34px;
+    min-height: 34px;
+    border-radius: 10px !important;
+  }
+
+  #mma-window.mma-theme-bonbon .mma-node.mma-bonbon-location-card > b {
+    font-size: calc(16px * var(--mma-font-scale, 1)) !important;
+  }
+
+  #mma-window.mma-theme-bonbon .mma-footstep.mma-bonbon-piece em {
+    max-width: min(90px, 26vw) !important;
+  }
+}
