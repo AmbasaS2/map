@@ -8840,3 +8840,272 @@ button.mma-footstep:focus-visible em {
     font-size: calc(8.5px * var(--mma-font-scale, 1)) !important;
   }
 }
+
+/* v2.7.12 Bonbon quiet density and compact Modern mobile toolbar */
+/* Restore the v2.7.10 quiet path geometry while keeping the current palette. */
+#mma-window.mma-theme-bonbon .mma-bonbon-board-track::before {
+  content: none !important;
+  display: none !important;
+  border: 0 !important;
+  background: none !important;
+  box-shadow: none !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-board-rail {
+  display: block !important;
+  box-sizing: border-box;
+  overflow: visible;
+  border: 1px solid var(--mma-bb-line) !important;
+  border-radius: 5px;
+  background-color: var(--mma-bb-ivory) !important;
+  box-shadow: none !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-board-rail::after {
+  content: none !important;
+  display: none !important;
+  background: none !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-board-rail-top {
+  top: calc(18% - 13px);
+  right: 18%;
+  left: 18%;
+  height: 26px;
+  background: linear-gradient(to bottom, var(--mma-bb-fig) 0 3px, var(--mma-bb-ivory) 3px) !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-board-rail-right {
+  top: 18%;
+  right: auto;
+  bottom: 22%;
+  left: calc(82% - 13px);
+  width: 26px;
+  background: linear-gradient(to left, var(--mma-bb-pistachio) 0 3px, var(--mma-bb-ivory) 3px) !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-board-rail-bottom {
+  top: calc(78% - 13px);
+  right: 18%;
+  bottom: auto;
+  left: 18%;
+  height: 26px;
+  background: linear-gradient(to top, var(--mma-bb-chocolate) 0 3px, var(--mma-bb-ivory) 3px) !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-board-rail-left {
+  top: 18%;
+  bottom: 22%;
+  left: calc(18% - 13px);
+  width: 26px;
+  background: linear-gradient(to right, var(--mma-bb-fig-soft) 0 3px, var(--mma-bb-ivory) 3px) !important;
+}
+
+#mma-window.mma-theme-bonbon [class*="mma-bonbon-board-corner"] {
+  display: block !important;
+  width: 30px;
+  height: 30px;
+  overflow: hidden;
+  border: 1px solid var(--mma-bb-line) !important;
+  border-radius: 7px !important;
+  background: var(--mma-bb-ivory) !important;
+  color: transparent !important;
+  box-shadow: none !important;
+  pointer-events: none;
+}
+
+#mma-window.mma-theme-bonbon [class*="mma-bonbon-board-corner"]::before {
+  content: none !important;
+  display: none !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-board-corner-top-left {
+  top: calc(18% - 15px);
+  left: calc(18% - 15px);
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-board-corner-top-right {
+  top: calc(18% - 15px);
+  right: calc(18% - 15px);
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-board-corner-bottom-right {
+  right: calc(18% - 15px);
+  bottom: calc(22% - 15px);
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-board-corner-bottom-left {
+  bottom: calc(22% - 15px);
+  left: calc(18% - 15px);
+}
+
+/* Selected and current places stay ivory and use separate outlines. */
+#mma-window.mma-theme-bonbon .mma-node.selected,
+#mma-window.mma-theme-bonbon .mma-node.current-location {
+  background: var(--mma-bb-ivory) !important;
+  color: var(--mma-bb-text) !important;
+  box-shadow: none !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-node.selected,
+#mma-window.mma-theme-bonbon .mma-node.selected.current-location {
+  border: 2px solid var(--mma-bb-fig) !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-node.current-location::after {
+  inset: -3px !important;
+  border: 1px solid var(--mma-bb-pistachio-deep) !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-node.current-location::before {
+  animation: none !important;
+}
+
+/* The whole pawn-and-name piece sways as one object. */
+#mma-window.mma-theme-bonbon .mma-footstep.mma-bonbon-piece {
+  animation: mma-bonbon-whole-piece-sway 3.6s ease-in-out infinite !important;
+  animation-delay: var(--mma-bonbon-sway-delay, 0s) !important;
+  transform-origin: 50% 90%;
+}
+
+#mma-window.mma-theme-bonbon .mma-footstep.mma-bonbon-piece .mma-bonbon-pawn {
+  width: 14px !important;
+  min-width: 14px !important;
+  height: 18px !important;
+  animation: none !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-footstep.mma-bonbon-piece .mma-bonbon-pawn::before {
+  font-size: 16px !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-footstep.mma-bonbon-piece em {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: min(56px, 18vw) !important;
+  overflow: hidden !important;
+  white-space: nowrap !important;
+  text-overflow: ellipsis !important;
+  overflow-wrap: normal !important;
+  word-break: normal !important;
+  text-shadow: none !important;
+}
+
+@keyframes mma-bonbon-whole-piece-sway {
+  0%, 100% {
+    transform: translate(calc(-50% - 1px), -50%) rotate(-.7deg);
+  }
+  50% {
+    transform: translate(calc(-50% + 1px), -50%) rotate(.7deg);
+  }
+}
+
+/* Smaller object markers retain their full click target. */
+#mma-window.mma-theme-bonbon .mma-discovery-marker span {
+  font-size: 18px !important;
+  opacity: .88;
+}
+
+#mma-window.mma-theme-bonbon .mma-map-discovery-trigger.mma-board-key-card-trigger {
+  width: 36px !important;
+  min-width: 36px !important;
+  height: 27px !important;
+  min-height: 27px !important;
+  border-color: var(--mma-bb-line) !important;
+  background: var(--mma-bb-ivory) !important;
+  color: var(--mma-bb-fig-deep) !important;
+  box-shadow: none !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-board-key-card-trigger span {
+  font-size: 16px !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-map-discovery-trigger.mma-board-key-card-trigger:hover,
+#mma-window.mma-theme-bonbon .mma-map-discovery-trigger.mma-board-key-card-trigger:focus-visible {
+  border-color: var(--mma-bb-fig) !important;
+  background: var(--mma-bb-cream) !important;
+}
+
+@media (max-width: 420px) {
+  #mma-window.mma-theme-bonbon .mma-bonbon-board-rail-top {
+    top: calc(18% - 9px);
+    height: 18px;
+  }
+
+  #mma-window.mma-theme-bonbon .mma-bonbon-board-rail-right {
+    left: calc(82% - 9px);
+    width: 18px;
+  }
+
+  #mma-window.mma-theme-bonbon .mma-bonbon-board-rail-bottom {
+    top: calc(78% - 9px);
+    height: 18px;
+  }
+
+  #mma-window.mma-theme-bonbon .mma-bonbon-board-rail-left {
+    left: calc(18% - 9px);
+    width: 18px;
+  }
+
+  #mma-window.mma-theme-bonbon [class*="mma-bonbon-board-corner"] {
+    width: 22px;
+    height: 22px;
+  }
+
+  #mma-window.mma-theme-bonbon .mma-bonbon-board-corner-top-left {
+    top: calc(18% - 11px);
+    left: calc(18% - 11px);
+  }
+
+  #mma-window.mma-theme-bonbon .mma-bonbon-board-corner-top-right {
+    top: calc(18% - 11px);
+    right: calc(18% - 11px);
+  }
+
+  #mma-window.mma-theme-bonbon .mma-bonbon-board-corner-bottom-right {
+    right: calc(18% - 11px);
+    bottom: calc(22% - 11px);
+  }
+
+  #mma-window.mma-theme-bonbon .mma-bonbon-board-corner-bottom-left {
+    bottom: calc(22% - 11px);
+    left: calc(18% - 11px);
+  }
+
+  #mma-window.mma-theme-bonbon .mma-map-discovery-trigger.mma-board-key-card-trigger {
+    width: 34px !important;
+    min-width: 34px !important;
+    height: 25px !important;
+    min-height: 25px !important;
+  }
+
+  #mma-window.mma-theme-bonbon .mma-footstep.mma-bonbon-piece em {
+    max-width: min(52px, 17vw) !important;
+  }
+
+  #mma-window.mma-theme-modern .mma-top-right .mma-toolbar-actions {
+    width: auto !important;
+    justify-self: end;
+    justify-content: end;
+    grid-template-columns: repeat(5, 30px);
+    gap: 3px;
+  }
+
+  #mma-window.mma-theme-modern .mma-top-right .mma-toolbar-actions button,
+  #mma-window.mma-theme-modern .mma-top-right > .mma-close-button {
+    width: 30px !important;
+    min-width: 30px !important;
+    height: 30px !important;
+    min-height: 30px !important;
+    padding: 0 !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #mma-window.mma-theme-bonbon .mma-footstep.mma-bonbon-piece {
+    animation: none !important;
+  }
+}
