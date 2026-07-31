@@ -9109,3 +9109,69 @@ button.mma-footstep:focus-visible em {
     animation: none !important;
   }
 }
+
+/* v2.7.13 Bonbon board-and-card separation with a title sweet */
+#mma-window.mma-theme-bonbon .mma-map-canvas {
+  background: var(--mma-bb-cream-deep) !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-node:not(.selected):not(.current-location) {
+  border-color: transparent !important;
+  background: var(--mma-bb-ivory) !important;
+  box-shadow: 0 1px 2px rgba(81, 64, 57, .1) !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-toolbar .mma-brand.small {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-title-sweet {
+  position: relative;
+  flex: 0 0 auto;
+  width: 11px;
+  height: 11px;
+  box-sizing: border-box;
+  border: 1px solid rgba(104, 75, 65, .28);
+  border-radius: 50%;
+  background: var(--mma-bb-chocolate);
+  box-shadow: inset 2px 2px 0 rgba(255, 249, 241, .28), 0 1px 1px rgba(81, 64, 57, .12);
+  transform: rotate(-12deg);
+  pointer-events: none;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-title-sweet::before {
+  content: "";
+  position: absolute;
+  top: 4px;
+  right: 1px;
+  left: 1px;
+  height: 2px;
+  border-radius: 999px;
+  background: var(--mma-bb-fig-soft);
+  transform: rotate(-18deg);
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-title-sweet::after {
+  content: "";
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  width: 2px;
+  height: 2px;
+  border-radius: 50%;
+  background: var(--mma-bb-pistachio);
+}
+
+@media (max-width: 420px) {
+  #mma-window.mma-theme-bonbon .mma-toolbar .mma-brand.small {
+    gap: 3px;
+  }
+
+  #mma-window.mma-theme-bonbon .mma-bonbon-title-sweet {
+    width: 10px;
+    height: 10px;
+  }
+}
