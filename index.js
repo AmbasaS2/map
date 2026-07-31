@@ -15,11 +15,40 @@ const EXTENSION_PROMPT_KEY = 'marauders_map_active_context';
 const FOOTSTEP_LIMIT = 10;
 const DEBUG_LOG_LIMIT = 40;
 const memoryDebugLogs = [];
-const EXTENSION_VERSION = '2.6.4';
+const EXTENSION_VERSION = '2.7.2';
 const SHARED_NOTEBOOK_KEYS = Object.freeze(['managedItems', 'footstepProfiles', 'trackedPeople', 'recommendations', 'searchResults']);
+const DISCOVERY_HISTORY_LIMIT = 30;
+const UNCOLLECTED_RECOMMENDATION_LIMIT = 24;
+const OUTPUT_MODE_CONFIGS = Object.freeze({
+    basic: Object.freeze({
+        key: 'basic',
+        label: '기본',
+        mapMaxTokens: 8000,
+        locationRange: '6~9',
+        situationRange: '8~12',
+        detailsRange: '4~6',
+        questRange: '3~5',
+        discoveryRange: '5~7',
+        discoveryMaxTokens: 5000,
+        personSearchMaxTokens: 2500,
+    }),
+    saver: Object.freeze({
+        key: 'saver',
+        label: '절약',
+        mapMaxTokens: 4000,
+        locationRange: '4~7',
+        situationRange: '4~10',
+        detailsRange: '3~4',
+        questRange: '2~3',
+        discoveryRange: '3~5',
+        discoveryMaxTokens: 2500,
+        personSearchMaxTokens: 1500,
+    }),
+});
 const SETTINGS_DEFAULTS = Object.freeze({
     enabled: true,
     connectionProfile: 'main',
+    outputMode: 'basic',
     fontScale: 100,
     theme: 'marauder',
 });
@@ -63,6 +92,9 @@ const EMPTY_MEMORY = Object.freeze({
     trackedPeople: {},
     recommendations: [],
     searchResults: [],
+    discoveries: [],
+    discoveryHistory: [],
+    discoveryGeneratedAt: null,
     generatedAt: null,
     lastAction: null,
 });
@@ -83,6 +115,7 @@ let saveMemoryQueue = Promise.resolve();
 let saveMemorySequence = 0;
 // Only one map/selected-location generation may commit at a time.
 let activeMapGeneration = null;
+let activeDiscoveryConfirm = null;
 
 function shouldIgnoreChatChanged() {
     return profileSwitchDepth > 0 || Date.now() < suppressChatChangeUntil;
@@ -220,6 +253,7 @@ function buildMapDebugDump() {
         theme: (() => { try { return getThemeKey(); } catch { return 'unknown'; } })(),
         settings: {
             theme: settings.theme,
+            outputMode: normalizeOutputMode(settings.outputMode),
             fontScale: settings.fontScale,
             connectionProfile: settings.connectionProfile === 'main' ? 'main' : 'selected',
             selectedProfile: Boolean(selectedProfile),
@@ -237,6 +271,8 @@ function buildMapDebugDump() {
                     locations: Array.isArray(map.locations) ? map.locations.length : 0,
                     footsteps: Array.isArray(map.footsteps) ? map.footsteps.length : 0,
                     events: Array.isArray(map.events) ? map.events.length : 0,
+                    discoveries: Array.isArray(memory.discoveries) ? memory.discoveries.length : 0,
+                    discoveryHistory: Array.isArray(memory.discoveryHistory) ? memory.discoveryHistory.length : 0,
                     managedItems: Array.isArray(memory.managedItems) ? memory.managedItems.length : 0,
                     recommendations: Array.isArray(memory.recommendations) ? memory.recommendations.length : 0,
                     trackedPeople: memory.trackedPeople ? Object.keys(memory.trackedPeople).length : 0,
@@ -366,6 +402,12 @@ function nowStamp() {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
+function formatCompactMapTime(value) {
+    const text = String(value || '').trim();
+    const match = text.match(/^\d{4}-(\d{2})-(\d{2})\s+(\d{2}:\d{2})/);
+    return match ? `${match[1]}.${match[2]} ${match[3]}` : text;
+}
+
 function getSettings() {
     const ctx = stContext();
     if (!ctx.extensionSettings) ctx.extensionSettings = {};
@@ -431,6 +473,44 @@ function getThemeKey() {
 
 function getThemeConfig() {
     return THEME_OPTIONS[getThemeKey()] || THEME_OPTIONS.marauder;
+}
+
+function normalizeOutputMode(value) {
+    return Object.hasOwn(OUTPUT_MODE_CONFIGS, value) ? value : 'basic';
+}
+
+function getOutputModeKey() {
+    try {
+        const settings = getSettings();
+        settings.outputMode = normalizeOutputMode(settings.outputMode);
+        return settings.outputMode;
+    } catch {
+        return 'basic';
+    }
+}
+
+function getOutputModeConfig() {
+    return OUTPUT_MODE_CONFIGS[getOutputModeKey()] || OUTPUT_MODE_CONFIGS.basic;
+}
+
+function getDiscoveryUiConfig() {
+    return isModernTheme()
+        ? {
+            icon: '📡',
+            name: '주변 상황 탐색',
+            question: '주변 상황을 탐색할까요?',
+            confirm: '탐색',
+            loader: '주변 위치와 최근 활동을 분석하는 중…',
+            panelTitle: '주변에서 포착된 장면',
+        }
+        : {
+            icon: '🪄',
+            name: 'Revelio',
+            question: 'Revelio를 외울까요?',
+            confirm: 'Revelio',
+            loader: '지도에 감춰진 장면을 드러내는 중…',
+            panelTitle: 'Revelio로 드러난 장면',
+        };
 }
 function getMapActivationCompleteText() {
     const theme = getThemeConfig();
@@ -518,7 +598,7 @@ function arrayIdentity(item, index, prefix = 'item') {
     return String(item.id || item.sourceId || item.source || item.name || item.title || item.locationName || `${prefix}:${index}`);
 }
 
-function mergeArrayByIdentity(base = [], incoming = [], limit = 80, prefix = 'item') {
+function mergeArrayByIdentity(base = [], incoming = [], limit = Infinity, prefix = 'item') {
     const map = new Map();
     const add = (item, index, sourcePrefix) => {
         if (!item || typeof item !== 'object') return;
@@ -528,7 +608,8 @@ function mergeArrayByIdentity(base = [], incoming = [], limit = 80, prefix = 'it
     };
     (Array.isArray(base) ? base : []).forEach((item, index) => add(item, index, prefix));
     (Array.isArray(incoming) ? incoming : []).forEach((item, index) => add(item, index, prefix));
-    return Array.from(map.values()).slice(0, limit);
+    const values = Array.from(map.values());
+    return Number.isFinite(limit) ? values.slice(0, Math.max(0, limit)) : values;
 }
 
 function mergeTrackedPeople(base = {}, incoming = {}) {
@@ -537,7 +618,7 @@ function mergeTrackedPeople(base = {}, incoming = {}) {
     Object.entries(incoming).forEach(([key, value]) => {
         if (!value || typeof value !== 'object') return;
         const previous = out[key] || {};
-        const history = mergeArrayByIdentity(previous.history || [], value.history || [], 24, `${key}:history`);
+        const history = mergeArrayByIdentity(previous.history || [], value.history || [], Infinity, `${key}:history`);
         out[key] = { ...previous, ...value, history };
     });
     return out;
@@ -673,6 +754,7 @@ async function restorePreviousMap() {
     }
 
     memory.map = clone(snapshot.map);
+    reconcileTransientDiscoveries(memory, memory.map);
     memory.selectedLocationId = snapshot.selectedLocationId || snapshot.map.currentLocationId || snapshot.map.locations[0]?.id || null;
     memory.generatedAt = snapshot.generatedAt || nowStamp();
     memory.lastAction = 'rollback-previous-map';
@@ -704,11 +786,11 @@ function getCharacterNotebook(settings = getSettings(), key = getCurrentCharacte
 
 function mergeMemoryIntoNotebook(notebook, memory) {
     if (!notebook || !memory) return notebook;
-    notebook.managedItems = mergeArrayByIdentity(notebook.managedItems, memory.managedItems, 80, 'managed');
+    notebook.managedItems = mergeArrayByIdentity(notebook.managedItems, memory.managedItems, Infinity, 'managed');
     notebook.footstepProfiles = { ...(notebook.footstepProfiles || {}), ...(memory.footstepProfiles || {}) };
     notebook.trackedPeople = mergeTrackedPeople(notebook.trackedPeople, memory.trackedPeople);
-    notebook.recommendations = mergeArrayByIdentity(notebook.recommendations, memory.recommendations, 40, 'recommendation');
-    notebook.searchResults = mergeArrayByIdentity(notebook.searchResults, memory.searchResults, 40, 'search');
+    notebook.recommendations = mergeArrayByIdentity(notebook.recommendations, memory.recommendations, Infinity, 'recommendation');
+    notebook.searchResults = mergeArrayByIdentity(notebook.searchResults, memory.searchResults, Infinity, 'search');
     notebook.updatedAt = nowStamp();
     return normalizeNotebookShape(notebook);
 }
@@ -814,6 +896,8 @@ function ensureMemory() {
     if (!memory.trackedPeople || typeof memory.trackedPeople !== 'object' || Array.isArray(memory.trackedPeople)) memory.trackedPeople = {};
     if (!Array.isArray(memory.recommendations)) memory.recommendations = [];
     if (!Array.isArray(memory.searchResults)) memory.searchResults = [];
+    if (!Array.isArray(memory.discoveries)) memory.discoveries = [];
+    if (!Array.isArray(memory.discoveryHistory)) memory.discoveryHistory = [];
     const cleanedSharedNotebooks = purgeLegacySharedMapBackups();
     const cleanedCurrentChat = purgeLegacyMapBackupsFromChat(memory);
     memory.previousMap = normalizePreviousMapSnapshot(memory.previousMap);
@@ -892,6 +976,8 @@ function saveMemory(memoryArg = null) {
                 managedItems: memory.managedItems?.length || 0,
                 recommendations: memory.recommendations?.length || 0,
                 searchResults: memory.searchResults?.length || 0,
+                discoveries: memory.discoveries?.length || 0,
+                discoveryHistory: memory.discoveryHistory?.length || 0,
                 trackedPeople: Object.keys(memory.trackedPeople || {}).length,
             });
             return true;
@@ -940,6 +1026,22 @@ function getCharacterSummary() {
             data.scenario ? `Scenario: ${stripLong(data.scenario, 1400)}` : '',
         ].filter(Boolean);
         return parts.join('\n');
+    } catch {
+        return '';
+    }
+}
+
+function getPersonaSummary() {
+    try {
+        const ctx = stContext();
+        const description = ctx?.persona_description
+            || ctx?.powerUser?.persona_description
+            || globalThis.power_user?.persona_description
+            || '';
+        return [
+            `Persona name: ${ctx?.name1 || '{{user}}'}`,
+            description ? `Persona description: ${stripLong(description, 2200)}` : '',
+        ].filter(Boolean).join('\n');
     } catch {
         return '';
     }
@@ -1302,7 +1404,6 @@ function firstMeaningfulSentence(text, fallback = '') {
 }
 
 function getMapTopFallbacks(map = {}, locations = []) {
-    const theme = getThemeConfig();
     const currentRaw = String(map.currentLocation || map.currentRegion || map.region || map.place || '').trim();
     const firstLoc = locations[0] || {};
     const firstName = String(firstLoc.name || '').trim();
@@ -1313,17 +1414,15 @@ function getMapTopFallbacks(map = {}, locations = []) {
         String(map.regionName || '').trim() ||
         currentRaw ||
         firstName ||
-        (isModernTheme() ? '현재 위치 추적 구역' : '현재 지도 구역');
+        '현재 구역';
 
     const worldSummary =
         String(map.worldSummary || map.summary || map.areaSummary || '').trim() ||
-        firstMeaningfulSentence(firstSituation || firstDetails, isModernTheme()
-            ? '현재 장면에서 관찰되는 장소와 인물들의 움직임을 위치 추적 화면에 정리한 구역입니다.'
-            : '현재 장면에서 관찰되는 장소와 인물들의 움직임을 지도 위에 정리한 구역입니다.');
+        firstMeaningfulSentence(firstSituation || firstDetails, '현재 장면과 주변 장소의 상황이 이어지고 있습니다.');
 
     const timeHint =
         String(map.timeHint || map.currentTime || map.time || map.when || '').trim() ||
-        (isModernTheme() ? '현재 장면 시점' : '현재 장면 시점');
+        '현재 장면 시점';
 
     return { regionName, worldSummary, timeHint };
 }
@@ -1336,19 +1435,34 @@ function isPlaceholderLocationName(value) {
     return /^(?:(?:장소|위치|로케이션|location|place)\s*#?\d*|unknown(?: location)?|알 수 없는 (?:장소|위치))$/i.test(name);
 }
 
-function normalizeMap(raw) {
+function normalizeMap(raw, options = {}) {
     const userName = getCurrentUserName();
     const charName = getCurrentCharacterName();
     const map = raw && typeof raw === 'object' ? raw : {};
     const locations = Array.isArray(map.locations) ? map.locations : [];
-    const normalizedLocations = locations.slice(0, 12).map((loc, index) => {
+    const discardedLocations = [];
+    const usedLocationIds = new Set();
+    const fullGeneration = options?.source === 'full-generation';
+    const generationMode = normalizeOutputMode(options?.outputMode || 'basic');
+    const locationLimit = fullGeneration ? (generationMode === 'saver' ? 7 : 9) : 12;
+    const eventLimit = fullGeneration ? (generationMode === 'saver' ? 3 : 5) : 14;
+    const normalizedLocations = locations.slice(0, locationLimit).map((loc, index) => {
+        if (!loc || typeof loc !== 'object' || Array.isArray(loc)) {
+            discardedLocations.push({ index, reason: 'invalid object' });
+            return null;
+        }
         const rawName = String(loc.name || loc.locationName || loc.title || loc.label || loc.place || '').trim();
         if (isPlaceholderLocationName(rawName)) {
-            throw new Error('지도 생성 결과에 실제 장소 이름이 비어 있거나 임시 이름으로만 들어와 저장하지 않았습니다. 다시 생성해 주세요.');
+            discardedLocations.push({ index, reason: 'placeholder name', name: rawName });
+            return null;
         }
         const name = rawName;
-        const id = String(loc.id || safeId(name, `loc-${index}`));
-        const situation = String(loc.situation || loc.currentSituation || loc.description || '양피지 위의 잉크가 이 장소의 현재 상황을 아직 또렷하게 그리지 못하고 있다.');
+        const baseId = String(loc.id || safeId(name, `loc-${index}`));
+        let id = baseId;
+        let suffix = 2;
+        while (usedLocationIds.has(id)) id = `${baseId}-${suffix++}`;
+        usedLocationIds.add(id);
+        const situation = String(loc.situation || loc.currentSituation || loc.description || '이 장소의 현재 상황이 아직 또렷하지 않다.');
         const details = String(loc.details || loc.detail || loc.observation || loc.situation || '');
         const rawIcon = String(loc.icon || '').trim();
         const icon = (!rawIcon || rawIcon === '📍' || rawIcon === '핀' || rawIcon.toLowerCase() === 'pin') ? inferLocationIcon(name, situation) : rawIcon;
@@ -1364,36 +1478,74 @@ function normalizeMap(raw) {
             eventIds: [],
             injectionText: String(loc.injectionText || loc.injection || loc.roleplayContext || ''),
         };
-    });
+    }).filter(Boolean);
+
+    if (discardedLocations.length) {
+        pushDebugLog('map.normalize.locations.discarded', '유효하지 않은 장소만 제외하고 나머지 지도를 사용합니다.', {
+            discarded: discardedLocations,
+            accepted: normalizedLocations.length,
+        });
+    }
 
     if (normalizedLocations.length === 0) {
         throw new Error('API 연결이 불안정합니다.');
     }
 
     const validIds = new Set(normalizedLocations.map(l => l.id));
-    const currentLocationId = validIds.has(map.currentLocationId) ? map.currentLocationId : normalizedLocations[0].id;
+    const locationIdByName = new Map(normalizedLocations.map(loc => [String(loc.name).trim().toLowerCase(), loc.id]));
+    const resolveLocationId = (item = {}) => {
+        if (validIds.has(item.locationId)) return item.locationId;
+        const name = String(item.locationName || item.place || item.location || '').trim().toLowerCase();
+        return locationIdByName.get(name) || '';
+    };
+    const requestedCurrentId = validIds.has(map.currentLocationId)
+        ? map.currentLocationId
+        : locationIdByName.get(String(map.currentLocationName || '').trim().toLowerCase());
+    const currentLocationId = requestedCurrentId || normalizedLocations[0].id;
     const namedPlacements = enforceExactNamedPersonLocations(normalizedLocations);
 
-    const eventCandidates = Array.isArray(map.events) ? map.events.slice(0, 9).map((event, index) => {
-        const locationId = validIds.has(event.locationId) ? event.locationId : currentLocationId;
+    // Split quest collections are a full-map model-output contract only.
+    // Saved maps and single-location refreshes continue to use legacy events[].
+    const hasSeparatedQuestGroups = fullGeneration
+        && (Array.isArray(map.worldEvents) || Array.isArray(map.personalEvents));
+    const worldQuestLimit = generationMode === 'saver' ? 2 : 4;
+    const separatedEvents = hasSeparatedQuestGroups
+        ? [
+            ...(Array.isArray(map.worldEvents) ? map.worldEvents.slice(0, worldQuestLimit).map(event => ({ ...event, questScope: 'world' })) : []),
+            ...(Array.isArray(map.personalEvents) ? map.personalEvents.slice(0, 1).map(event => ({ ...event, questScope: 'personal' })) : []),
+        ]
+        : [];
+    const rawEvents = hasSeparatedQuestGroups ? separatedEvents : (Array.isArray(map.events) ? map.events : []);
+    const eventCandidates = rawEvents.slice(0, eventLimit).map((event, index) => {
+        if (!event || typeof event !== 'object' || Array.isArray(event)) return null;
+        const rawSummary = String(event.summary || '').trim();
+        const rawDetails = String(event.details || '').trim();
+        if (!String(event.title || '').trim() && !rawSummary && !rawDetails) return null;
+        const resolvedLocationId = resolveLocationId(event);
+        // A newly generated split quest must point to one of the locations in
+        // the same response. Do not silently move a world quest into the
+        // protagonists' current location when the model misspells a place.
+        if (hasSeparatedQuestGroups && (!resolvedLocationId || resolvedLocationId === currentLocationId)) return null;
+        const locationId = resolvedLocationId || currentLocationId;
         const fallbackLocationName = normalizedLocations.find(l => l.id === locationId)?.name || '';
         const rawTitle = String(event.title || '').trim();
         const title = rawTitle && !isGenericEventTitle(rawTitle) ? rawTitle : (fallbackLocationName || `위치 ${index + 1}`);
-        const id = String(event.id || safeId(title, `event-${index}`));
+        const id = String(event.id || `event-${safeId(title, `event-${index}`)}-${index + 1}`);
         return {
             id,
             title,
             locationId,
             summary: String(event.summary || '양피지 위에 희미한 사건의 흔적이 남아 있다.'),
             details: String(event.details || event.summary || ''),
-            reward: String(event.reward || event.possibleReward || event.outcome || '해결하면 이 장소의 새로운 단서나 선택지가 열릴 수 있다.'),
+            reward: String(event.reward || event.possibleReward || event.outcome || '보상 정보 없음'),
+            questScope: String(event.questScope || event.scope || 'legacy'),
             severity: String(event.severity || '보통'),
             // New observations from the parchment never become active injections automatically.
             // User choices in the reflection panel are the only source of observed/held/injected states.
             status: 'available',
             injectionText: String(event.injectionText || ''),
         };
-    }) : [];
+    }).filter(Boolean);
     const occupiedEventLocations = new Set();
     const events = eventCandidates.filter(event => {
         if (occupiedEventLocations.has(event.locationId)) return false;
@@ -1406,20 +1558,23 @@ function normalizeMap(raw) {
         if (loc && !loc.eventIds.includes(event.id)) loc.eventIds.push(event.id);
     }
 
-    let footsteps = Array.isArray(map.footsteps) ? map.footsteps.slice(0, FOOTSTEP_LIMIT).map((fp, index) => ({
-        id: String(fp.id || `foot-${index}`),
-        label: simplifyFootstepLabel(fp.label || fp.name || fp.person || '???'),
-        locationId: validIds.has(fp.locationId) ? fp.locationId : currentLocationId,
-        status: String(fp.status || fp.activity || '움직임이 희미하다.'),
-        visibleName: fp.visibleName !== false && !/^\?\?\?$/.test(String(fp.label || fp.name || '')),
-    })) : [];
+    let footsteps = Array.isArray(map.footsteps) ? map.footsteps.slice(0, FOOTSTEP_LIMIT).map((fp, index) => {
+        if (!fp || typeof fp !== 'object' || Array.isArray(fp)) return null;
+        return {
+            id: String(fp.id || `foot-${safeId(fp.label || fp.name || fp.person || 'unknown')}-${index + 1}`),
+            label: simplifyFootstepLabel(fp.label || fp.name || fp.person || '???'),
+            locationId: resolveLocationId(fp) || currentLocationId,
+            status: String(fp.status || fp.activity || '움직임이 희미하다.'),
+            visibleName: fp.visibleName !== false && !/^\?\?\?$/.test(String(fp.label || fp.name || '')),
+        };
+    }).filter(Boolean) : [];
 
     footsteps = synthesizeFootsteps(map, normalizedLocations, footsteps, currentLocationId, namedPlacements);
 
     const top = getMapTopFallbacks(map, normalizedLocations);
 
     return {
-        mapTitle: map.mapTitle || getThemeConfig().shortLabel,
+        mapTitle: getThemeConfig().shortLabel,
         regionName: top.regionName,
         worldSummary: top.worldSummary,
         timeHint: top.timeHint,
@@ -1430,35 +1585,43 @@ function normalizeMap(raw) {
     };
 }
 
+const QUEST_SCHEMA_ITEM = {
+    type: 'object',
+    properties: {
+        title: { type: 'string' },
+        locationName: { type: 'string' },
+        summary: { type: 'string' },
+        details: { type: 'string' },
+        reward: { type: 'string' },
+    },
+    required: ['title', 'locationName', 'summary', 'details', 'reward'],
+};
+
 const MAP_SCHEMA = {
-    name: 'MaraudersMapModel',
-    description: 'A Korean node-style magical map model for the current roleplay region.',
+    name: 'RoleplayAreaModel',
+    description: 'Structured Korean location and scene data for the supplied roleplay.',
     strict: true,
     value: {
         '$schema': 'http://json-schema.org/draft-04/schema#',
         type: 'object',
         properties: {
-            mapTitle: { type: 'string' },
             regionName: { type: 'string' },
             worldSummary: { type: 'string' },
             timeHint: { type: 'string' },
-            currentLocationId: { type: 'string' },
+            currentLocationName: { type: 'string' },
             locations: {
                 type: 'array',
                 items: {
                     type: 'object',
                     properties: {
-                        id: { type: 'string' },
                         name: { type: 'string' },
                         icon: { type: 'string' },
                         situation: { type: 'string' },
                         details: { type: 'string' },
                         present: { type: 'array', items: { type: 'string' } },
                         clues: { type: 'array', items: { type: 'string' } },
-                        eventIds: { type: 'array', items: { type: 'string' } },
-                        injectionText: { type: 'string' },
                     },
-                    required: ['id', 'name', 'icon', 'situation', 'details', 'present', 'clues', 'eventIds', 'injectionText'],
+                    required: ['name', 'icon', 'situation', 'details', 'present', 'clues'],
                 },
             },
             footsteps: {
@@ -1466,57 +1629,324 @@ const MAP_SCHEMA = {
                 items: {
                     type: 'object',
                     properties: {
-                        id: { type: 'string' },
                         label: { type: 'string' },
-                        locationId: { type: 'string' },
+                        locationName: { type: 'string' },
                         status: { type: 'string' },
-                        visibleName: { type: 'boolean' },
                     },
-                    required: ['id', 'label', 'locationId', 'status', 'visibleName'],
+                    required: ['label', 'locationName', 'status'],
                 },
             },
-            events: {
+            worldEvents: {
                 type: 'array',
-                items: {
-                    type: 'object',
-                    properties: {
-                        id: { type: 'string' },
-                        title: { type: 'string' },
-                        locationId: { type: 'string' },
-                        summary: { type: 'string' },
-                        details: { type: 'string' },
-                        reward: { type: 'string' },
-                        severity: { type: 'string' },
-                        status: { type: 'string' },
-                        injectionText: { type: 'string' },
-                    },
-                    required: ['id', 'title', 'locationId', 'summary', 'details', 'reward', 'severity', 'status', 'injectionText'],
-                },
+                items: QUEST_SCHEMA_ITEM,
+            },
+            personalEvents: {
+                type: 'array',
+                items: QUEST_SCHEMA_ITEM,
             },
         },
-        required: ['mapTitle', 'regionName', 'worldSummary', 'timeHint', 'currentLocationId', 'locations', 'footsteps', 'events'],
+        required: ['regionName', 'worldSummary', 'timeHint', 'currentLocationName', 'locations', 'footsteps', 'worldEvents', 'personalEvents'],
     },
 };
 
+function getMapSchema(outputMode = getOutputModeKey()) {
+    const mode = normalizeOutputMode(outputMode);
+    const schema = clone(MAP_SCHEMA);
+    schema.name = mode === 'saver' ? 'RoleplayAreaSaverModel' : 'RoleplayAreaBasicModel';
+    schema.value.properties.locations.maxItems = mode === 'saver' ? 7 : 9;
+    schema.value.properties.footsteps.maxItems = 10;
+    schema.value.properties.worldEvents.maxItems = mode === 'saver' ? 2 : 4;
+    schema.value.properties.personalEvents.maxItems = 1;
+    return schema;
+}
+
 const LOCATION_SCHEMA = {
-    name: 'MaraudersMapLocationRefreshModel',
-    description: 'A refreshed single location model for the current magical map.',
+    name: 'RoleplayLocationRefreshModel',
+    description: 'A refreshed single location and its nearby activity.',
     strict: true,
     value: {
         '$schema': 'http://json-schema.org/draft-04/schema#',
         type: 'object',
         properties: {
             location: MAP_SCHEMA.value.properties.locations.items,
-            events: MAP_SCHEMA.value.properties.events,
+            events: { type: 'array', items: QUEST_SCHEMA_ITEM },
             footsteps: MAP_SCHEMA.value.properties.footsteps,
         },
         required: ['location', 'events', 'footsteps'],
     },
 };
 
+const DISCOVERY_ITEM_SCHEMA = {
+    type: 'object',
+    properties: {
+        category: { type: 'string' },
+        title: { type: 'string' },
+        locationName: { type: 'string' },
+        participants: { type: 'array', items: { type: 'string' } },
+        body: { type: 'string' },
+        anchors: { type: 'array', items: { type: 'string' } },
+        motifKey: { type: 'string' },
+        continuationOf: { type: 'string' },
+    },
+    required: ['category', 'title', 'locationName', 'participants', 'body', 'anchors', 'motifKey', 'continuationOf'],
+};
+
+function getDiscoverySchema(outputMode = getOutputModeKey()) {
+    const mode = normalizeOutputMode(outputMode);
+    return {
+        name: mode === 'saver' ? 'SurroundingScenesSaverModel' : 'SurroundingScenesBasicModel',
+        description: 'Distinct Korean surrounding scenes grounded in the supplied roleplay continuity.',
+        strict: true,
+        value: {
+            '$schema': 'http://json-schema.org/draft-04/schema#',
+            type: 'object',
+            properties: {
+                items: {
+                    type: 'array',
+                    maxItems: mode === 'saver' ? 5 : 7,
+                    items: DISCOVERY_ITEM_SCHEMA,
+                },
+            },
+            required: ['items'],
+        },
+    };
+}
+
+function normalizeDiscoveryText(value) {
+    return String(value || '')
+        .normalize('NFKC')
+        .toLowerCase()
+        .replace(/[^a-z0-9가-힣]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function normalizeDiscoveryCategory(value) {
+    const key = normalizeDiscoveryText(value);
+    const categories = ['person', 'creature', 'relationship', 'object', 'message', 'place', 'environment'];
+    const exact = categories.find(category => key === category);
+    if (exact) return exact;
+    if (/인물|npc|person/.test(key)) return 'person';
+    if (/동물|생물|크리처|creature|animal/.test(key)) return 'creature';
+    if (/관계|relationship/.test(key)) return 'relationship';
+    if (/물건|아이템|object|item/.test(key)) return 'object';
+    if (/메시지|연락|방문|배달|message|visit|delivery/.test(key)) return 'message';
+    if (/장소|place/.test(key)) return 'place';
+    return 'environment';
+}
+
+function makeDiscoveryFingerprint(item = {}) {
+    const people = (item.participants || []).map(normalizeDiscoveryText).filter(Boolean).sort().slice(0, 4).join('+');
+    const motif = normalizeDiscoveryText(item.motifKey || item.title).split(' ').slice(0, 12).join(' ');
+    const location = normalizeDiscoveryText(item.locationName || item.locationId);
+    return [normalizeDiscoveryCategory(item.category), people, location, motif].join('|');
+}
+
+function discoveryTextSimilarity(left, right) {
+    const a = new Set(normalizeDiscoveryText(left).split(' ').filter(Boolean));
+    const b = new Set(normalizeDiscoveryText(right).split(' ').filter(Boolean));
+    if (!a.size || !b.size) return 0;
+    let overlap = 0;
+    a.forEach(token => { if (b.has(token)) overlap += 1; });
+    return overlap / (a.size + b.size - overlap);
+}
+
+function isDuplicateDiscovery(candidate, previous) {
+    if (!candidate || !previous) return false;
+    if (makeDiscoveryFingerprint(candidate) === String(previous.fingerprint || makeDiscoveryFingerprint(previous))) return true;
+    const sameCategory = normalizeDiscoveryCategory(candidate.category) === normalizeDiscoveryCategory(previous.category);
+    const sameLocation = normalizeDiscoveryText(candidate.locationName) === normalizeDiscoveryText(previous.locationName);
+    const candidatePeople = new Set((candidate.participants || []).map(normalizeDiscoveryText).filter(Boolean));
+    const previousPeople = (previous.participants || previous.focalParticipants || []).map(normalizeDiscoveryText).filter(Boolean);
+    const sharedPerson = previousPeople.some(person => candidatePeople.has(person));
+    const premiseSimilarity = Math.max(
+        discoveryTextSimilarity(candidate.motifKey || candidate.title, previous.motifKey || previous.titleKey),
+        discoveryTextSimilarity(candidate.title, previous.title || previous.titleKey),
+    );
+    return premiseSimilarity >= 0.62 && ((sameCategory && sameLocation) || sharedPerson);
+}
+
+function discoveryFingerprintParts(item = {}) {
+    return {
+        fingerprint: item.fingerprint || makeDiscoveryFingerprint(item),
+        category: normalizeDiscoveryCategory(item.category),
+        focalParticipants: (item.participants || []).slice(0, 4),
+        locationName: String(item.locationName || ''),
+        motifKey: String(item.motifKey || item.title || ''),
+        titleKey: normalizeDiscoveryText(item.title),
+        createdAt: nowStamp(),
+        outcome: String(item.outcome || 'shown'),
+    };
+}
+
+function normalizeDiscoveries(raw, map, history = [], outputMode = getOutputModeKey()) {
+    if (!isValidMapData(map)) throw new Error('주변 장면을 연결할 지도 정보가 없습니다.');
+    const mode = normalizeOutputMode(outputMode);
+    const maximum = mode === 'saver' ? 5 : 7;
+    const source = Array.isArray(raw?.items) ? raw.items : (Array.isArray(raw?.discoveries) ? raw.discoveries : []);
+    const locationById = new Map(map.locations.map(location => [String(location.id), location]));
+    const locationByName = new Map(map.locations.map(location => [normalizeDiscoveryText(location.name), location]));
+    const accepted = [];
+    const rejected = [];
+    const stamp = Date.now();
+
+    for (let index = 0; index < source.length && accepted.length < maximum; index++) {
+        const item = source[index];
+        if (!item || typeof item !== 'object' || Array.isArray(item)) {
+            rejected.push({ index, reason: 'invalid object' });
+            continue;
+        }
+        const location = locationById.get(String(item.locationId || ''))
+            || locationByName.get(normalizeDiscoveryText(item.locationName));
+        const title = String(item.title || '').replace(/\s+/g, ' ').trim();
+        const body = String(item.body || item.scene || item.details || '').replace(/\s+/g, ' ').trim();
+        const rawParticipants = Array.isArray(item.participants) ? item.participants : (Array.isArray(item.people) ? item.people : []);
+        const rawAnchors = Array.isArray(item.anchors) ? item.anchors : (Array.isArray(item.references) ? item.references : []);
+        const participants = uniqueStrings(rawParticipants, 8);
+        const anchors = uniqueStrings(rawAnchors, 8);
+        if (!location || !title || !body) {
+            rejected.push({ index, reason: !location ? 'unknown location' : (!title ? 'empty title' : 'empty body') });
+            continue;
+        }
+        const normalized = {
+            id: `discovery-${stamp}-${index + 1}-${safeId(title, 'scene')}`,
+            type: 'discovery',
+            category: normalizeDiscoveryCategory(item.category),
+            title,
+            locationId: location.id,
+            locationName: location.name,
+            participants,
+            body,
+            anchors,
+            motifKey: String(item.motifKey || title).replace(/\s+/g, ' ').trim(),
+            continuationOf: String(item.continuationOf || '').trim(),
+            createdAt: nowStamp(),
+        };
+        normalized.fingerprint = makeDiscoveryFingerprint(normalized);
+        const repeatedInBatch = accepted.some(previous => isDuplicateDiscovery(normalized, previous));
+        const repeatedInHistory = !normalized.continuationOf && (history || []).some(previous => isDuplicateDiscovery(normalized, previous));
+        const repeated = repeatedInBatch || repeatedInHistory;
+        if (repeated) {
+            rejected.push({ index, reason: 'duplicate', fingerprint: normalized.fingerprint });
+            continue;
+        }
+        accepted.push(normalized);
+    }
+
+    if (rejected.length) {
+        pushDebugLog('discovery.normalize.discarded', '중복되거나 연결할 수 없는 주변 장면만 제외했습니다.', { rejected, accepted: accepted.length });
+    }
+    if (!accepted.length) throw new Error('사용할 수 있는 주변 장면을 읽지 못했습니다.');
+    return accepted;
+}
+
+function appendDiscoveryHistory(memory, items) {
+    const next = (items || []).map(discoveryFingerprintParts);
+    const seen = new Set();
+    memory.discoveryHistory = [...next, ...(memory.discoveryHistory || [])]
+        .filter(entry => {
+            const key = String(entry?.fingerprint || '');
+            if (!key || seen.has(key)) return false;
+            seen.add(key);
+            return true;
+        })
+        .slice(0, DISCOVERY_HISTORY_LIMIT);
+}
+
+function reconcileTransientDiscoveries(memory, map) {
+    if (!memory || !isValidMapData(map) || !Array.isArray(memory.discoveries)) return;
+    const byId = new Map(map.locations.map(location => [String(location.id), location]));
+    const byName = new Map(map.locations.map(location => [normalizeDiscoveryText(location.name), location]));
+    memory.discoveries = memory.discoveries.map(item => {
+        const location = byId.get(String(item.locationId || ''))
+            || byName.get(normalizeDiscoveryText(item.locationName));
+        return location ? { ...item, locationId: location.id, locationName: location.name } : null;
+    }).filter(Boolean);
+}
+
+function updateDiscoveryHistoryOutcome(memory, discovery, outcome) {
+    const fingerprint = discovery?.fingerprint || makeDiscoveryFingerprint(discovery || {});
+    const entry = (memory.discoveryHistory || []).find(item => item?.fingerprint === fingerprint);
+    if (entry) entry.outcome = String(outcome || entry.outcome || 'shown');
+}
+
+function getDiscoveryCategoryIcon(category) {
+    return {
+        person: '💬',
+        creature: '🐾',
+        relationship: '🪢',
+        object: '✦',
+        message: '✉️',
+        place: '🚪',
+        environment: '◇',
+    }[normalizeDiscoveryCategory(category)] || '✦';
+}
+
+function buildDiscoveryPrompt(outputMode = getOutputModeKey()) {
+    const memory = ensureMemory();
+    const mode = normalizeOutputMode(outputMode);
+    const config = OUTPUT_MODE_CONFIGS[mode];
+    const map = memory.map;
+    const mapContext = (map?.locations || []).map(location => {
+        const footsteps = (map.footsteps || [])
+            .filter(footstep => footstep.locationId === location.id)
+            .map(footstep => `${footstep.label}: ${footstep.status}`);
+        return `- ${location.name}\n  Current scene: ${stripLong(location.situation, 420)}\n  Present: ${(location.present || []).join(', ') || '(none visible)'}\n  Movement: ${footsteps.join(' / ') || '(none)'}`;
+    }).join('\n');
+    const history = (memory.discoveryHistory || []).slice(0, DISCOVERY_HISTORY_LIMIT).map(entry => ({
+        category: entry.category,
+        focalParticipants: entry.focalParticipants,
+        locationName: entry.locationName,
+        motifKey: entry.motifKey,
+        titleKey: entry.titleKey,
+        outcome: entry.outcome,
+    }));
+    return `
+Create ${config.discoveryRange} distinct surrounding scenes currently unfolding in the supplied roleplay world.
+
+Use the recent roleplay as the primary source, followed by the character card, persona, current area, and reflected context.
+
+Each scene:
+- centers on a concrete situation already in motion;
+- names the exact returned location where it is occurring;
+- uses confirmed named participants whenever the context provides them;
+- connects to at least one confirmed person, place, object, relationship, promise, conflict, or recent event and records those facts in anchors;
+- states who is present, where they are, what they are doing now, and what remains unsettled;
+- is written as 4 to 6 complete natural Korean narrative sentences, approximately 250 to 400 Korean characters;
+- provides a scene with enough immediate action, emotional relevance, practical consequence, or world activity to enter directly or keep as meaningful background context.
+
+Across the set, vary category, focal participants, location, central object, premise, and emotional tone. Draw from person, relationship, known object, animal or creature, message or visit or delivery, changed familiar place, and the current world's institution or environment according to the supplied continuity.
+
+Use one newly named participant with a clear role only when the supplied context needs one. Choose fresh focal combinations and premises from the recent history. When actual roleplay has advanced an earlier scene, fill continuationOf with the earlier motif or title and describe its changed current state.
+
+Return category, title, locationName, participants, body, anchors, motifKey, and continuationOf for every item. Internal IDs, marker placement, and roleplay reflection text are added locally.
+
+[Current area]
+Region: ${map?.regionName || ''}
+Time: ${map?.timeHint || ''}
+${mapContext || '(no locations)'}
+
+[Reflected context]
+${buildActiveInjectionSummary() || '(none)'}
+
+[Recent scene history]
+${JSON.stringify(history, null, 2)}
+
+[Character card]
+${getCharacterSummary() || '(unavailable)'}
+
+[Persona]
+${getPersonaSummary() || '(unavailable)'}
+
+[Recent roleplay]
+${getChatSnapshot(10) || '(no recent roleplay)'}
+
+Return JSON only.`;
+}
+
 const FOOTSTEP_PROFILE_SCHEMA = {
-    name: 'MaraudersMapFootstepProfileModel',
-    description: 'A Korean character status card generated only after the user clicks a footstep on the magical map.',
+    name: 'RoleplayPersonStatusModel',
+    description: 'A Korean character status card grounded in the supplied roleplay.',
     strict: true,
     value: {
         '$schema': 'http://json-schema.org/draft-04/schema#',
@@ -1541,124 +1971,164 @@ const FOOTSTEP_PROFILE_SCHEMA = {
     },
 };
 
-function buildMapPrompt() {
-    const userName = getCurrentUserName();
-    const charName = getCurrentCharacterName();
-    const theme = getThemeConfig();
-    const themeInstruction = isModernTheme()
-        ? 'The current theme is Location tracker (Modern AU). The UI looks like a bright tablet/phone location-tracking app. Interpret places as cafes, homes, studios, streets, stations, parks, shops, schools, offices, or other spaces that fit the current AU. If the current world is fantasy or magical, do not force it into a dark modern tone; describe it as a bright tracking app reading that world. Footsteps will appear as glowing dark-red location signals.'
-        : "The current theme is Marauder's Map (HP AU). Keep the parchment, ink, and footprint mood, but do not force Hogwarts elements if the current world is not Harry Potter.";
+
+function buildQuestContinuityRegistry(memory = ensureMemory()) {
+    const map = memory?.map;
+    const locationById = new Map((map?.locations || []).map(location => [String(location.id), location.name]));
+    const peopleByLocation = new Map();
+    const addPerson = (locationName, person) => {
+        const place = String(locationName || '').trim();
+        const name = String(person || '').replace(/\s+/g, ' ').trim();
+        if (!place || !name || isGenericPersonLabel(name)) return;
+        const names = peopleByLocation.get(place) || [];
+        peopleByLocation.set(place, uniqueStrings([...names, name], 8));
+    };
+
+    for (const location of map?.locations || []) {
+        for (const person of location.present || []) addPerson(location.name, person);
+    }
+    for (const footstep of map?.footsteps || []) {
+        addPerson(locationById.get(String(footstep.locationId)), footstep.label);
+    }
+
+    const locationLines = (map?.locations || []).slice(0, 12).map(location => {
+        const people = peopleByLocation.get(location.name) || [];
+        return `- ${location.name}${people.length ? ` | associated people: ${people.join(', ')}` : ''}`;
+    });
+    const trackedLines = Object.values(memory?.trackedPeople || {}).slice(0, 12).map(person => {
+        const name = String(person?.name || '').replace(/\s+/g, ' ').trim();
+        if (!name) return '';
+        const location = String(person?.lastLocation || '').replace(/\s+/g, ' ').trim();
+        const role = stripLong(person?.summary || person?.lastActivity || '', 140);
+        return `- ${name}${location ? ` | last known place: ${location}` : ''}${role ? ` | known context: ${role}` : ''}`;
+    }).filter(Boolean);
+
+    if (!locationLines.length && !trackedLines.length) return '(none available yet)';
+    return [
+        locationLines.length ? `Earlier returned locations and associated people:\n${locationLines.join('\n')}` : '',
+        trackedLines.length ? `Tracked or previously identified people:\n${trackedLines.join('\n')}` : '',
+    ].filter(Boolean).join('\n');
+}
+
+function buildMapPrompt(outputMode = getOutputModeKey()) {
+    const memory = ensureMemory();
+    const mode = normalizeOutputMode(outputMode);
+    const config = OUTPUT_MODE_CONFIGS[mode];
+    const densityRules = mode === 'saver'
+        ? `Choose 4 to 7 locations, then use the matching density:\n- 4 locations: situation 8 to 10 Korean sentences; details 4 sentences.\n- 5 locations: situation 7 to 8 Korean sentences; details 3 to 4 sentences.\n- 6 locations: situation 5 to 7 Korean sentences; details 3 sentences.\n- 7 locations: situation 4 to 5 Korean sentences; details 3 sentences.`
+        : `Create 6 to 9 locations. Each situation has 8 to 12 Korean sentences and each details field adds 4 to 6 Korean sentences. Balance the set so location count, prose density, footsteps, and quests do not all reach their maximum at once.`;
+    const questAllocation = mode === 'saver'
+        ? '- worldEvents: exactly 2 independent parallel-world quests.\n- personalEvents: 0 or 1 protagonist-linked quest.\n- Total: 2 to 3 quests.'
+        : '- worldEvents: 3 to 4 independent parallel-world quests.\n- personalEvents: 0 or 1 protagonist-linked quest.\n- Total: 3 to 5 quests.';
     return `
-You are a roleplay map / location-tracking extension that can read any fictional world.
-${themeInstruction}
+Read the supplied roleplay context and return structured location data for the same world, time, and ongoing continuity.
 
-Read the current SillyTavern chat, character card, and recent roleplay context. Create the JSON data shown on the map screen.
+Output density:
+- Mode: ${config.label}
+- Locations: ${config.locationRange}
+- Location situation length: ${config.situationRange} Korean sentences; details: ${config.detailsRange} Korean sentences
+- Footsteps or person movement signals: 6 to 10
+- Quest allocation:
+${questAllocation}
+- Every quest summary and details field: 3 to 5 complete Korean sentences each
+${densityRules}
 
-Core purpose:
-- When the roleplay slows down, the user should open the map and immediately see where it would be interesting to go next.
-- Each location must feel like a live scene candidate, not just scenery.
-- The map is observational. Nothing becomes canon in the roleplay until the user explicitly chooses to inject it.
+Map structure:
+- regionName is the concrete area covered by this snapshot.
+- timeHint states the current time, scene phase, or immediate timing.
+- worldSummary describes the active area in 1 to 2 Korean sentences.
+- currentLocationName exactly matches one returned location name.
+- Every location has a specific in-world name, a fitting emoji icon, a situation, details, present, and clues.
+- Every footstep has a person name or established title, the exact returned locationName, and a concrete visible activity in status.
+- Every worldEvents and personalEvents quest has a concrete title, the exact returned locationName, summary, details, and reward.
 
-Rules:
-- Set mapTitle to the current theme label: ${theme.shortLabel}.
-- Top summary fields are mandatory and must be specific, not generic:
-  - regionName: the actual current area/region name shown at the top of the map, e.g. "TVA 섹터 4 분석관 구역" or "호그와트 3층 복도".
-  - timeHint: the current timing, scene phase, or moment, e.g. "부상 직후 복귀 시점", "심야 순찰 시간", or "점심시간 직전".
-  - worldSummary: a short Korean description of the active map area in 1 to 2 sentences. Do not write a meta explanation such as "based on the current roleplay" or "drawn by parchment".
-- Do not create alternate top-level keys such as currentLocation, currentRegion, or summary instead of regionName, timeHint, and worldSummary.
-- Write ordinary descriptive UI text in Korean. For recurring character and place names, preserve whichever display form appears naturally in the current roleplay. Do not translate names, force them into Korean or English, or normalize them merely for consistency. Fixed theme/UI names such as Marauder's Map, Mischief Managed, and Location tracker may remain in their established form.
-- Write injectionText only in English.
-- If the theme is Modern AU, use the feeling of a location tracker / place discovery app. If it is HP AU, keep the parchment-map mood.
-- Do not make a fixed Harry Potter map unless the current world actually calls for it.
-- Create 6 to 9 clickable locations. If the scene is very small, 6 is acceptable. Prefer fewer, distinct, useful places over a crowded list of thin placeholders.
-- Every location.name must be a real, specific in-world place name. Never leave name blank and never use placeholders such as "장소 1", "위치 2", "Location 3", or "Place 4".
-- Mix the current location, nearby paths, public places, private places, crowded places, quiet places, and suspicious places.
-- Treat all location cards as one simultaneous map snapshot. Keep one display spelling for each named person and assign that person one current location only; never translate or duplicate a name across present lists or footsteps.
-- Place NPCs only where they logically could be at this time. Do not place someone merely because their name appeared recently.
-- For present, first judge who is actually visible in this exact place and moment, not in a nearby larger place. Use 0 to 6 entries. Empty is allowed; if only {{user}} and {{char}} are alone, list only them. If a crowd is logically visible, write 1 or 2 complete 👥 crowd entries. Each 👥 entry must be a full Korean phrase in this shape: "👥 [what kind of group] [what they are doing or where they are gathered] [plausible rough count]". Examples: "👥 벽난로 근처에서 휴식을 취하는 학생들 15명", "👥 매표소 앞에서 줄을 선 방문객들 20여 명", "👥 연회장 테이블 사이에서 떠드는 사람들 100여 명". Never output only a number like "150여 명" or only a group label like "학생들". The count must fit the place scale, time, event, and density: do not use tiny counts for huge events or huge counts for narrow/private spots. A 👥 entry must describe a group, never one named person.
-- Use named world-appropriate people when natural. Use unknown/blurred identities only when secrecy is intentional.
-- Follow the current roleplay first when placing {{user}} and {{char}}.
-- Use different location.icon emojis that fit each place. Do not use 📍 for everything.
-- Build every location as one coherent, camera-visible moment. First decide the physical identity of the place and who is actually there now; then make situation, present, clues, and related events describe that same shared moment.
-- The 🎨 location palette uses two complementary layers for one exact, camera-visible place and moment. Both fields are required to do different jobs, and both should preserve the physical reality of this location.
-  1) location.situation is the establishing view. Let the reader physically enter the place before reading its relationship tension: identify the space through its actual layout, scale, entrances, surfaces, furniture, objects, light, shadow, and the way people move or gather there. Make the location recognizable even with character names removed.
-  Give the physical world equal weight with the plot. Whenever the place naturally has a temperature, air quality, smell, sound, texture, material, moisture, wind, smoke, dust, or light condition, weave one or more of those cues into a concrete observation rather than reducing the space to a broad label. A fire should change the air and surfaces around it; a library's quiet should have a source; stone, fabric, paper, rain, food, dust, or wood should feel like they belong to the particular place when relevant.
-  Then show the immediate visible activity within that physical frame: where people are positioned, what they touch, carry, guard, leave open, avoid, or watch; what sound changes; what has interrupted the ordinary rhythm. Let social pressure and emotion be legible through these local facts.
-  2) location.details is the second angle from the same place and moment. It must add a distinct local beat rather than restating situation: another corner of the room, a nearby trace, a person at the edge of the scene, a prepared object, an overheard cue, an unclaimed seat, a hidden note, a changed gesture, or a small risk. It may reveal why this place matters later, but that future possibility must be grounded in a visible or locally knowable sign already present here.
-  Across these two layers, write enough for the location to read as a small, playable quest log rather than a brief postcard:
-  - location.situation must be 8 to 12 Korean sentences, ideally about 700 to 1100 Korean characters. It must carry the physical room/street, the people presently there, what is visibly happening, and the local tension, rumor, risk, or invitation.
-  - location.details must add 4 to 6 Korean sentences of deeper local clues, mood, risk, or anticipation without repeating situation. Use the second angle to reveal another part of the same space or a more private current pressure.
-  Do not fill length with abstract character commentary. Use physical atmosphere, objects, movement, dialogue fragments, positions, traces, and locally visible signs to make every sentence belong to this exact place and moment.
-- When people are physically present, place them naturally within the space and show their visible posture, task, attention, interaction, or movement. Named characters should appear naturally whenever this exact scene calls for them. Every named person mentioned in situation should also be listed in present, and their visible action should align across the palette and any related quest.
-- Let quiet locations earn their interest through their distinctive structure, objects, routine, emptiness, a private expectation, or a small live tension; let busy locations earn it through the visible flow of people, competing activity, and what that activity makes possible.
-- situation carries the establishing physical moment and details carries the distinct second local beat. Together they should make the space, current action, and local anticipation readable without leaving the room or turning into detached character commentary.
-- location.details is rendered directly below situation as a companion paragraph. Keep it in the same place and moment while expanding the scene through a different local observation.
-- location.injectionText must be English. Summarize the location mood, present characters, events, and noticeable clues in 1 to 2 roleplay-context paragraphs. Do not mention the UI or buttons.
-- present must list the people or groups physically available in the same scene described by situation.
-- Create exactly 6 to 10 footsteps. Each footstep should be a meaningful person or movement signal. Put only a name/title in label; put actions or descriptions in status. Use "???" when the story intentionally keeps the identity hidden.
-- Create 3 to 5 events. Assign no more than one event to each locationId, and allow some locations to have no event. Never stack multiple events on one location. Keep every event inside the established roleplay setting and confirmed facts; use the actual roleplay setting, recent chat, character card, and scene context as the content source rather than the visual UI theme. Use this required lineup across the event list: one immediate-continuity event may follow the active personal, secret, or emotional thread if that thread is active now; one independent NPC/group event should already be underway among side characters; one setting/world event should come from the institution, community, environment, organization, or local system such as notices, patrols, classes, rules, rumors, missions, investigations, place changes, missing objects, deliveries, weather, magic, technology, festivals, or public incidents; one playable opportunity or complication should offer a concrete clue, access, item, route, safety, reputation, favor, information, or a side character's goodwill. Events 2 to 4 should still make sense with {{user}} and {{char}} elsewhere, while remaining close enough for them to discover, join, stop, help, exploit, or be affected by later. Each event needs its own actor, goal, obstacle, and consequence. Anchor each event to one exact location. The title should name the concrete situation. summary and details must each be 3 to 5 Korean sentences and should make a playable next scene obvious without deciding the user's action. Every event must include reward: one concise Korean line naming the plausible gain after resolving it.
-- Every event must include reward: one concise Korean line naming a plausible thing the user might gain after resolving it. Prefer a concrete item, clue, changed relationship, invitation, promise, favor, rumor, secret, or private information. Keep it grounded in the world and scene; do not write an abstract outcome or arbitrary videogame loot.
-- Distribute events across the map according to where their scene naturally belongs. With 4+ events, use at least 2 different locationIds and preferably 3+.
-- events[].status must start as "available".
-- Make every location feel playable through its specific space, visible life, tension, movement, invitation, or possibility.
+Location writing:
+- Treat all locations as one simultaneous snapshot of the supplied roleplay.
+- Keep each recurring person in one location and preserve the display spelling used in the roleplay.
+- present contains only people or groups physically visible at that exact place and moment, from 0 to 6 entries.
+- A visible group is one complete Korean phrase stating what kind of group is there, what they are doing or where they gather, and a plausible rough count.
+- situation establishes the recognizable physical place: layout, entrances, surfaces, furniture or structures, light, air, sound, material, movement, and the activity already occurring there.
+- details is a second view of the same place and moment. Add a distinct local beat, object, exchange, trace, risk, expectation, or change without repeating situation.
+- Place named people through visible posture, movement, work, dialogue, objects, attention, avoidance, or interaction. Align their actions across situation, present, footsteps, and quests.
+- Quiet places remain playable through a concrete routine, object, expectation, interruption, or unsettled detail. Busy places remain readable through the visible flow of people and competing activity.
+- clues are short locally observable anchors that can help continue a scene.
 
-Current user name: ${userName}
-Current character name: ${charName}
+Quest writing:
+- The protagonists are the Current user and Current character named below. The protagonists' current activity belongs in currentLocationName, location.situation, and location.details.
+- Across both quest arrays, use returned locations other than currentLocationName and assign at most one quest to each location.
+- Every worldEvents quest is already unfolding at another returned location during the same time period. Its causal chain begins with a secondary character, named group, institution, community, environment, organization, or local system rather than the protagonists' latest conversation.
+- Give every worldEvents quest a specific actor, immediate goal, active obstacle, meaningful consequence if unresolved, and a believable entry point through which the protagonists could hear about it, encounter it, join it, help it, oppose it, investigate it, compete, negotiate, or otherwise become involved.
+- Prefer established secondary characters, groups, places, and unresolved world facts from the supplied continuity. When a new actor is useful, give that actor a specific name or clearly identified group role suited to the current setting.
+- Diversify worldEvents across distinct forms suited to the supplied world: a secondary character's plan or problem; an open recruitment, contest, event, service, or commission; a change involving an institution, community, environment, organization, or local system; and a social, comic, practical, risky, or advantageous opportunity.
+- Every worldEvents quest continues through its own actors and circumstances whether or not the protagonists arrive. Vary the central actor, location, objective, obstacle, tone, and kind of choice.
+- Use personalEvents only when a confirmed earlier action by either protagonist has produced a concrete response elsewhere. Place that response in the hands of another named character or group who is waiting, searching, preparing, reacting, demanding, offering, concealing, confronting, or changing plans because of what occurred.
+- A personalEvents quest creates a new external decision point. Return an empty personalEvents array when the supplied continuity does not support a specific external consequence.
+- Give every quest an actionable objective, obstacle, entry point, consequence, and usable reward. Surrounding activity whose interest comes from observation alone belongs in the relevant location description.
+- reward names a concrete, usable result that the people or situation can plausibly provide: a named item, key, equipment, access or use right, specific invitation or appointment, defined role or authority, one favor from a named NPC, or evidence or information with a clear subject and source.
+- State any meaningful limit, target, or permitted use in the reward itself.
 
-[Character card summary]
+Names and continuity:
+- Write descriptive content in natural Korean while preserving established character and place names in their current display form.
+- Use confirmed roleplay facts as the primary source, followed by the character card and persona.
+- Keep unknown identities hidden only when the supplied story has already made that uncertainty meaningful.
+- Return only fields requested by the schema. IDs, internal status, map title, event links, visibility flags, and roleplay reflection text are added locally.
+
+Current user: ${getCurrentUserName()}
+Current character: ${getCurrentCharacterName()}
+
+[Character card]
 ${getCharacterSummary() || '(unavailable)'}
 
-[Recent chat]
-${getChatSnapshot() || '(no recent chat)'}
+[Persona]
+${getPersonaSummary() || '(unavailable)'}
+
+[Wider continuity leads]
+${buildQuestContinuityRegistry(memory)}
+Use these as continuity leads for recurring people and places. The recent roleplay decides which of them still belong in the current snapshot.
+
+[Recent roleplay]
+${getChatSnapshot(10) || '(no recent roleplay)'}
 
 Return JSON only.`;
 }
 
 function buildLocationRefreshPrompt(location) {
     const memory = ensureMemory();
-    const map = memory.map;
     return `
-You are a roleplay map extension. The user refreshed only one selected location.
-Do not rebuild the whole map. Re-observe only the location below and return updated JSON for that location.
+Re-observe one existing roleplay location using the supplied current continuity. Return only the refreshed location, zero or one quest for that location, and the people movement signals visible there.
 
-Rules:
-- Write ordinary descriptive text in Korean. For recurring character and place names, preserve whichever display form appears naturally in the current roleplay. Do not translate names, force them into Korean or English, or normalize them merely for consistency. Fixed theme/UI names such as Marauder's Map, Mischief Managed, and Location tracker may remain in their established form.
-- Write injectionText only in English.
-- Keep this location id and name: id=${location.id}, name=${location.name}
-- Use an emoji icon that fits the location. Do not use 📍 for everything.
-- Rebuild this selected location as one coherent, camera-visible moment. First decide the physical identity of this exact place and who is physically here now; then make situation, present, clues, and related events describe that same shared moment.
-- The 🎨 location palette uses two complementary layers for one exact, camera-visible place and moment. Both fields are required to do different jobs, and both should preserve the physical reality of this location.
-  1) situation is the establishing view. Let the reader physically enter the place before reading its relationship tension: identify the space through its actual layout, scale, entrances, surfaces, furniture, objects, light, shadow, and the way people move or gather there. Make the location recognizable even with character names removed.
-  Give the physical world equal weight with the plot. Whenever the place naturally has a temperature, air quality, smell, sound, texture, material, moisture, wind, smoke, dust, or light condition, weave one or more of those cues into a concrete observation rather than reducing the space to a broad label. A fire should change the air and surfaces around it; a library's quiet should have a source; stone, fabric, paper, rain, food, dust, or wood should feel like they belong to the particular place when relevant.
-  Then show the immediate visible activity within that physical frame: where people are positioned, what they touch, carry, guard, leave open, avoid, or watch; what sound changes; what has interrupted the ordinary rhythm. Let social pressure and emotion be legible through these local facts.
-  2) details is the second angle from the same place and moment. It must add a distinct local beat rather than restating situation: another corner of the room, a nearby trace, a person at the edge of the scene, a prepared object, an overheard cue, an unclaimed seat, a hidden note, a changed gesture, or a small risk. It may reveal why this place matters later, but that future possibility must be grounded in a visible or locally knowable sign already present here.
-  Across these two layers, write enough for the location to read as a small, playable quest log rather than a brief postcard:
-  - situation must be 8 to 12 Korean sentences, ideally about 700 to 1100 Korean characters. It must carry the physical room/area, the people presently there, what is visibly happening, and the local tension, rumor, risk, or invitation.
-  - details must add 4 to 6 Korean sentences of deeper local clues, mood, risk, or anticipation without repeating situation. Use the second angle to reveal another part of the same space or a more private current pressure.
-  Do not fill length with abstract character commentary. Use physical atmosphere, objects, movement, dialogue fragments, positions, traces, and locally visible signs to make every sentence belong to this exact place and moment.
-- When people are present, place them naturally within the room or area and show visible posture, task, attention, interaction, or movement. Every named person mentioned in situation should also appear in present, and their visible action should align across the palette and any related quest.
-- situation carries the establishing physical moment and details carries the distinct second local beat. Together they should make the space, current action, and local anticipation readable without leaving the room or turning into detached character commentary.
-- details is rendered directly below situation as a companion paragraph. Keep it in the same place and moment while expanding the scene through a different local observation.
-- For present, first judge who is actually visible in this exact room or area, not in a nearby larger place. Use 0 to 6 entries. Empty is allowed; if only {{user}} and {{char}} are alone, list only them. If a crowd is logically visible, write 1 or 2 complete 👥 crowd entries. Each 👥 entry must be a full Korean phrase in this shape: "👥 [what kind of group] [what they are doing or where they are gathered] [plausible rough count]". Examples: "👥 벽난로 근처에서 휴식을 취하는 학생들 15명", "👥 매표소 앞에서 줄을 선 방문객들 20여 명", "👥 연회장 테이블 사이에서 떠드는 사람들 100여 명". Never output only a number like "150여 명" or only a group label like "학생들". The count must fit the place scale, time, event, and density. A 👥 entry must describe a group, never one named person. Use "???" only when the story intentionally keeps an identity hidden. Footstep labels are names or titles, and status carries actions.
-- Create 0 or 1 related event with status "available". This location may have no event. If you create one, keep it inside the established roleplay setting and confirmed facts; use the actual roleplay setting, recent chat, character card, and this selected location as the content source rather than the visual UI theme. It should be a local/world/NPC event already underway, a playable opportunity or complication, or one active personal-continuity beat tied to this exact location. Give it a clear actor, goal, obstacle, and consequence. Anchor it to this exact location and moment. The title should name the concrete situation. summary and details must each be 3 to 5 Korean sentences and should make a playable next scene obvious without deciding the user's action. Include reward: one concise Korean line naming the plausible gain after resolving it.
-- location.injectionText must be English roleplay context for the next response. Mention the place mood, present characters, and events naturally. Do not mention the map UI.
-- Current map region: ${map?.regionName || 'unknown'}
+Location to preserve: ${location.name}
+
+Writing requirements:
+- location.name remains exactly ${location.name}.
+- Write natural Korean while preserving established character and place names in their current display form.
+- location.situation is 8 to 12 complete Korean sentences. Establish the recognizable physical space, its atmosphere, people, current activity, and immediate tension through concrete observable details.
+- location.details adds 4 to 6 complete Korean sentences from a distinct second angle in the same place and moment.
+- location.present contains 0 to 6 people or complete group descriptions physically visible here.
+- location.clues contains short locally observable anchors.
+- Each footstep uses a person name or established title, locationName ${location.name}, and a concrete visible activity in status.
+- Keep the protagonists' activity already under way in location.situation and location.details.
+- Return zero or one quest. Include one only when a separate named person or group at this location has a specific aim, obstacle, consequence, and unresolved entry point through which the protagonists could become involved. Its summary and details each contain 3 to 5 complete Korean sentences.
+- A quest reward is a concrete result the people or situation can plausibly provide: a named item, key, equipment, access or use right, specific invitation or appointment, defined role or authority, one favor from a named NPC, or evidence or information with a clear subject and source.
+- Return only schema fields. Internal IDs, status, links, and roleplay reflection text are added locally.
 
 [Location before refresh]
 ${JSON.stringify(location, null, 2)}
 
-[Current map memory]
+[Current area memory]
 ${summarizeMapMemory(memory)}
 
-[Character card summary]
+[Character card]
 ${getCharacterSummary() || '(unavailable)'}
 
-[Recent chat]
-${getChatSnapshot() || '(no recent chat)'}
+[Persona]
+${getPersonaSummary() || '(unavailable)'}
+
+[Recent roleplay]
+${getChatSnapshot(10) || '(no recent roleplay)'}
 
 Return JSON only.`;
 }
-
 
 function buildFootstepProfilePrompt(footstep) {
     const memory = ensureMemory();
@@ -1670,7 +2140,7 @@ You are a roleplay map extension. The user clicked one footstep / location signa
 Generate this character status card only now; do not pre-generate it during map generation.
 
 Rules:
-- Write ordinary descriptive text in Korean. For recurring character and place names, preserve whichever display form appears naturally in the current roleplay. Do not translate names, force them into Korean or English, or normalize them merely for consistency. Fixed theme/UI names such as Marauder's Map, Mischief Managed, and Location tracker may remain in their established form.
+- Write ordinary descriptive text in Korean. Preserve recurring character and place names in the display form used by the current roleplay.
 - Write injectionText only in English.
 - Footstep name/title: ${displayName}
 - Footstep location: ${location?.name || footstep.locationId || 'unknown location'}
@@ -1688,7 +2158,7 @@ Rules:
 - thoughts should be 4 to 6 sentences, inferred from observable behavior and current context. Do not become omniscient.
 - pocketContents should include 3 to 6 items from pockets, bag, hand, coat, or nearby belongings. Give each item a short reason or hint.
 - hooks should include 2 to 4 short clues that make the user want to follow this signal.
-- injectionText must be English roleplay context that can be used in the next response. Do not mention UI, buttons, or the extension.
+- injectionText must be English roleplay context that can be used in the next response.
 
 [Current location]
 ${JSON.stringify(location || {}, null, 2)}
@@ -1708,8 +2178,8 @@ Return JSON only.`;
 
 
 const PERSON_SEARCH_SCHEMA = {
-    name: 'MaraudersMapPersonSearchModel',
-    description: 'A Korean person search result for the current roleplay map.',
+    name: 'RoleplayPersonSearchModel',
+    description: 'A Korean person search result grounded in the supplied roleplay.',
     strict: true,
     value: {
         '$schema': 'http://json-schema.org/draft-04/schema#',
@@ -1731,7 +2201,7 @@ const PERSON_SEARCH_SCHEMA = {
 };
 
 const TRACK_REFRESH_SCHEMA = {
-    name: 'MaraudersMapTrackingRefreshModel',
+    name: 'RoleplayTrackingRefreshModel',
     description: 'A Korean refreshed tracked person location/status card.',
     strict: true,
     value: {
@@ -1753,8 +2223,8 @@ const TRACK_REFRESH_SCHEMA = {
 };
 
 const RECOMMENDATION_SCHEMA = {
-    name: 'MaraudersMapRecommendationModel',
-    description: 'A Korean list of themed place recommendations for the current roleplay map.',
+    name: 'RoleplayPlaceRecommendationModel',
+    description: 'A Korean list of place recommendations grounded in the supplied roleplay.',
     strict: true,
     value: {
         '$schema': 'http://json-schema.org/draft-04/schema#',
@@ -1791,12 +2261,11 @@ const RECOMMENDATION_SCHEMA = {
 function buildPersonSearchPrompt(query) {
     const memory = ensureMemory();
     return `
-You are a roleplay map / location-tracking extension. The user searched for a person who may not already be on the map.
-Current theme: ${getThemeConfig().label}
+Use the supplied roleplay continuity to locate the person the user searched for.
 Search query: ${query}
 
 Rules:
-- Write ordinary descriptive text in Korean. For recurring character and place names, preserve whichever display form appears naturally in the current roleplay. Do not translate names, force them into Korean or English, or normalize them merely for consistency. Fixed theme/UI names such as Marauder's Map, Mischief Managed, and Location tracker may remain in their established form.
+- Write ordinary descriptive text in Korean. Preserve recurring character and place names in the display form used by the current roleplay.
 - Write injectionText only in English.
 - If recent roleplay shows the person's movement, use that first.
 - If the person appeared recently but is not on the map, logically infer their current location.
@@ -1818,14 +2287,13 @@ Return JSON only.`;
 function buildTrackRefreshPrompt(tracked) {
     const memory = ensureMemory();
     return `
-You are a roleplay map / location-tracking extension. The user pressed "where are they now?" on a tracked person card.
-Current theme: ${getThemeConfig().label}
+Use the supplied roleplay continuity to refresh the tracked person's current location and activity.
 Target: ${tracked.name}
 Last known location: ${tracked.lastLocation || 'unknown'}
 Last known status: ${tracked.lastActivity || tracked.summary || 'unknown'}
 
 Rules:
-- Write ordinary descriptive text in Korean. For recurring character and place names, preserve whichever display form appears naturally in the current roleplay. Do not translate names, force them into Korean or English, or normalize them merely for consistency. Fixed theme/UI names such as Marauder's Map, Mischief Managed, and Location tracker may remain in their established form.
+- Write ordinary descriptive text in Korean. Preserve recurring character and place names in the display form used by the current roleplay.
 - Write injectionText only in English.
 - If recent roleplay reveals the target's movement, follow it first.
 - If no movement is shown, infer a plausible location from personality, time, current scene, and last known location; lower confidence when uncertain.
@@ -1847,17 +2315,16 @@ Return JSON only.`;
 function buildRecommendationPrompt(category) {
     const memory = ensureMemory();
     return `
-You are the place recommendation feature of a roleplay map / location tracker.
+Use the supplied roleplay continuity to recommend fitting places.
 Search or recommendation request: ${category}
 
 Rules:
-- Write ordinary descriptive text in Korean. For recurring character and place names, preserve whichever display form appears naturally in the current roleplay. Do not translate names, force them into Korean or English, or normalize them merely for consistency. Fixed theme/UI names such as Marauder's Map, Mischief Managed, and Location tracker may remain in their established form.
+- Write ordinary descriptive text in Korean. Preserve recurring character and place names in the display form used by the current roleplay.
 - Write injectionText only in English.
-- Never display meta labels like "Modern AU", "HP AU", "Marauder's Map", "Location tracker", "recommendation tag", or "hot place recommendation" in the output content.
-- category must be exactly the user's selected/input request. Do not append extra words like "recommendation", "hot place", or the theme name.
+- category must be exactly the user's selected/input request.
 - title must be only the place name. Do not put the category, theme, or the word "recommendation" in the title.
-- locationName is mandatory and must be a plausible in-world address or district, never blank and never "알 수 없는 위치". Use a useful compact location such as "호그스미드 · 하이 스트리트", "다이애건 앨리 · 플로리시 앤 블로츠 옆 골목", "호그와트 · 지하 주방 입구", or an equally specific neighborhood/street/building cue that fits the current world.
-- The theme is only the UI shell. Recommendations must fit the actual world, era, and space of the current roleplay.
+- locationName is mandatory and uses a compact, specific district, street, building, floor, wing, or nearby landmark cue that exists naturally in the supplied world.
+- Recommendations fit the actual world, era, and physical space established by the roleplay.
 - If the request is for food, restaurants, cafes, bars, pubs, desserts, or snacks, recommend only places where food or drinks can actually be ordered/eaten.
 - If the request is for hot places, landmarks, or date spots, recommend famous places, scenic points, walking spots, shops, festivals, exhibits, or secret spots that people in this world would actually visit.
 - Use existing map locations when they fit the category. If not, create new places that naturally exist in the current world. Do not force an unrelated map location to fit.
@@ -1942,9 +2409,7 @@ function findPersonInMap(query) {
 }
 
 async function openPersonSearch() {
-    const query = window.prompt('누구를 찾을까?');
-    if (!query || !query.trim()) return;
-    await handlePersonSearch(query.trim());
+    renderRecommendationPanel('person');
 }
 
 async function handlePersonSearch(query) {
@@ -1953,7 +2418,6 @@ async function handlePersonSearch(query) {
     const found = findPersonInMap(query);
     if (found) {
         memory.searchResults.unshift(found);
-        memory.searchResults = memory.searchResults.slice(0, 16);
         const saved = await saveMemory(memory);
         pushDebugLog(saved ? 'search.person.store.success' : 'search.person.store.save_failed', saved
             ? '지도에서 찾은 인물 검색 기록을 저장했습니다.'
@@ -1961,17 +2425,17 @@ async function handlePersonSearch(query) {
             personSearchHistory: memory.searchResults?.length || 0,
             saved,
         });
-        renderPersonSearchResultPanel(found);
+        renderPersonSearchResultPanel(found, 'search');
         return;
     }
 
     let result = null;
     await withLoader(`${query}의 위치 신호를 찾는 중...`, async () => {
         let rawText = '';
-        rawText = await generateQuietWithSelectedProfile(buildPersonSearchPrompt(query), PERSON_SEARCH_SCHEMA, { maxTokens: 5000 });
+        const modeConfig = getOutputModeConfig();
+        rawText = await generateQuietWithSelectedProfile(buildPersonSearchPrompt(query), PERSON_SEARCH_SCHEMA, { maxTokens: modeConfig.personSearchMaxTokens });
         result = normalizeSearchResult(parseJson(rawText), query);
         memory.searchResults.unshift(result);
-        memory.searchResults = memory.searchResults.slice(0, 16);
         const saved = await saveMemory(memory);
         pushDebugLog(saved ? 'search.person.store.success' : 'search.person.store.save_failed', saved
             ? '인물 검색 기록을 저장했습니다.'
@@ -1980,20 +2444,22 @@ async function handlePersonSearch(query) {
             saved,
         });
     });
-    if (result) renderPersonSearchResultPanel(result);
+    if (result) renderPersonSearchResultPanel(result, 'search');
 }
 
-function renderPersonSearchResultPanel(result) {
+function renderPersonSearchResultPanel(result, origin = 'search') {
     const panel = document.getElementById('mma-side-panel');
     if (!panel || !result) return;
+    const backTitle = origin === 'notebook' ? '수첩으로 돌아가기' : '인물 찾기로 돌아가기';
     panel.innerHTML = `
         <div class="mma-action-panel">
             <header class="mma-place-header">
                 <div><span class="mma-place-icon">🔎</span><strong>인물 검색</strong></div>
-                <button title="위치 카드로 돌아가기" data-action="back">↩️</button>
+                <button title="${escapeHtml(backTitle)}" data-action="back">↩️</button>
             </header>
             <article class="mma-event-card person-search-card">
                 <div class="mma-event-title"><b>${escapeHtml(result.name)}</b><span>${result.isOnMap ? '지도 확인' : '추정'}</span></div>
+                ${isModernTheme() ? `<div class="mma-person-signal-meta"><small class="mma-person-signal-status">${result.isOnMap ? '지도에서 확인' : '위치 추정'}</small><small>신뢰도 ${escapeHtml(result.confidence || '중간')}</small></div>` : ''}
                 <div class="mma-event-location">${isModernTheme() ? '●' : '📍'} ${escapeHtml(result.currentLocation)}</div>
                 <p>${escapeHtml(result.summary)}</p>
                 <p class="mma-event-detail"><b>현재 행동</b>: ${escapeHtml(result.currentActivity)}</p>
@@ -2009,7 +2475,10 @@ function renderPersonSearchResultPanel(result) {
             </article>
         </div>
     `;
-    panel.querySelector('[data-action="back"]')?.addEventListener('click', () => renderLocationPanel(ensureMemory().selectedLocationId));
+    panel.querySelector('[data-action="back"]')?.addEventListener('click', () => {
+        if (origin === 'notebook') renderNotebookPanel();
+        else renderRecommendationPanel('person');
+    });
     panel.querySelector('[data-action="show-location"]')?.addEventListener('click', () => selectLocation(result.locationId));
     panel.querySelector('[data-action="open-footstep"]')?.addEventListener('click', () => handleFootstepClick(result.footstepId));
     panel.querySelector('[data-action="add-footstep"]')?.addEventListener('click', () => addSearchResultToMap(result));
@@ -2070,6 +2539,8 @@ function trackFootstep(footstepId) {
         lastActivity: profile?.currentActivity || footstep.status || '위치 신호 확인됨',
         summary: profile?.characterInfo || '',
         trackerReaction: '아직 추적 반응을 확인하지 않음',
+        confidence: '높음',
+        signalStatus: '지도에서 확인',
         hooks: profile?.hooks || [],
         injectionText: profile?.injectionText || '',
         createdAt: nowStamp(),
@@ -2092,6 +2563,8 @@ function trackPersonFromResult(result) {
         lastActivity: result.currentActivity || result.summary || '검색 결과에서 추적 시작',
         summary: result.summary || '',
         trackerReaction: result.trackerReaction || '',
+        confidence: result.confidence || '중간',
+        signalStatus: result.isOnMap ? '지도에서 확인' : '위치 추정',
         hooks: result.hooks || [],
         injectionText: result.injectionText || '',
         createdAt: nowStamp(),
@@ -2134,7 +2607,6 @@ async function refreshTrackedPerson(key) {
             reaction: tracked.trackerReaction,
             at: tracked.updatedAt || nowStamp(),
         });
-        tracked.history = tracked.history.slice(0, 8);
         tracked.lastLocation = String(parsed.currentLocation || tracked.lastLocation || '위치 신호 흐림');
         tracked.lastActivity = String(parsed.currentActivity || parsed.movementSummary || tracked.lastActivity || '현재 행동 불명');
         tracked.summary = String(parsed.movementSummary || tracked.summary || '');
@@ -2225,28 +2697,52 @@ function renderDebugPanel() {
     content.querySelector('[data-action="clear-debug"]')?.addEventListener('click', () => { clearDebugLogs(); renderDebugPanel(); });
 }
 
-function renderRecommendationPanel() {
+function renderRecommendationPanel(activeTab = 'place') {
     const panel = document.getElementById('mma-side-panel');
     if (!panel) return;
+    const selectedTab = activeTab === 'person' ? 'person' : 'place';
     const categories = ['맛집', '데이트 명소', '요즘 핫플레이스', '산책 코스'];
+    const personPanel = `
+        <p class="mma-panel-note">현재 지도에 표시된 인물을 먼저 확인합니다. 지도에 없으면 현재 RP를 바탕으로 위치를 별도로 찾습니다.</p>
+        <div class="mma-custom-search mma-person-search-form">
+            <input id="mma-person-search-query" class="text_pole" placeholder="찾을 인물 이름" autocomplete="off">
+            <button type="button" data-action="person-search">찾기</button>
+        </div>
+    `;
+    const placePanel = `
+        <p class="mma-panel-note">어떤 장소를 검색해볼까요? 모든 검색 내역은 수첩 📓에 기록할 수 있습니다.</p>
+        <div class="mma-recommend-buttons">
+            ${categories.map(cat => `<button data-category="${escapeHtml(cat)}">${escapeHtml(cat)}</button>`).join('')}
+        </div>
+        <div class="mma-custom-search">
+            <input id="mma-custom-recommend" class="text_pole" placeholder="예) 비 오는 날 데이트, 비밀 명소, 고백하기 좋은 곳">
+            <button data-action="custom-recommend">검색</button>
+        </div>
+        <div id="mma-recommend-results">${renderRecommendationCards(ensureMemory().recommendations || [])}</div>
+    `;
     panel.innerHTML = `
         <div class="mma-action-panel mma-search-panel">
             <header class="mma-place-header">
                 <div><span class="mma-place-icon">🔎</span><strong>검색</strong></div>
                 <button title="위치 카드로 돌아가기" data-action="back">↩️</button>
             </header>
-            <p class="mma-panel-note">어떤 장소를 검색해볼까요? 모든 검색 내역은 수첩 📓에 기록할 수 있습니다.</p>
-            <div class="mma-recommend-buttons">
-                ${categories.map(cat => `<button data-category="${escapeHtml(cat)}">${escapeHtml(cat)}</button>`).join('')}
+            <div class="mma-search-tabs" role="tablist" aria-label="검색 종류">
+                <button type="button" role="tab" data-search-tab="person" aria-selected="${selectedTab === 'person'}" class="${selectedTab === 'person' ? 'active' : ''}">인물 찾기</button>
+                <button type="button" role="tab" data-search-tab="place" aria-selected="${selectedTab === 'place'}" class="${selectedTab === 'place' ? 'active' : ''}">장소 찾기</button>
             </div>
-            <div class="mma-custom-search">
-                <input id="mma-custom-recommend" class="text_pole" placeholder="예) 비 오는 날 데이트, 비밀 명소, 고백하기 좋은 곳">
-                <button data-action="custom-recommend">검색</button>
-            </div>
-            <div id="mma-recommend-results">${renderRecommendationCards(ensureMemory().recommendations || [])}</div>
+            ${selectedTab === 'person' ? personPanel : placePanel}
         </div>
     `;
     panel.querySelector('[data-action="back"]')?.addEventListener('click', () => renderLocationPanel(ensureMemory().selectedLocationId));
+    panel.querySelectorAll('[data-search-tab]').forEach(button => button.addEventListener('click', () => renderRecommendationPanel(button.dataset.searchTab)));
+    const submitPersonSearch = () => {
+        const value = panel.querySelector('#mma-person-search-query')?.value?.trim();
+        if (value) handlePersonSearch(value);
+    };
+    panel.querySelector('[data-action="person-search"]')?.addEventListener('click', submitPersonSearch);
+    panel.querySelector('#mma-person-search-query')?.addEventListener('keydown', event => {
+        if (event.key === 'Enter') submitPersonSearch();
+    });
     panel.querySelectorAll('[data-category]').forEach(button => button.addEventListener('click', () => generateRecommendations(button.dataset.category)));
     panel.querySelector('[data-action="custom-recommend"]')?.addEventListener('click', () => {
         const value = panel.querySelector('#mma-custom-recommend')?.value?.trim();
@@ -2317,7 +2813,7 @@ function getRecommendationLocationLabel(item = {}) {
 }
 
 function renderRecommendationCards(items) {
-    const list = (items || []).slice(0, 12);
+    const list = items || [];
     if (!list.length) return '<p class="mma-empty">아직 검색한 장소가 없습니다.</p>';
     return list.map(item => `
         <article class="mma-event-card recommendation-card" data-recommend-id="${escapeHtml(item.id)}">
@@ -2473,7 +2969,11 @@ async function generateRecommendations(category) {
             collected: false,
             createdAt: nowStamp(),
         }));
-        memory.recommendations = [...items, ...(memory.recommendations || [])].slice(0, 24);
+        const existing = memory.recommendations || [];
+        const collected = existing.filter(entry => entry?.collected);
+        const transient = [...items, ...existing.filter(entry => !entry?.collected)]
+            .slice(0, UNCOLLECTED_RECOMMENDATION_LIMIT);
+        memory.recommendations = [...transient, ...collected];
         const saved = await saveMemory(memory);
         pushDebugLog(saved ? 'search.place.generate.success' : 'search.place.generate.save_failed', saved
             ? '장소 검색 결과를 저장했습니다.'
@@ -2492,8 +2992,8 @@ function renderNotebookPanel() {
     const memory = ensureMemory();
     const managed = getManagedPanelItems();
     const trackedEntries = Object.entries(memory.trackedPeople || {});
-    const searchHistory = (memory.searchResults || []).slice(0, 12);
-    const recommendations = (memory.recommendations || []).filter(x => x.collected).slice(0, 12);
+    const searchHistory = memory.searchResults || [];
+    const recommendations = (memory.recommendations || []).filter(x => x.collected);
     panel.innerHTML = `
         <div class="mma-action-panel mma-notebook-panel">
             <header class="mma-place-header">
@@ -2515,7 +3015,7 @@ function renderNotebookPanel() {
     panel.querySelectorAll('[data-track-remove]').forEach(button => button.addEventListener('click', () => removeTrackedPerson(button.dataset.trackRemove)));
     panel.querySelectorAll('[data-search-open]').forEach(button => button.addEventListener('click', () => {
         const result = ensureMemory().searchResults?.find(entry => entry.id === button.dataset.searchOpen);
-        if (result) renderPersonSearchResultPanel(result);
+        if (result) renderPersonSearchResultPanel(result, 'notebook');
     }));
     panel.querySelectorAll('[data-search-delete]').forEach(button => button.addEventListener('click', () => deletePersonSearchResult(button.dataset.searchDelete)));
     wireRecommendationButtons(panel);
@@ -2527,6 +3027,7 @@ function renderTrackedCard(key, item) {
     return `
         <article class="mma-event-card tracked-card">
             <div class="mma-event-title"><b>👁 ${escapeHtml(item.name)}</b><span>${escapeHtml(item.status || '추적 중')}</span></div>
+            ${isModernTheme() ? `<div class="mma-person-signal-meta"><small class="mma-person-signal-status">${escapeHtml(item.status || '추적 중')}</small>${item.signalStatus ? `<small>${escapeHtml(item.signalStatus)}</small>` : ''}${item.confidence ? `<small>신뢰도 ${escapeHtml(item.confidence)}</small>` : ''}</div>` : ''}
             <div class="mma-event-location">${isModernTheme() ? '●' : '📍'} ${escapeHtml(item.lastLocation || '위치 신호 흐림')}</div>
             <div class="mma-scroll-text"><p>${escapeHtml(activityText)}</p></div>
             ${item.trackerReaction ? `<div class="mma-scroll-text small"><p><b>추적 반응</b>: ${escapeHtml(item.trackerReaction)}</p></div>` : ''}
@@ -2545,6 +3046,7 @@ function renderSearchHistoryCard(result) {
     return `
         <article class="mma-event-card search-history-card">
             <div class="mma-event-title"><b>🔎 ${escapeHtml(result.name || result.query)}</b><span>${escapeHtml(result.confidence || '검색')}</span></div>
+            ${isModernTheme() ? `<div class="mma-person-signal-meta"><small class="mma-person-signal-status">${result.isOnMap ? '지도에서 확인' : '위치 추정'}</small><small>신뢰도 ${escapeHtml(result.confidence || '중간')}</small></div>` : ''}
             <div class="mma-event-location">${isModernTheme() ? '●' : '📍'} ${escapeHtml(result.currentLocation || '위치 신호 흐림')}</div>
             <p>${escapeHtml(stripLong(result.summary || result.currentActivity || '', 220))}</p>
             <div class="mma-event-actions">
@@ -2675,19 +3177,19 @@ function getJsonOnlyInstruction(jsonSchema) {
 
 function getSchemaAwareJsonInstruction(jsonSchema) {
     if (!jsonSchema) return '';
-    if (jsonSchema === MAP_SCHEMA) {
+    if (String(jsonSchema?.name || '').startsWith('RoleplayArea')) {
         return `${getJsonOnlyInstruction(jsonSchema)}
 
 Never return only an empty object {}.
 The JSON must include these top-level fields:
-- mapTitle: string
 - regionName: string
 - timeHint: string
 - worldSummary: string
-- currentLocationId: string
+- currentLocationName: string matching one returned location name
 - locations: array of map locations
 - footsteps: array of character/location signals visible in the current scene
-- events: array of observable roleplay events in the current scene
+- worldEvents: array of independent quests already unfolding elsewhere in the supplied world
+- personalEvents: array containing 0 or 1 quest caused by or directed toward the protagonists
 If locations is empty, the response is invalid.`;
     }
     if (jsonSchema === LOCATION_SCHEMA) {
@@ -2719,6 +3221,12 @@ The JSON must include name, currentLocation, movementSummary, currentActivity, t
 
 Never return only an empty object {}.
 The JSON must include category and items. Put at least 3 recommendation items in items.`;
+    }
+    if (String(jsonSchema?.name || '').startsWith('SurroundingScenes')) {
+        return `${getJsonOnlyInstruction(jsonSchema)}
+
+Never return only an empty object {}.
+The JSON must include items. Each item includes category, title, locationName, participants, body, anchors, motifKey, and continuationOf.`;
     }
     return `${getJsonOnlyInstruction(jsonSchema)}
 
@@ -2810,7 +3318,7 @@ function refreshVisibleMapAfterBackgroundUpdate({ locationId = '', forceMapView 
 
 function refreshMapGenerationControls() {
     const busy = Boolean(activeMapGeneration);
-    document.querySelectorAll('[data-action="refresh-all"], [data-action="refresh-location"], [data-action="restore-previous-map"]').forEach(button => {
+    document.querySelectorAll('[data-action="refresh-all"], [data-action="refresh-location"], [data-action="restore-previous-map"], [data-action="discover"]').forEach(button => {
         button.disabled = busy;
         button.setAttribute('aria-busy', busy ? 'true' : 'false');
     });
@@ -2998,6 +3506,9 @@ async function generateMap(force = false) {
         return;
     }
 
+    const outputMode = getOutputModeKey();
+    const modeConfig = OUTPUT_MODE_CONFIGS[outputMode];
+    const mapSchema = getMapSchema(outputMode);
     const job = beginMapGeneration(force ? 'refresh-all' : 'generate-map');
     if (!job) return;
     // Keep the old map in-flight only. A failed refresh must not create a stale
@@ -3010,20 +3521,24 @@ async function generateMap(force = false) {
         jobId: job.id,
         notebookKey: getCurrentCharacterKey(),
         connectionProfile: getSettings().connectionProfile || 'main',
+        outputMode,
+        maxTokens: modeConfig.mapMaxTokens,
         chatSignature: startChatSignature || '(unknown)',
     });
 
     try {
         await withLoader(getThemeConfig().castingText, async () => {
-            const prompt = buildMapPrompt();
+            const prompt = buildMapPrompt(outputMode);
             pushDebugLog('request.start', '지도 생성 요청 시작', {
                 jobId: job.id,
                 promptLength: prompt.length,
                 recentChatLimit: 10,
                 schema: true,
+                outputMode,
+                maxTokens: modeConfig.mapMaxTokens,
                 profile: getSettings().connectionProfile || 'main',
             });
-            const rawText = await generateQuietWithSelectedProfile(prompt, MAP_SCHEMA, { maxTokens: 8000, signal: job.controller.signal });
+            const rawText = await generateQuietWithSelectedProfile(prompt, mapSchema, { maxTokens: modeConfig.mapMaxTokens, signal: job.controller.signal });
             assertCurrentMapGeneration(job);
             pushDebugLog('response.received', `지도 생성 응답 수신: ${String(rawText || '').length}자`, {
                 jobId: job.id,
@@ -3038,21 +3553,45 @@ async function generateMap(force = false) {
                 throw createMapGenerationCancelledError('chat changed during generation');
             }
             assertCurrentMapGeneration(job);
-            const normalizedMap = normalizeMap(parsed);
+            const normalizedMap = normalizeMap(parsed, { source: 'full-generation', outputMode });
             const freshMemory = ensureMemory();
             assertCurrentMapGeneration(job);
             if (rollbackSnapshot) commitPreviousMapSnapshot(freshMemory, rollbackSnapshot);
             freshMemory.map = normalizedMap;
+            freshMemory.discoveries = [];
             freshMemory.selectedLocationId = normalizedMap.currentLocationId;
             freshMemory.generatedAt = nowStamp();
             freshMemory.lastAction = 'refresh-all';
+            const questCounts = normalizedMap.events.reduce((counts, event) => {
+                const scope = event?.questScope;
+                if (scope === 'world') counts.worldEvents += 1;
+                else if (scope === 'personal') counts.personalEvents += 1;
+                else counts.legacyEvents += 1;
+                return counts;
+            }, { worldEvents: 0, personalEvents: 0, legacyEvents: 0 });
             pushDebugLog('map.generate.normalized', '지도 데이터 정규화 성공', {
                 jobId: job.id,
                 locations: normalizedMap?.locations?.length || 0,
                 footsteps: normalizedMap?.footsteps?.length || 0,
                 events: normalizedMap?.events?.length || 0,
+                ...questCounts,
+                outputMode,
+                maxTokens: modeConfig.mapMaxTokens,
                 notebookKey: freshMemory.sharedNotebookKey,
             });
+            const minimums = outputMode === 'saver'
+                ? { locations: 4, worldEvents: 2 }
+                : { locations: 6, worldEvents: 3 };
+            const worldQuestCount = questCounts.worldEvents || (questCounts.legacyEvents ? normalizedMap.events.length : 0);
+            if (normalizedMap.locations.length < minimums.locations || worldQuestCount < minimums.worldEvents) {
+                pushDebugLog('map.generate.partial', '목표 개수보다 적지만 유효한 지도 결과를 저장합니다.', {
+                    outputMode,
+                    locations: normalizedMap.locations.length,
+                    events: normalizedMap.events.length,
+                    ...questCounts,
+                    targetMinimums: minimums,
+                });
+            }
             await saveMemory(freshMemory);
             assertCurrentMapGeneration(job);
             syncExtensionPrompt();
@@ -3061,6 +3600,125 @@ async function generateMap(force = false) {
                 toast(force ? '지도 새로고침이 완료되었습니다.' : '지도 출력이 완료되었습니다.', 'success');
             }
         });
+    } finally {
+        finishMapGeneration(job);
+    }
+}
+
+function confirmDiscoveryGeneration() {
+    const ui = getDiscoveryUiConfig();
+    const host = document.getElementById('mma-window') || document.body;
+    if (activeDiscoveryConfirm) activeDiscoveryConfirm(false);
+    document.getElementById('mma-discovery-confirm')?.remove();
+    return new Promise(resolve => {
+        const overlay = document.createElement('div');
+        overlay.id = 'mma-discovery-confirm';
+        overlay.className = 'mma-discovery-confirm-overlay';
+        overlay.innerHTML = `
+            <section class="mma-discovery-confirm" role="dialog" aria-modal="true" aria-labelledby="mma-discovery-confirm-title">
+                <h3 id="mma-discovery-confirm-title">${escapeHtml(ui.question)}</h3>
+                <div class="mma-discovery-confirm-actions">
+                    <button type="button" data-discovery-cancel>취소</button>
+                    <button type="button" data-discovery-confirm>${escapeHtml(ui.confirm)}</button>
+                </div>
+            </section>`;
+        let settled = false;
+        const finish = value => {
+            if (settled) return;
+            settled = true;
+            document.removeEventListener('keydown', onKeyDown, true);
+            overlay.remove();
+            if (activeDiscoveryConfirm === finish) activeDiscoveryConfirm = null;
+            resolve(value);
+        };
+        const onKeyDown = event => {
+            if (event.key === 'Escape') {
+                event.preventDefault();
+                finish(false);
+            }
+        };
+        overlay.addEventListener('click', event => {
+            if (event.target === overlay) finish(false);
+        });
+        overlay.querySelector('[data-discovery-cancel]')?.addEventListener('click', () => finish(false));
+        overlay.querySelector('[data-discovery-confirm]')?.addEventListener('click', () => finish(true));
+        document.addEventListener('keydown', onKeyDown, true);
+        activeDiscoveryConfirm = finish;
+        host.appendChild(overlay);
+        overlay.querySelector('[data-discovery-confirm]')?.focus();
+    });
+}
+
+async function requestDiscoveryGeneration() {
+    if (activeMapGeneration) {
+        toast('이미 지도 정보를 읽는 중입니다.', 'info');
+        return;
+    }
+    if (!isValidMapData(ensureMemory().map)) {
+        toast('먼저 지도를 생성해 주세요.', 'info');
+        return;
+    }
+    if (await confirmDiscoveryGeneration()) await generateDiscoveries();
+}
+
+async function generateDiscoveries() {
+    const outputMode = getOutputModeKey();
+    const modeConfig = OUTPUT_MODE_CONFIGS[outputMode];
+    const schema = getDiscoverySchema(outputMode);
+    const ui = getDiscoveryUiConfig();
+    const job = beginMapGeneration('discoveries');
+    if (!job) return;
+    const startChatSignature = rememberCurrentChatSignature?.() || getStableChatSignature();
+    pushDebugLog('discovery.generate.start', '주변 장면 요청을 시작했습니다.', {
+        jobId: job.id,
+        outputMode,
+        maxTokens: modeConfig.discoveryMaxTokens,
+        chatSignature: startChatSignature || '(unknown)',
+    });
+    try {
+        await withLoader(ui.loader, async () => {
+            const prompt = buildDiscoveryPrompt(outputMode);
+            const rawText = await generateQuietWithSelectedProfile(prompt, schema, {
+                maxTokens: modeConfig.discoveryMaxTokens,
+                signal: job.controller.signal,
+            });
+            assertCurrentMapGeneration(job);
+            const parsed = parseJson(rawText, 'discovery.generate');
+            if (!parsed) throw new Error('모델 응답을 주변 장면 JSON 형식으로 읽지 못했습니다.');
+            const endChatSignature = getStableChatSignature();
+            if (startChatSignature && endChatSignature && startChatSignature !== endChatSignature) {
+                cancelActiveMapGeneration('chat changed during discovery generation');
+                throw createMapGenerationCancelledError('chat changed during discovery generation');
+            }
+            assertCurrentMapGeneration(job);
+            const memory = ensureMemory();
+            const items = normalizeDiscoveries(parsed, memory.map, memory.discoveryHistory, outputMode);
+            assertCurrentMapGeneration(job);
+            memory.discoveries = items;
+            memory.discoveryGeneratedAt = nowStamp();
+            appendDiscoveryHistory(memory, items);
+            memory.lastAction = 'discoveries';
+            await saveMemory(memory);
+            assertCurrentMapGeneration(job);
+            const expectedMinimum = outputMode === 'saver' ? 3 : 5;
+            if (items.length < expectedMinimum) {
+                pushDebugLog('discovery.generate.partial', '목표 개수보다 적지만 유효한 주변 장면을 표시합니다.', {
+                    outputMode,
+                    accepted: items.length,
+                    targetMinimum: expectedMinimum,
+                });
+            }
+            if (isMapOverlayVisible()) {
+                renderCanvas();
+                renderDiscoveryListPanel();
+            }
+            toast(`${ui.panelTitle} ${items.length}개를 표시했습니다.`, 'success');
+            pushDebugLog('discovery.generate.success', '주변 장면을 저장했습니다.', {
+                outputMode,
+                count: items.length,
+                history: memory.discoveryHistory.length,
+            });
+        }, { errorTitle: `${ui.name} 실패`, renderFailurePanel: false });
     } finally {
         finishMapGeneration(job);
     }
@@ -3102,6 +3760,7 @@ async function refreshLocation(locationId) {
             // Do not pull the user back to this place if they chose another
             // location or opened the notebook while this request was running.
             if (!memory.selectedLocationId) memory.selectedLocationId = locationId;
+            memory.generatedAt = nowStamp();
             memory.lastAction = 'refresh-location';
             await saveMemory(memory);
             assertCurrentMapGeneration(job);
@@ -3433,7 +4092,7 @@ function fallbackMap() {
     };
 }
 
-async function withLoader(message, fn) {
+async function withLoader(message, fn, options = {}) {
     let handle = null;
     pushDebugLog('loader.start', message);
     try {
@@ -3455,21 +4114,23 @@ async function withLoader(message, fn) {
         }
         console.error('[MarauderMap]', error);
         pushDebugLog('loader.error', String(error?.message || error || ''), error);
-        const message = String(error?.message || error || '');
-        let userMessage = message || '알 수 없는 오류';
-        if (/403|Forbidden|permission|권한/i.test(message)) {
+        const errorText = String(error?.message || error || '');
+        let userMessage = errorText || '알 수 없는 오류';
+        if (/403|Forbidden|permission|권한/i.test(errorText)) {
             userMessage = '연결 프로필 권한을 확인해 주세요.';
-        } else if (/empty|비어|응답 없음/i.test(message)) {
+        } else if (/empty|비어|응답 없음/i.test(errorText)) {
             userMessage = '모델 응답이 비어 있습니다.';
-        } else if (/JSON|형식|parse|파싱|읽지 못/i.test(message) || message.includes('API 연결이 불안정합니다')) {
-            userMessage = '모델 응답을 지도 형식으로 읽지 못했습니다.';
+        } else if (/JSON|형식|parse|파싱|읽지 못/i.test(errorText) || errorText.includes('API 연결이 불안정합니다')) {
+            userMessage = options.renderFailurePanel === false
+                ? '모델 응답 형식을 읽지 못했습니다.'
+                : '모델 응답을 지도 형식으로 읽지 못했습니다.';
         }
-        toast(`지도 생성 실패:\n${userMessage}`, 'error');
+        toast(`${options.errorTitle || '지도 생성 실패'}:\n${userMessage}`, 'error');
         // A failed background task must not replace an already usable map or
         // whatever panel the user chose to browse while it was running.
         let hasExistingMap = false;
         try { hasExistingMap = isValidMapData(ensureMemory().map); } catch { /* noop */ }
-        if (isMapOverlayVisible() && !hasExistingMap) {
+        if (options.renderFailurePanel !== false && isMapOverlayVisible() && !hasExistingMap) {
             renderFailurePanel('지도 생성 실패', userMessage);
         }
     } finally {
@@ -3652,6 +4313,7 @@ function openMap() {
 function closeMap(reason = 'manual') {
     // Closing only hides the overlay. A requested map keeps generating in the
     // background and will be saved for the user to open after it completes.
+    if (activeDiscoveryConfirm) activeDiscoveryConfirm(false);
     if (mapResizeState) endMapResize();
     const overlay = document.getElementById('mma-overlay');
     const generationContinues = Boolean(activeMapGeneration);
@@ -3777,6 +4439,7 @@ function renderMapView() {
     const memory = ensureMemory();
     const map = memory.map;
     const theme = getThemeConfig();
+    const discoveryUi = getDiscoveryUiConfig();
     applyThemeClass();
     if (!map) {
         pushDebugLog('render.map.noMap', '렌더링할 지도 데이터가 없습니다.');
@@ -3787,13 +4450,16 @@ function renderMapView() {
     if (!memory.selectedLocationId || !map.locations.some(l => l.id === memory.selectedLocationId)) {
         memory.selectedLocationId = map.currentLocationId || map.locations[0]?.id || null;
     }
+    const lastChecked = isModernTheme() && memory.generatedAt
+        ? `<small class="mma-last-checked" title="${escapeHtml(memory.generatedAt)}">마지막 확인 ${escapeHtml(formatCompactMapTime(memory.generatedAt))}</small>`
+        : '';
 
     content.innerHTML = `
         <section class="mma-map-screen">
             <header class="mma-toolbar">
                 <div>
                     <div class="mma-brand small">${escapeHtml(theme.shortLabel)}</div>
-                    <div class="mma-region">${escapeHtml(map.regionName)} <span>${escapeHtml(map.timeHint || '')}</span></div>
+                    <div class="mma-region">${escapeHtml(map.regionName)} <span>${escapeHtml(map.timeHint || '')}</span>${lastChecked}</div>
                 </div>
                 <div class="mma-top-right">
                     <button class="mma-managed-button mma-close-button" data-action="close" aria-label="닫기">${escapeHtml(theme.closeText)}</button>
@@ -3803,6 +4469,7 @@ function renderMapView() {
                         <button title="검색" data-action="recommend">🔎</button>
                         <button title="수첩" data-action="notebook">📓</button>
                         <button title="지도 메모리 보기" data-action="memory">🧠</button>
+                        <button class="mma-discovery-toolbar-button" title="${escapeHtml(discoveryUi.name)}" aria-label="${escapeHtml(discoveryUi.name)}" data-action="discover">${escapeHtml(discoveryUi.icon)}</button>
                     </nav>
                 </div>
             </header>
@@ -3819,6 +4486,7 @@ function renderMapView() {
     content.querySelector('[data-action="recommend"]')?.addEventListener('click', () => renderRecommendationPanel());
     content.querySelector('[data-action="notebook"]')?.addEventListener('click', renderNotebookPanel);
     content.querySelector('[data-action="memory"]')?.addEventListener('click', renderMemoryPanel);
+    content.querySelector('[data-action="discover"]')?.addEventListener('click', requestDiscoveryGeneration);
     renderCanvas();
     selectLocation(memory.selectedLocationId);
     refreshMapGenerationControls();
@@ -3844,10 +4512,16 @@ function renderCanvas() {
     locations.forEach((loc, index) => {
         const pos = positions[index] || { x: 50, y: 50 };
         const node = document.createElement('button');
-        node.className = `mma-node ${loc.id === memory.selectedLocationId ? 'selected' : ''}`;
+        const selectedClass = loc.id === memory.selectedLocationId ? 'selected' : '';
+        const currentClass = loc.id === map.currentLocationId ? 'current-location' : '';
+        node.className = `mma-node ${selectedClass} ${currentClass}`.trim();
         node.style.left = `${pos.x}%`;
         node.style.top = `${pos.y}%`;
         node.dataset.id = loc.id;
+        if (currentClass) {
+            node.setAttribute('aria-current', 'location');
+            node.title = `${loc.name} — 현재 위치`;
+        }
         node.innerHTML = `<b>${escapeHtml(loc.icon || '📍')}</b><span>${escapeHtml(loc.name)}</span>${eventBadgeForLocation(loc.id)}`;
         node.addEventListener('click', () => selectLocation(loc.id));
         canvas.appendChild(node);
@@ -3883,6 +4557,103 @@ function renderCanvas() {
         });
         canvas.appendChild(foot);
     });
+
+    const discoveryCountByLocation = {};
+    (memory.discoveries || []).forEach((item, index) => {
+        const locIndex = locations.findIndex(location => location.id === item.locationId);
+        if (locIndex < 0) return;
+        const anchor = positions[locIndex] || { x: 50, y: 50 };
+        const localIndex = discoveryCountByLocation[item.locationId] || 0;
+        discoveryCountByLocation[item.locationId] = localIndex + 1;
+        const markerPos = getFootstepPosition(anchor, localIndex + 5, index + 19, occupiedPoints);
+        occupiedPoints.push({ x: markerPos.x, y: markerPos.y, r: 8 });
+        const marker = document.createElement('button');
+        marker.type = 'button';
+        marker.className = 'mma-discovery-marker';
+        marker.style.left = `${markerPos.x}%`;
+        marker.style.top = `${markerPos.y}%`;
+        marker.dataset.discoveryId = item.id;
+        marker.title = item.title;
+        marker.setAttribute('aria-label', `${item.title} — ${item.locationName}`);
+        marker.innerHTML = `<span>${escapeHtml(getDiscoveryCategoryIcon(item.category))}</span>`;
+        marker.addEventListener('click', event => {
+            event.stopPropagation();
+            renderDiscoveryPanel(item.id);
+        });
+        canvas.appendChild(marker);
+    });
+}
+
+function renderDiscoveryListPanel() {
+    const panel = document.getElementById('mma-side-panel');
+    if (!panel) return;
+    const memory = ensureMemory();
+    const ui = getDiscoveryUiConfig();
+    const items = memory.discoveries || [];
+    panel.innerHTML = `
+        <div class="mma-place-card mma-discovery-list-panel">
+            <header class="mma-place-header">
+                <div><span class="mma-place-icon">${escapeHtml(ui.icon)}</span><strong>${escapeHtml(ui.panelTitle)}</strong></div>
+                <button title="위치 카드로 돌아가기" data-action="back">↩️</button>
+            </header>
+            <p class="mma-panel-note">${items.length ? `${items.length}개의 장면이 현재 지도에 표시됩니다.` : '현재 표시할 장면이 없습니다.'}</p>
+            <div class="mma-discovery-list">
+                ${items.map(item => `
+                    <button type="button" class="mma-discovery-list-card" data-discovery-open="${escapeHtml(item.id)}">
+                        <span class="mma-discovery-card-icon">${escapeHtml(getDiscoveryCategoryIcon(item.category))}</span>
+                        <span><b>${escapeHtml(item.title)}</b><small>📍 ${escapeHtml(item.locationName)}</small><em>${escapeHtml(stripLong(item.body, 150))}</em></span>
+                    </button>`).join('') || '<p class="mma-empty">표시할 주변 장면이 없습니다.</p>'}
+            </div>
+        </div>`;
+    panel.querySelector('[data-action="back"]')?.addEventListener('click', () => renderLocationPanel(memory.selectedLocationId));
+    panel.querySelectorAll('[data-discovery-open]').forEach(button => {
+        button.addEventListener('click', () => renderDiscoveryPanel(button.dataset.discoveryOpen));
+    });
+}
+
+function renderDiscoveryPanel(discoveryId) {
+    const panel = document.getElementById('mma-side-panel');
+    if (!panel) return;
+    const memory = ensureMemory();
+    const item = (memory.discoveries || []).find(entry => entry.id === discoveryId);
+    if (!item) {
+        renderDiscoveryListPanel();
+        return;
+    }
+    const ui = getDiscoveryUiConfig();
+    panel.innerHTML = `
+        <div class="mma-place-card mma-discovery-panel">
+            <header class="mma-place-header">
+                <div><span class="mma-place-icon">${escapeHtml(getDiscoveryCategoryIcon(item.category))}</span><strong>${escapeHtml(item.title)}</strong></div>
+                <button title="${escapeHtml(ui.panelTitle)} 목록으로 돌아가기" data-action="back">↩️</button>
+            </header>
+            <div class="mma-event-location">📍 ${escapeHtml(item.locationName)}</div>
+            <section class="mma-info-block mma-discovery-body">
+                <p>${escapeHtml(item.body)}</p>
+            </section>
+            ${item.participants?.length ? `<section class="mma-info-block"><h4>👥</h4><ul>${item.participants.map(person => `<li>${escapeHtml(person)}</li>`).join('')}</ul></section>` : ''}
+            ${item.anchors?.length ? `<section class="mma-info-block"><h4>🪢 이어진 내용</h4><ul>${item.anchors.map(anchor => `<li>${escapeHtml(anchor)}</li>`).join('')}</ul></section>` : ''}
+            <footer class="mma-place-actions mma-discovery-actions">
+                <div class="mma-event-actions">${renderActionButtons('discovery', item.id)}</div>
+                <button type="button" class="mma-discovery-dismiss" data-discovery-dismiss="${escapeHtml(item.id)}">현재 지도에서 숨기기</button>
+            </footer>
+        </div>`;
+    panel.querySelector('[data-action="back"]')?.addEventListener('click', renderDiscoveryListPanel);
+    panel.querySelectorAll('[data-event-action]').forEach(button => {
+        button.addEventListener('click', () => handleManageAction(button.dataset.type, button.dataset.id, button.dataset.eventAction));
+    });
+    panel.querySelector('[data-discovery-dismiss]')?.addEventListener('click', () => dismissDiscovery(discoveryId));
+}
+
+async function dismissDiscovery(discoveryId) {
+    const memory = ensureMemory();
+    const item = (memory.discoveries || []).find(entry => entry.id === discoveryId);
+    if (!item) return;
+    updateDiscoveryHistoryOutcome(memory, item, 'excluded');
+    memory.discoveries = memory.discoveries.filter(entry => entry.id !== discoveryId);
+    await saveMemory(memory);
+    renderCanvas();
+    renderDiscoveryListPanel();
 }
 
 function eventBadgeForLocation(locationId) {
@@ -4050,7 +4821,7 @@ function getEventDisplayLocationName(event, location = null) {
 }
 
 function getEventRewardText(event) {
-    return String(event?.reward || event?.possibleReward || event?.outcome || '해결하면 이 장소의 새로운 단서나 선택지가 열릴 수 있다.').trim();
+    return String(event?.reward || event?.possibleReward || event?.outcome || '보상 정보 없음').trim();
 }
 
 function renderQuestReward(event) {
@@ -4244,12 +5015,22 @@ function getManageTargetInfo(type, id) {
     if (!map) return { title: '선택한 항목', locationName: '알 수 없는 위치', kind: '항목', subject: '선택한 항목' };
     if (type === 'managed') {
         const item = memory.managedItems.find(x => x.id === id);
-        const kind = item?.type === 'location' || item?.type === 'recommendation' ? '장소' : item?.type === 'footstep' ? '인물' : '사건';
+        const kind = item?.type === 'location' || item?.type === 'recommendation'
+            ? '장소'
+            : item?.type === 'footstep' || item?.type === 'tracked'
+                ? '인물'
+                : item?.type === 'discovery'
+                    ? '장면'
+                    : '사건';
         return { title: item?.title || '선택한 항목', locationName: item?.locationName || '알 수 없는 위치', kind, subject: item?.title || '선택한 항목' };
     }
     if (type === 'location') {
         const loc = map.locations.find(l => l.id === id);
         return { title: loc?.name || '선택한 장소', locationName: loc?.name || '알 수 없는 위치', kind: '장소', subject: `${loc?.name || '선택한 장소'}의 상황` };
+    }
+    if (type === 'discovery') {
+        const item = (memory.discoveries || []).find(entry => entry.id === id);
+        return { title: item?.title || '선택한 장면', locationName: item?.locationName || '알 수 없는 위치', kind: '장면', subject: item?.title || '선택한 장면' };
     }
     if (type === 'recommendation') {
         const item = (memory.recommendations || []).find(x => x.id === id);
@@ -4279,22 +5060,30 @@ function confirmManageAction(type, id, action) {
     const subject = info.subject || info.title;
     const infoText = type === 'tracked'
         ? '이 인물의 최근 동선과 현재 위치 정보가 다음 응답의 배경으로 주입됩니다.'
+        : info.kind === '장면'
+            ? '이 장면의 장소, 인물, 현재 상황이 다음 응답의 배경에 반영됩니다.'
         : info.kind === '인물'
             ? '이 인물의 현재 상태, 행동, 생각 정보가 주입됩니다.'
             : info.kind === '장소'
             ? '장소의 분위기, 인물, 사건 정보가 주입됩니다.'
             : '퀘스트가 벌어지는 위치의 분위기, 인물, 퀘스트 정보가 주입됩니다.';
-    const injectQuestion = info.kind === '장소'
+    const injectQuestion = info.kind === '장면'
+        ? '이 장면을 반영할까요?'
+        : info.kind === '장소'
         ? '장소와 퀘스트를 반영할까요?'
         : info.kind === '사건'
             ? '퀘스트만 반영할까요?'
             : '이 정보를 반영할까요?';
-    const charQuestion = info.kind === '장소'
+    const charQuestion = info.kind === '장면'
+        ? `이 장면을 ${charName}이(가) 먼저 눈치채도록 반영할까요?`
+        : info.kind === '장소'
         ? `장소와 퀘스트를 ${charName}이(가) 먼저 눈치채도록 반영할까요?`
         : info.kind === '사건'
             ? `퀘스트만 ${charName}이(가) 먼저 눈치채도록 반영할까요?`
             : `이 정보를 ${charName}이(가) 먼저 눈치채도록 반영할까요?`;
-    const userQuestion = info.kind === '장소'
+    const userQuestion = info.kind === '장면'
+        ? `이 장면을 ${userName}이(가) 먼저 눈치챌 수 있도록 반영할까요?`
+        : info.kind === '장소'
         ? `장소와 퀘스트를 ${userName}이(가) 먼저 눈치챌 수 있도록 반영할까요?`
         : info.kind === '사건'
             ? `퀘스트만 ${userName}이(가) 먼저 눈치챌 수 있도록 반영할까요?`
@@ -4339,6 +5128,10 @@ async function handleManageAction(type, id, action) {
             }
             upsertManagedItem(item);
             markMapEventStatus(item.sourceId, item.status);
+            if (type === 'discovery') {
+                const discovery = (memory.discoveries || []).find(entry => entry.id === id);
+                updateDiscoveryHistoryOutcome(memory, discovery, item.status);
+            }
         }
     }
 
@@ -4353,6 +5146,8 @@ async function handleManageAction(type, id, action) {
         renderFootstepPanel(id);
     } else if (type === 'recommendation' || type === 'tracked') {
         renderNotebookPanel();
+    } else if (type === 'discovery') {
+        renderDiscoveryPanel(id);
     } else {
         renderActionPanel(type === 'event' ? map.events.find(e => e.id === id)?.locationId : (type === 'location' ? id : null), false);
     }
@@ -4415,6 +5210,29 @@ function snapshotManagedItem(type, id, status) {
             clues: loc ? [...loc.clues] : [],
             eventSnapshots: [],
             englishContext: event.injectionText || buildEventContextFallback(event, loc),
+            createdAt: nowStamp(),
+            updatedAt: nowStamp(),
+        };
+    }
+    if (type === 'discovery') {
+        const item = (memory.discoveries || []).find(entry => entry.id === id);
+        if (!item) return null;
+        return {
+            id: `discovery:${item.id}`,
+            sourceId: `discovery:${item.id}`,
+            type: 'discovery',
+            status,
+            title: item.title,
+            locationId: item.locationId,
+            locationName: item.locationName,
+            summary: item.body,
+            details: '',
+            present: [...(item.participants || [])],
+            clues: [...(item.anchors || [])],
+            eventSnapshots: [],
+            contextText: buildDiscoveryContext(item),
+            fingerprint: item.fingerprint,
+            category: item.category,
             createdAt: nowStamp(),
             updatedAt: nowStamp(),
         };
@@ -4501,7 +5319,7 @@ function upsertManagedItem(item) {
     } else {
         memory.managedItems.unshift(item);
     }
-    memory.managedItems = memory.managedItems.filter(x => x.status !== 'ignored').slice(0, 24);
+    memory.managedItems = memory.managedItems.filter(x => x.status !== 'ignored');
 }
 
 function removeManagedBySource(sourceId) {
@@ -4533,6 +5351,15 @@ function buildFootstepContextFallback(profile, loc) {
     return `Selected map footstep status: ${profile.name}. Character info: ${profile.characterInfo || 'unknown'}. Current location: ${profile.currentLocation || loc?.name || 'unknown'}. Current mood: ${profile.currentMood}. Current activity: ${profile.currentActivity}. Relationship and closeness with the user: ${profile.relationshipWithUser}. Most recent encounter with the user: ${profile.lastEncounterWithUser || 'unknown'}. Current task: ${profile.currentTask}. Current thoughts: ${profile.thoughts}. Inventory items in their bag, pockets, on their person, or in their hands: ${(profile.pocketContents || []).join(', ') || 'unknown'}. Integrate this naturally as background context without mentioning the map UI.`;
 }
 
+function buildDiscoveryContext(item) {
+    return `Selected surrounding scene: ${item.title}
+Location: ${item.locationName}
+People present: ${(item.participants || item.present || []).join(', ')}
+Current scene: ${item.body || item.summary || ''}
+
+When the roleplay is at this location or naturally involves one of these people or objects, use this scene as surrounding context.`;
+}
+
 function buildActiveInjectionSummary() {
     const active = getActiveInjectionItems();
     if (!active.length) return '';
@@ -4555,21 +5382,34 @@ function buildExtensionPrompt(memory = null) {
     const userName = getCurrentUserName();
     const charName = getCurrentCharacterName();
     const lines = active.map((item, index) => {
-        const people = (item.present || []).length ? `People present or nearby: ${(item.present || []).join(', ')}.` : '';
-        const clues = (item.clues || []).length ? `Notable clues: ${(item.clues || []).join('; ')}.` : '';
-        const events = (item.eventSnapshots || []).length ? `Related events: ${item.eventSnapshots.map(e => `${e.title}: ${e.injectionText || e.summary}`).join(' / ')}.` : '';
         const mode = item.status === 'char_notice'
             ? `${charName} should notice or react to this map context first if it fits the scene.`
             : item.status === 'user_notice'
                 ? `The narration may make this map context available for ${userName} to notice first without forcing an action.`
                 : 'Let this selected map context subtly influence the next response and future responses until removed.';
+        if (item.type === 'discovery') {
+            const context = item.contextText || buildDiscoveryContext(item);
+            return `${index + 1}. ${context}\n\nMode: ${mode}`;
+        }
+        const people = (item.present || []).length ? `People present or nearby: ${(item.present || []).join(', ')}.` : '';
+        const clues = (item.clues || []).length ? `Notable clues: ${(item.clues || []).join('; ')}.` : '';
+        const events = (item.eventSnapshots || []).length ? `Related events: ${item.eventSnapshots.map(e => `${e.title}: ${e.injectionText || e.summary}`).join(' / ')}.` : '';
         const arrivalRule = item.type === 'event'
             ? `Quest activation rule: when the roleplay scene is at, approaching, or naturally arrives at this location, treat this selected quest as an active scene opportunity. Let it start through observable dialogue, action, interruption, or discovery involving the relevant people. Keep it unresolved until roleplay actions address it. Do not force the user to travel, speak, accept the quest, or take a specific action.${item.reward ? ` Potential reward after meaningful resolution: ${item.reward}. Do not award it before the scene is resolved.` : ''}`
             : item.type === 'location' && (item.eventSnapshots || []).length
                 ? `Location event rule: when the roleplay scene is at, approaching, or naturally arrives at this location, the related quests listed above may become playable scenes through observable dialogue, action, interruption, or discovery. Use the quest that fits the immediate scene; do not force the user to travel, speak, accept a quest, or take a specific action.`
                 : '';
         const context = item.englishContext || buildLocationContextFallback({ name: item.locationName, situation: item.situation || item.summary, details: item.details, present: item.present || [], clues: item.clues || [] }, item.eventSnapshots || []);
-        return `${index + 1}. ${item.type === 'location' ? 'Selected location' : item.type === 'footstep' ? 'Selected character/footstep status' : 'Selected event'}: ${item.title}\nLocation: ${item.locationName}.\nEnglish map context:\n${context}\n${people}\n${clues}\n${events}\n${arrivalRule}\nMode: ${mode}`;
+        const typeLabel = item.type === 'location'
+            ? 'Selected location'
+            : item.type === 'footstep'
+                ? 'Selected character/footstep status'
+                : item.type === 'recommendation'
+                    ? 'Selected place recommendation'
+                    : item.type === 'tracked'
+                        ? 'Selected tracked person status'
+                        : 'Selected event';
+        return `${index + 1}. ${typeLabel}: ${item.title}\nLocation: ${item.locationName}.\nEnglish map context:\n${context}\n${people}\n${clues}\n${events}\n${arrivalRule}\nMode: ${mode}`;
     }).join('\n\n');
     return `[Selected roleplay context]\nThe user selected the following map observations to be reflected in future roleplay responses. Do not mention the extension, buttons, UI, or that this is injected context. Integrate the information naturally with the current scene, tone, and character behavior. Do not override the user's agency. Treat this as background context, not as a message from the user.\n\n${lines}`;
 }
@@ -4581,7 +5421,16 @@ function syncExtensionPrompt(options = {}) {
         const memory = createMemory ? ensureMemory() : getExistingMemory();
         const prompt = memory ? buildExtensionPrompt(memory) : '';
         if (typeof ctx.setExtensionPrompt === 'function') {
-            ctx.setExtensionPrompt(EXTENSION_PROMPT_KEY, prompt, 1, 0, false, 0);
+            const promptTypes = ctx.extension_prompt_types || globalThis.extension_prompt_types || {};
+            const promptRoles = ctx.extension_prompt_roles || globalThis.extension_prompt_roles || {};
+            ctx.setExtensionPrompt(
+                EXTENSION_PROMPT_KEY,
+                prompt,
+                promptTypes.IN_CHAT ?? 1,
+                0,
+                false,
+                promptRoles.SYSTEM ?? 0,
+            );
         }
     } catch (error) {
         if (shouldPrintDebugToConsole()) console.warn('[MarauderMap] 확장 프롬프트 동기화 실패:', error);
@@ -4596,6 +5445,8 @@ function renderMemoryPanel() {
     const locations = map?.locations || [];
     const events = map?.events || [];
     const managed = (memory.managedItems || []).filter(item => item.status !== 'ignored');
+    const activeCount = getActiveInjectionItems(memory).length;
+    const discoveryCount = (memory.discoveries || []).length;
     panel.innerHTML = `
         <div class="mma-memory-panel">
             <header class="mma-place-header">
@@ -4607,6 +5458,8 @@ function renderMemoryPanel() {
                 <p><b>현재 지도:</b> ${escapeHtml(map?.regionName || '없음')}</p>
                 <p><b>생성 시각:</b> ${escapeHtml(memory.generatedAt || '아직 없음')}</p>
                 <p><b>현재 위치:</b> ${escapeHtml(locations.find(l => l.id === map?.currentLocationId)?.name || '알 수 없음')}</p>
+                <p><b>주변 장면:</b> ${discoveryCount}개</p>
+                <p><b>저장된 반영 데이터:</b> ${managed.length}개 · <b>활성:</b> ${activeCount}개</p>
             </section>
             <section class="mma-info-block">
                 <h4>📍</h4>
@@ -4672,6 +5525,13 @@ function setupExtensionButtonInSettings() {
                         <option value="modern" ${getThemeKey() === 'modern' ? 'selected' : ''}>Location tracker (Modern AU)</option>
                     </select>
                 </div>
+                <div class="mma-settings-field mma-settings-output-field">
+                    <label class="mma-settings-label" for="mma-output-mode">출력 모드</label>
+                    <select id="mma-output-mode" class="text_pole">
+                        <option value="basic" ${getOutputModeKey() === 'basic' ? 'selected' : ''}>기본</option>
+                        <option value="saver" ${getOutputModeKey() === 'saver' ? 'selected' : ''}>절약</option>
+                    </select>
+                </div>
                 <div class="mma-settings-field mma-settings-font-field">
                     <label class="mma-settings-label" for="mma-font-scale">지도 글씨 크기</label>
                     <div class="mma-font-scale-row">
@@ -4697,6 +5557,11 @@ function setupExtensionButtonInSettings() {
 
     block.querySelector('#mma-theme-setting')?.addEventListener('change', (event) => {
         setTheme(event.target.value, false);
+    });
+    block.querySelector('#mma-output-mode')?.addEventListener('change', (event) => {
+        settings.outputMode = normalizeOutputMode(event.target.value);
+        event.target.value = settings.outputMode;
+        saveSettings();
     });
     const fontScaleInput = block.querySelector('#mma-font-scale');
     const fontScaleValue = block.querySelector('#mma-font-scale-value');
@@ -4912,6 +5777,7 @@ export function onEnable() {
 export function onDisable() {
     lifecycleEnabled = false;
     initialized = false;
+    if (activeDiscoveryConfirm) activeDiscoveryConfirm(false);
     cancelActiveMapGeneration('extension disabled');
     if (mapResizeState) endMapResize();
     pushDebugLog('extension.disable', '확장이 비활성화됩니다.');
