@@ -15,7 +15,7 @@ const EXTENSION_PROMPT_KEY = 'marauders_map_active_context';
 const FOOTSTEP_LIMIT = 10;
 const DEBUG_LOG_LIMIT = 40;
 const memoryDebugLogs = [];
-const EXTENSION_VERSION = '2.7.3';
+const EXTENSION_VERSION = '2.7.5';
 const SHARED_NOTEBOOK_KEYS = Object.freeze(['managedItems', 'footstepProfiles', 'trackedPeople', 'recommendations', 'searchResults']);
 const DISCOVERY_HISTORY_LIMIT = 30;
 const UNCOLLECTED_RECOMMENDATION_LIMIT = 24;
@@ -58,6 +58,9 @@ const THEME_OPTIONS = Object.freeze({
         key: 'marauder',
         label: "Marauder's Map (HP AU)",
         shortLabel: "Marauder's Map",
+        menuIcon: '📜',
+        menuTitle: "Marauder's Map",
+        activationVariant: 'spell',
         closeText: 'Mischief Managed.',
         idleNote: '낡은 양피지가 조용히 펼쳐진다.',
         activateText: 'I solemnly swear that I am up to no good.',
@@ -65,11 +68,22 @@ const THEME_OPTIONS = Object.freeze({
         completeText: '지도가 모두 그려졌습니다.',
         readyHint: '주문을 한 번 누르면 지도가 활성화된다.',
         loaderTitle: "Marauder's Map",
+        discoveryUi: {
+            icon: '🪄',
+            name: 'Revelio',
+            question: 'Revelio를 외울까요?',
+            confirm: 'Revelio',
+            loader: '지도에 감춰진 것을 드러내는 중…',
+            panelTitle: 'Revelio로 드러난 것',
+        },
     },
     modern: {
         key: 'modern',
         label: 'Location tracker (Modern AU)',
         shortLabel: 'Location tracker',
+        menuIcon: '📍',
+        menuTitle: 'Location tracker',
+        activationVariant: 'warning',
         closeText: '×',
         idleNote: '로케이션 트래커는 합법적인 동의하에 위치 추적 서비스를 지원합니다.',
         activateText: '위치 추적 활성화',
@@ -77,6 +91,37 @@ const THEME_OPTIONS = Object.freeze({
         completeText: '모든 타겟의 위치가 파악되었습니다.',
         readyHint: '',
         loaderTitle: 'Location tracker',
+        discoveryUi: {
+            icon: '📡',
+            name: '주변 상황 탐색',
+            question: '주변 상황을 탐색할까요?',
+            confirm: '탐색',
+            loader: '주변의 존재와 변화를 포착하는 중…',
+            panelTitle: '주변에서 포착된 것',
+        },
+    },
+    bonbon: {
+        key: 'bonbon',
+        label: 'Bonbon Board',
+        shortLabel: 'BONBON BOARD',
+        menuIcon: '🎲',
+        menuTitle: 'Bonbon Board',
+        activationVariant: 'game-box',
+        closeText: '×',
+        idleNote: '',
+        activateText: '봉봉보드 시작하기',
+        castingText: '게임을 준비하는 중...',
+        completeText: '게임판 준비가 끝났습니다.',
+        readyHint: '',
+        loaderTitle: 'Bonbon Board',
+        discoveryUi: {
+            icon: '🗝️',
+            name: '열쇠 카드',
+            question: '열쇠 카드를 사용할까요?',
+            confirm: '사용하기',
+            loader: '보드에 숨은 것을 찾는 중...',
+            panelTitle: '열쇠 카드로 찾은 것',
+        },
     },
 });
 
@@ -528,38 +573,22 @@ function getOutputModeConfig() {
 }
 
 function getDiscoveryUiConfig() {
-    return isModernTheme()
-        ? {
-            icon: '📡',
-            name: '주변 상황 탐색',
-            question: '주변 상황을 탐색할까요?',
-            confirm: '탐색',
-            loader: '주변의 존재와 변화를 포착하는 중…',
-            panelTitle: '주변에서 포착된 것',
-        }
-        : {
-            icon: '🪄',
-            name: 'Revelio',
-            question: 'Revelio를 외울까요?',
-            confirm: 'Revelio',
-            loader: '지도에 감춰진 것을 드러내는 중…',
-            panelTitle: 'Revelio로 드러난 것',
-        };
+    return getThemeConfig().discoveryUi || THEME_OPTIONS.marauder.discoveryUi;
 }
 function getMapActivationCompleteText() {
     const theme = getThemeConfig();
-    return theme.completeText || (isModernTheme() ? '위치 추적이 완료되었습니다.' : '지도가 모두 그려졌습니다.');
+    return theme.completeText || '지도가 모두 그려졌습니다.';
 }
 
 
 function getExtensionMenuIcon() {
-    return getThemeKey() === 'modern' ? '📍' : '📜';
+    return getThemeConfig().menuIcon || '📜';
 }
 
 function refreshExtensionsMenuButton() {
     const button = document.getElementById('mma-extension-menu-button');
     if (!button) return;
-    button.title = getThemeKey() === 'modern' ? 'Location tracker' : "Marauder's Map";
+    button.title = getThemeConfig().menuTitle || getThemeConfig().shortLabel;
     button.innerHTML = `<span class="mma-menu-icon extensionsMenuExtensionButton">${getExtensionMenuIcon()}</span><span class="mma-menu-label">지도</span>`;
 }
 
@@ -568,8 +597,9 @@ function applyThemeClass() {
     const root = document.getElementById(EXTENSION_ROOT_ID);
     const windowEl = document.getElementById('mma-window');
     [root, windowEl].filter(Boolean).forEach(el => {
-        el.classList.toggle('mma-theme-modern', theme === 'modern');
-        el.classList.toggle('mma-theme-marauder', theme === 'marauder');
+        for (const key of Object.keys(THEME_OPTIONS)) {
+            el.classList.toggle(`mma-theme-${key}`, theme === key);
+        }
         el.dataset.mmaTheme = theme;
     });
 }
@@ -585,6 +615,14 @@ function setTheme(value, rerender = false) {
 
 function isModernTheme() {
     return getThemeKey() === 'modern';
+}
+
+function isBonbonTheme() {
+    return getThemeKey() === 'bonbon';
+}
+
+function isMarauderTheme() {
+    return getThemeKey() === 'marauder';
 }
 
 function getCurrentCharacterKey() {
@@ -1776,6 +1814,35 @@ function normalizeDiscoveryText(value) {
         .trim();
 }
 
+function normalizeLocationBaseName(value) {
+    let base = String(value || '').normalize('NFKC').replace(/\s+/g, ' ').trim();
+    let previous = '';
+    while (base && base !== previous) {
+        previous = base;
+        base = base.replace(/\s*[\(\[][^\)\]]+[\)\]]\s*$/u, '').trim();
+    }
+    return normalizeDiscoveryText(base);
+}
+
+function findUnambiguousLocationNameMatch(locations = [], searchedName = '') {
+    const searchedKey = normalizeDiscoveryText(searchedName);
+    if (!searchedKey) return null;
+    const exact = (locations || []).find(location => normalizeDiscoveryText(location?.name) === searchedKey);
+    if (exact) return exact;
+
+    const searchedBase = normalizeLocationBaseName(searchedName);
+    if (!searchedBase) return null;
+    const searchedIsQualified = searchedKey !== searchedBase;
+    const candidates = (locations || []).filter(location => {
+        const locationKey = normalizeDiscoveryText(location?.name);
+        const locationBase = normalizeLocationBaseName(location?.name);
+        if (!locationKey || !locationBase || locationBase !== searchedBase) return false;
+        const locationIsQualified = locationKey !== locationBase;
+        return searchedIsQualified !== locationIsQualified;
+    });
+    return candidates.length === 1 ? candidates[0] : null;
+}
+
 function normalizeDiscoveryCategory(value) {
     const key = normalizeDiscoveryText(value);
     const exact = DISCOVERY_CATEGORIES.find(category => key === category);
@@ -1792,6 +1859,7 @@ function normalizeDiscoveryCategory(value) {
 const DISCOVERY_EMOJI_FOCUS_RULES = [
     { pattern: /(?:고양이|길고양이|cat)/i, allowed: ['🐈', '🐈‍⬛', '🐱', '🐾'], fallback: '🐈' },
     { pattern: /(?:강아지|(?:검은|하얀|흰|갈색|다친|사나운|길 잃은)\s+개(?:가|는|를|와|과|에게|한테|$|[,.!?])|dog|puppy)/i, allowed: ['🐕', '🐶', '🐾'], fallback: '🐕' },
+    { pattern: /(?:박쥐|bat)/i, allowed: ['🦇'], fallback: '🦇' },
     { pattern: /(?:조류|부엉이|올빼미|새끼\s*새|새\s+(?:한|두|세|네)\s*마리|(?:검은|하얀|흰|갈색|작은|다친|길 잃은)\s+새(?:가|는|를|의|떼|$|[,.!?])|(?:^|\s)새(?:가|를|의|떼)|bird|owl)/i, allowed: ['🐦', '🦉', '🦅', '🐥', '🪽', '🐾'], fallback: '🐦' },
     { pattern: /(?:편지|봉투|우편|서신|letter|envelope|mail)/i, allowed: ['✉️', '💌', '📩', '📨', '📧', '📮'], fallback: '✉️' },
     { pattern: /(?:소포|택배|꾸러미|배송 상자|package|parcel)/i, allowed: ['📦', '🎁'], fallback: '📦' },
@@ -1800,6 +1868,10 @@ const DISCOVERY_EMOJI_FOCUS_RULES = [
     { pattern: /(?:약병|물약|시약|medicine|potion|vial)/i, allowed: ['🧪', '💊', '⚗️'], fallback: '🧪' },
     { pattern: /(?:수첩|일지|(?:^|\s)책(?:이|은|을|의|과|속|\s|$)|book|notebook|journal)/i, allowed: ['📖', '📕', '📓', '📔'], fallback: '📖' },
     { pattern: /(?:전화|휴대전화|메시지|문자|phone|call|text message)/i, allowed: ['📱', '☎️', '📞', '💬'], fallback: '📱' },
+    { pattern: /(?:양초|촛불|초의 불꽃|candle)/i, allowed: ['🕯️'], fallback: '🕯️' },
+    { pattern: /(?:깃펜|펜촉|만년필|quill|fountain pen)/i, allowed: ['🪶', '🖋️', '✒️'], fallback: '🪶' },
+    { pattern: /(?:오크통|술통|맥주통|barrel|cask)/i, allowed: ['🛢️', '🍺'], fallback: '🛢️' },
+    { pattern: /(?:그림(?!자)|초상화|벽화|painting|portrait|mural)/i, allowed: ['🖼️'], fallback: '🖼️' },
     { pattern: /(?:불길|화재|불이 붙|fire|flame)/i, allowed: ['🔥', '🧯'], fallback: '🔥' },
 ];
 
@@ -2176,7 +2248,7 @@ A discovery is one concrete person, creature, object, message, changed place, or
 Every discovery must answer four practical questions:
 1. focus and focusContext: exactly what was found, who or what it is, and why it belongs at this location;
 2. observation: what is visibly or audibly happening now, in 2 to 4 natural Korean sentences with concrete sensory and behavioral details;
-3. stakes: the specific thing that is unresolved or likely to change soon;
+3. stakes: the concrete near-future change that will occur at this place if nobody intervenes;
 4. interactions: 2 to 3 materially different things a character could attempt, inspect, ask, move, help, stop, open, follow, repair, deliver, or otherwise engage with.
 
 Use sourceAnchors for 1 to 4 confirmed continuity facts that support the discovery. These are internal grounding data, so keep them concise and factual. Give every item one relevant, intuitive emoji for its actual focus, such as 🐈 or 🐾 for an animal, 💌 or ✉️ for a letter, 👤 or a fitting person emoji for a person, 🚪 for a door, or 📦 for a parcel. The emoji is a miniature label for the literal focus: a reader should be able to guess what was found without a category legend.
@@ -2184,6 +2256,8 @@ Use sourceAnchors for 1 to 4 confirmed continuity facts that support the discove
 Set allocation:
 - Use only person, creature, object, message, place_change, and incident categories.
 - Use as many distinct categories, focal subjects, locations, and premises as the supplied continuity supports before repeating a category.
+- Prefer a physically varied set with different practical roles: for example a living subject, a communication or delivery, a usable or misplaced object, a changed access point, or an incident already beginning. Choose only forms supported by the supplied continuity, and avoid filling the set with several similar loose props or decorative oddities.
+- Choose the literal focus first, then assign the matching category and a single emoji that depicts that focus rather than its mood, importance, or effect.
 - No location receives more than two discoveries.
 - At most one discovery directly focuses on the Current user or Current character. Allocate the remaining discoveries to surrounding named people, specific creatures, known objects, incoming messages or visitors, changed places, and active incident signs elsewhere on the map.
 - A person discovery contains a specific new problem, decision, exchange, mistake, opportunity, or change beyond that person's already shown location and movement.
@@ -2271,9 +2345,16 @@ function buildQuestContinuityRegistry(memory = ensureMemory()) {
         addPerson(locationById.get(String(footstep.locationId)), footstep.label);
     }
 
-    const locationLines = (map?.locations || []).slice(0, 12).map(location => {
+    const currentAreaLocations = (map?.locations || []).filter(location => location?.source !== 'person-search');
+    const remoteSearchLocations = (map?.locations || []).filter(location => location?.source === 'person-search');
+    const locationLines = currentAreaLocations.slice(0, 12).map(location => {
         const people = peopleByLocation.get(location.name) || [];
         return `- ${location.name}${people.length ? ` | associated people: ${people.join(', ')}` : ''}`;
+    });
+    const remoteLocationLines = remoteSearchLocations.slice(0, 12).map(location => {
+        const people = peopleByLocation.get(location.name) || [];
+        const observedState = stripLong(`${location.situation || ''} ${location.details || ''}`, 260);
+        return `- ${location.name}${people.length ? ` | observed people: ${people.join(', ')}` : ''}${observedState ? ` | last observed state: ${observedState}` : ''}`;
     });
     const trackedLines = Object.values(memory?.trackedPeople || {}).slice(0, 12).map(person => {
         const name = String(person?.name || '').replace(/\s+/g, ' ').trim();
@@ -2283,9 +2364,10 @@ function buildQuestContinuityRegistry(memory = ensureMemory()) {
         return `- ${name}${location ? ` | last known place: ${location}` : ''}${role ? ` | known context: ${role}` : ''}`;
     }).filter(Boolean);
 
-    if (!locationLines.length && !trackedLines.length) return '(none available yet)';
+    if (!locationLines.length && !remoteLocationLines.length && !trackedLines.length) return '(none available yet)';
     return [
-        locationLines.length ? `Earlier returned locations and associated people:\n${locationLines.join('\n')}` : '',
+        locationLines.length ? `Earlier current-area locations and associated people:\n${locationLines.join('\n')}` : '',
+        remoteLocationLines.length ? `Remote person-search continuity leads at their own places:\n${remoteLocationLines.join('\n')}` : '',
         trackedLines.length ? `Tracked or previously identified people:\n${trackedLines.join('\n')}` : '',
     ].filter(Boolean).join('\n');
 }
@@ -2365,6 +2447,7 @@ ${getPersonaSummary() || '(unavailable)'}
 [Wider continuity leads]
 ${buildQuestContinuityRegistry(memory)}
 Use these as continuity leads for recurring people and places. The recent roleplay decides which of them still belong in the current snapshot.
+Remote person-search continuity leads describe separate places in the wider world. When one is included as a returned location, build its physical layout, sensory conditions, adjacency, people, and activity from that place's own observed state and established setting. Ground each other returned location in its own local evidence in the same way.
 
 [Recent roleplay]
 ${getChatSnapshot(10) || '(no recent roleplay)'}
@@ -3175,11 +3258,7 @@ async function addSearchResultToMap(result) {
             toast('검색 결과에 지도에 표시할 구체적인 장소가 없습니다.', 'info');
             return;
         }
-        const searchedLocationKey = normalizeDiscoveryText(searchedLocation);
-        const byName = (map.locations || []).find(location => {
-            const locationKey = normalizeDiscoveryText(location.name);
-            return searchedLocationKey && locationKey && searchedLocationKey === locationKey;
-        });
+        const byName = findUnambiguousLocationNameMatch(map.locations || [], searchedLocation);
         if (byName) {
             locationId = byName.id;
         } else if ((map.locations || []).length < 12) {
@@ -3199,7 +3278,7 @@ async function addSearchResultToMap(result) {
             map.locations.push(location);
             locationId = location.id;
         } else {
-            toast(`${searchedLocation}은(는) 현재 지도 범위 밖이라 엉뚱한 장소에 표시하지 않았습니다.`, 'info');
+            toast(`현재 지도에는 장소를 최대 12개까지 표시할 수 있어 ${searchedLocation}을(를) 추가하지 못했습니다. 기존 장소를 다른 곳에 연결하지는 않았습니다.`, 'info');
             return;
         }
     }
@@ -3244,7 +3323,9 @@ async function addSearchResultToMap(result) {
     }
     renderMapView();
     selectLocation(locationId);
-    toast(`${result.name}의 위치 신호를 지도에 표시했습니다.`, 'success');
+    toast(isBonbonTheme()
+        ? `${result.name}의 캐릭터 말을 게임판에 놓았습니다.`
+        : `${result.name}의 위치 신호를 지도에 표시했습니다.`, 'success');
 }
 
 function uniqueFootsteps(list) {
@@ -3284,7 +3365,9 @@ function trackFootstep(footstepId) {
     };
     upsertTrackedPerson(tracked);
     saveMemory();
-    toast(`${tracked.name}의 이후 동선을 수첩에서 추적합니다.`, 'success');
+    toast(isBonbonTheme()
+        ? `${tracked.name}의 동선 카드를 보관함에 넣었습니다.`
+        : `${tracked.name}의 이후 동선을 수첩에서 추적합니다.`, 'success');
     renderNotebookPanel();
 }
 
@@ -3308,7 +3391,9 @@ function trackPersonFromResult(result) {
     };
     upsertTrackedPerson(tracked);
     saveMemory();
-    toast(`${tracked.name}의 이후 동선을 수첩에서 추적합니다.`, 'success');
+    toast(isBonbonTheme()
+        ? `${tracked.name}의 동선 카드를 보관함에 넣었습니다.`
+        : `${tracked.name}의 이후 동선을 수첩에서 추적합니다.`, 'success');
     renderNotebookPanel();
 }
 
@@ -3374,7 +3459,7 @@ function renderFailurePanel(title = '지도 생성 실패', detail = '처리 중
             <div class="mma-spell-top">
                 <div class="mma-brand">${escapeHtml(theme.shortLabel)}</div>
                 <div class="mma-spell-actions">
-                    <button class="mma-managed-button mma-close-button" data-action="close" aria-label="닫기">${escapeHtml(theme.closeText)}</button>
+                    <button class="mma-managed-button mma-close-button" data-action="close" aria-label="${isBonbonTheme() ? '게임 상자 닫기' : '닫기'}" title="${isBonbonTheme() ? '게임 상자 닫기' : '닫기'}">${escapeHtml(theme.closeText)}</button>
                 </div>
             </div>
             <div class="mma-parchment-center">
@@ -4333,7 +4418,9 @@ async function generateMap(force = false) {
             syncExtensionPrompt();
             const rendered = refreshVisibleMapAfterBackgroundUpdate({ forceMapView: !hadMapBefore });
             if (force || !rendered) {
-                toast(force ? '지도 새로고침이 완료되었습니다.' : '지도 출력이 완료되었습니다.', 'success');
+                toast(isBonbonTheme()
+                    ? (force ? '게임판을 새로 배치했습니다.' : '게임판 준비가 끝났습니다.')
+                    : (force ? '지도 새로고침이 완료되었습니다.' : '지도 출력이 완료되었습니다.'), 'success');
             }
         });
     } finally {
@@ -4448,7 +4535,9 @@ async function generateDiscoveries() {
                 renderCanvas();
                 renderDiscoveryListPanel();
             }
-            toast(`${ui.panelTitle} ${items.length}개를 표시했습니다.`, 'success');
+            toast(isBonbonTheme()
+                ? `새로운 발견 ${items.length}개를 보드에 표시했습니다.`
+                : `${ui.panelTitle} ${items.length}개를 표시했습니다.`, 'success');
             pushDebugLog('discovery.generate.success', '주변 발견을 저장했습니다.', {
                 outputMode,
                 count: items.length,
@@ -4503,7 +4592,9 @@ async function refreshLocation(locationId) {
             assertCurrentMapGeneration(job);
             syncExtensionPrompt();
             refreshVisibleMapAfterBackgroundUpdate({ locationId });
-            toast(`${location.name} 장소 새로고침이 완료되었습니다.`, 'success');
+            toast(isBonbonTheme()
+                ? `${location.name} 타일을 새로 배치했습니다.`
+                : `${location.name} 장소 새로고침이 완료되었습니다.`, 'success');
         });
     } finally {
         finishMapGeneration(job);
@@ -4577,9 +4668,9 @@ function normalizeFootstepProfile(raw, footstep) {
 
 function getFootstepLoaderText(footstep) {
     const label = footstep?.visibleName === false ? '???' : (footstep?.label || '타겟');
-    return isModernTheme()
-        ? `${label} 타겟의 정보를 파악하는 중...`
-        : `${label}의 발자국을 읽는 중...`;
+    if (isModernTheme()) return `${label} 타겟의 정보를 파악하는 중...`;
+    if (isBonbonTheme()) return `${label}의 캐릭터 말을 살펴보는 중...`;
+    return `${label}의 발자국을 읽는 중...`;
 }
 
 async function getOrGenerateFootstepProfile(footstepId) {
@@ -4673,7 +4764,7 @@ function renderFootstepPanel(footstepId) {
     panel.innerHTML = `
         <div class="mma-place-card mma-footstep-card">
             <header class="mma-place-header">
-                <div><span class="mma-place-icon">${isModernTheme() ? '●' : '👣'}</span><strong>${escapeHtml(profile.name)}</strong></div>
+                <div><span class="mma-place-icon">${isModernTheme() ? '●' : (isBonbonTheme() ? '<span class="mma-bonbon-mini-pawn" aria-hidden="true"></span>' : '👣')}</span><strong>${escapeHtml(profile.name)}</strong></div>
                 <button title="위치 카드로 돌아가기" data-action="back">↩️</button>
             </header>
             <section class="mma-info-block">
@@ -4932,8 +5023,29 @@ async function withLoader(message, fn, options = {}) {
     }
 }
 
+function showBonbonToast(message, type = 'info') {
+    if (!isBonbonTheme()) return false;
+    const layer = document.getElementById('mma-map-toast-layer');
+    if (!layer) return false;
+    const safeType = ['success', 'warning', 'error', 'info'].includes(type) ? type : 'info';
+    const item = document.createElement('div');
+    item.className = `mma-map-toast mma-map-toast-bonbon mma-map-toast-${safeType} ${safeType}`;
+    item.setAttribute('role', safeType === 'error' ? 'alert' : 'status');
+    item.textContent = String(message || '');
+    layer.appendChild(item);
+    while (layer.children.length > 3) layer.children[0]?.remove();
+    requestAnimationFrame(() => item.classList.add('mma-map-toast-visible'));
+    const visibleMs = safeType === 'error' ? 4800 : 3000;
+    setTimeout(() => {
+        item.classList.remove('mma-map-toast-visible');
+        setTimeout(() => item.remove(), 220);
+    }, visibleMs);
+    return true;
+}
+
 function toast(message, type = 'info') {
     try {
+        if (showBonbonToast(message, type)) return;
         const ctx = stContext();
         if (ctx.toastr?.[type]) ctx.toastr[type](message);
         else if (globalThis.toastr?.[type]) globalThis.toastr[type](message);
@@ -5055,11 +5167,12 @@ function createRoot() {
     root.id = EXTENSION_ROOT_ID;
     root.innerHTML = `
         <div id="mma-overlay" class="mma-hidden" aria-hidden="true">
-            <div id="mma-window" role="dialog" aria-label="Map / Location tracker">
+            <div id="mma-window" role="dialog" aria-label="Map / Location tracker / Bonbon Board">
                 <div id="mma-busy" class="mma-hidden"><span class="mma-spinner"></span><span id="mma-busy-text">지도 확인 중...</span></div>
                 <div id="mma-content"></div>
             </div>
         </div>
+        <div id="mma-map-toast-layer" class="mma-map-toast-layer" aria-live="polite" aria-atomic="false"></div>
     `;
     document.body.appendChild(root);
     setupOverlayDebugObserver();
@@ -5137,6 +5250,7 @@ function renderSpellScreen() {
     const memory = ensureMemory();
     const theme = getThemeConfig();
     const modern = isModernTheme();
+    const bonbon = isBonbonTheme();
     applyThemeClass();
     const activationNotice = modern ? `
                 <div class="mma-tracker-warning" aria-label="Location tracker notice">
@@ -5147,22 +5261,47 @@ function renderSpellScreen() {
                     <p class="mma-warning-copy">RP 속 인물들은 허구의 인물이기에 처벌은 받지 않습니다.</p>
                     <p class="mma-warning-question">위치 추적을 활성화하시겠습니까?</p>
                 </div>` : '';
+    const activateText = bonbon
+        ? (memory.map ? '봉봉보드 이어하기' : '봉봉보드 시작하기')
+        : theme.activateText;
+    const activationButton = `
+                <button id="mma-spell-button" class="mma-spell-button" type="button">
+                    <span>${escapeHtml(activateText)}</span>
+                </button>`;
+    const bonbonCover = bonbon ? `
+                <div class="mma-bonbon-box-cover" aria-label="Bonbon Board 게임 상자 표지">
+                    <div class="mma-bonbon-cover-pieces" aria-hidden="true">
+                        <span class="mma-bonbon-cover-piece mma-bonbon-cover-piece-die">⚄</span>
+                        <span class="mma-bonbon-cover-piece mma-bonbon-cover-piece-key-card">🗝️</span>
+                        <span class="mma-bonbon-cover-piece mma-bonbon-cover-piece-pawn"></span>
+                        <span class="mma-bonbon-cover-piece mma-bonbon-cover-piece-tile"></span>
+                    </div>
+                    <div class="mma-bonbon-cover-title">BONBON BOARD</div>
+                    <p class="mma-bonbon-cover-copy">상자를 열면 게임이 시작됩니다.</p>
+                    <p class="mma-bonbon-cover-copy">주사위를 굴려 이야기를 확장해 보세요.</p>
+                    <div class="mma-bonbon-cover-meta"><span>1인 이상</span><b aria-hidden="true">·</b><span>제한 시간 없음</span><b aria-hidden="true">·</b><span>정해진 경로 없음</span></div>
+                    ${activationButton}
+                </div>` : '';
+    const readyHint = modern
+        ? (memory.map ? '저장된 지도를 다시 펼칩니다.' : '현재 장면을 읽어 새 지도를 만듭니다.')
+        : bonbon
+            ? ''
+            : `${theme.readyHint} ${memory.map ? '저장된 지도 메모리를 다시 펼칩니다.' : '현재 장면을 읽어 새 지도를 만듭니다.'}`;
     content.innerHTML = `
         <section class="mma-spell-screen">
             <div class="mma-spell-top">
                 <div class="mma-brand">${escapeHtml(theme.shortLabel)}</div>
                 <div class="mma-spell-actions">
                     ${hasPreviousMapSnapshot(memory) ? '<button class="mma-managed-button mma-restore-previous-button" data-action="restore-previous-map" title="이전 지도 불러오기" aria-label="이전 지도 불러오기">↩️</button>' : ''}
-                    <button class="mma-managed-button mma-close-button" data-action="close" aria-label="닫기">${escapeHtml(theme.closeText)}</button>
+                    <button class="mma-managed-button mma-close-button" data-action="close" aria-label="${bonbon ? '게임 상자 닫기' : '닫기'}" title="${bonbon ? '게임 상자 닫기' : '닫기'}">${escapeHtml(theme.closeText)}</button>
                 </div>
             </div>
-            <div class="mma-parchment-center ${modern ? 'mma-tracker-center' : ''}">
-                <div class="mma-blank-note">${escapeHtml(theme.idleNote)}</div>
+            <div class="mma-parchment-center ${modern ? 'mma-tracker-center' : ''} ${bonbon ? 'mma-bonbon-center' : ''}">
+                ${bonbon ? '' : `<div class="mma-blank-note">${escapeHtml(theme.idleNote)}</div>`}
                 ${activationNotice}
-                <button id="mma-spell-button" class="mma-spell-button" type="button">
-                    <span>${escapeHtml(theme.activateText)}</span>
-                </button>
-                <p class="mma-spell-hint">${modern ? (memory.map ? '저장된 지도를 다시 펼칩니다.' : '현재 장면을 읽어 새 지도를 만듭니다.') : `${escapeHtml(theme.readyHint)} ${memory.map ? '저장된 지도 메모리를 다시 펼칩니다.' : '현재 장면을 읽어 새 지도를 만듭니다.'}`}</p>
+                ${bonbonCover}
+                ${bonbon ? '' : activationButton}
+                ${readyHint ? `<p class="mma-spell-hint">${escapeHtml(readyHint)}</p>` : ''}
             </div>
         </section>
     `;
@@ -5193,7 +5332,7 @@ function wireSpellButton() {
         const theme = getThemeConfig();
         // Marauder's Map keeps its spell visible while the separate loader carries
         // the progress wording. The subtle ink-soak animation is enough feedback.
-        if (label && isModernTheme()) label.textContent = theme.castingText;
+        if (label && !isMarauderTheme()) label.textContent = theme.castingText;
         try {
             const memory = ensureMemory();
             if (memory.map) renderMapView();
@@ -5206,7 +5345,11 @@ function wireSpellButton() {
                 current.disabled = false;
                 current.classList.remove('mma-casting');
                 const currentLabel = current.querySelector('span');
-                if (currentLabel) currentLabel.textContent = getThemeConfig().activateText;
+                if (currentLabel) {
+                    currentLabel.textContent = isBonbonTheme() && ensureMemory().map
+                        ? '봉봉보드 이어하기'
+                        : getThemeConfig().activateText;
+                }
             }
         }
     };
@@ -5253,7 +5396,7 @@ function renderMapView() {
                     <div class="mma-region">${escapeHtml(map.regionName)} <span>${escapeHtml(map.timeHint || '')}</span>${lastChecked}</div>
                 </div>
                 <div class="mma-top-right">
-                    <button class="mma-managed-button mma-close-button" data-action="close" aria-label="닫기">${escapeHtml(theme.closeText)}</button>
+                    <button class="mma-managed-button mma-close-button" data-action="close" aria-label="${isBonbonTheme() ? '게임 상자 닫기' : '닫기'}" title="${isBonbonTheme() ? '게임 상자 닫기' : '닫기'}">${escapeHtml(theme.closeText)}</button>
                     <nav class="mma-toolbar-actions" aria-label="지도 버튼">
                         <button title="현재 상황으로 전체 지도 새로고침" data-action="refresh-all">🔄</button>
                         <button title="이전 지도 불러오기" data-action="restore-previous-map" ${hasPreviousMapSnapshot(memory) ? '' : 'disabled'}>↩️</button>
@@ -5300,7 +5443,7 @@ function renderCanvas() {
     const discoveryUi = getDiscoveryUiConfig();
     const discoverButton = document.createElement('button');
     discoverButton.type = 'button';
-    discoverButton.className = 'mma-map-discovery-trigger';
+    discoverButton.className = `mma-map-discovery-trigger${isBonbonTheme() ? ' mma-board-key-card-trigger' : ''}`;
     discoverButton.dataset.action = 'discover';
     discoverButton.title = discoveryUi.name;
     discoverButton.setAttribute('aria-label', discoveryUi.name);
@@ -5348,14 +5491,16 @@ function renderCanvas() {
         occupiedPoints.push({ x: footPos.x, y: footPos.y, r: 8 });
         const foot = document.createElement('button');
         foot.type = 'button';
-        foot.className = `mma-footstep ${isModernTheme() ? 'mma-modern-tracker' : ''}`;
+        foot.className = `mma-footstep ${isModernTheme() ? 'mma-modern-tracker' : (isBonbonTheme() ? `mma-bonbon-piece mma-bonbon-piece-${index % 4}` : '')}`.trim();
         foot.style.left = `${footPos.x}%`;
         foot.style.top = `${footPos.y}%`;
         foot.title = `${fp.visibleName ? fp.label : '???'} — ${fp.status || ''}`;
         foot.dataset.footstepId = fp.id;
         foot.innerHTML = isModernTheme()
             ? `<span class="mma-tracker-dot" aria-hidden="true"></span><em>${escapeHtml(fp.visibleName ? fp.label : '???')}</em>`
-            : `<span>👣</span><em>${escapeHtml(fp.visibleName ? fp.label : '???')}</em>`;
+            : isBonbonTheme()
+                ? `<span class="mma-bonbon-pawn" aria-hidden="true"></span><em>${escapeHtml(fp.visibleName ? fp.label : '???')}</em>`
+                : `<span>👣</span><em>${escapeHtml(fp.visibleName ? fp.label : '???')}</em>`;
         foot.addEventListener('click', (event) => {
             event.stopPropagation();
             handleFootstepClick(fp.id);
@@ -5449,7 +5594,7 @@ function renderDiscoveryPanel(discoveryId) {
                 <p><b>${escapeHtml(focus)}</b>${focusContext ? ` — ${escapeHtml(focusContext)}` : ''}</p>
                 <p>${escapeHtml(observation)}</p>
             </section>
-            ${stakes ? `<section class="mma-info-block"><h4>⏳ 현재 걸린 일</h4><p>${escapeHtml(stakes)}</p></section>` : ''}
+            ${stakes ? `<section class="mma-info-block"><h4>⏳ 이대로 두면</h4><p>${escapeHtml(stakes)}</p></section>` : ''}
             ${interactions.length ? `<section class="mma-info-block"><h4>↗️ 해볼 수 있는 일</h4><ul>${interactions.map(action => `<li>${escapeHtml(action)}</li>`).join('')}</ul></section>` : ''}
             ${item.participants?.length ? `<section class="mma-info-block"><h4>👥 관련 인물</h4><ul>${item.participants.map(person => `<li>${escapeHtml(person)}</li>`).join('')}</ul></section>` : ''}
             <footer class="mma-place-actions mma-discovery-actions">
@@ -6056,7 +6201,7 @@ function snapshotManagedItem(type, id, status) {
             summary: item.observation || item.body || item.summary || '',
             details: [
                 `대상: ${item.focus || item.title}${item.focusContext ? ` — ${item.focusContext}` : ''}`,
-                item.stakes ? `현재 걸린 일: ${item.stakes}` : '',
+                item.stakes ? `이대로 두면: ${item.stakes}` : '',
                 item.interactions?.length ? `해볼 수 있는 일: ${item.interactions.join(' / ')}` : '',
             ].filter(Boolean).join('\n'),
             present: [...(item.participants || [])],
@@ -6202,7 +6347,7 @@ Location: ${item.locationName}
 Focus: ${focus}${focusContext ? ` — ${focusContext}` : ''}
 People present: ${(item.participants || item.present || []).join(', ')}
 What is currently observable: ${observation}
-What is unresolved or likely to change soon: ${stakes}
+If nobody intervenes, what changes next: ${stakes}
 Possible ways characters may engage: ${interactions.join(' / ')}
 Continuity basis: ${sourceAnchors.join(' / ')}
 
@@ -6372,6 +6517,7 @@ function setupExtensionButtonInSettings() {
                     <select id="mma-theme-setting" class="text_pole">
                         <option value="marauder" ${getThemeKey() === 'marauder' ? 'selected' : ''}>Marauder's Map (HP AU)</option>
                         <option value="modern" ${getThemeKey() === 'modern' ? 'selected' : ''}>Location tracker (Modern AU)</option>
+                        <option value="bonbon" ${getThemeKey() === 'bonbon' ? 'selected' : ''}>Bonbon Board</option>
                     </select>
                 </div>
                 <div class="mma-settings-field mma-settings-output-field">
@@ -6460,7 +6606,7 @@ function ensureExtensionsMenuButton() {
     const button = document.createElement('div');
     button.id = 'mma-extension-menu-button';
     button.className = 'list-group-item flex-container flexGap5 interactable';
-    button.title = getThemeKey() === 'modern' ? 'Location tracker' : "Marauder's Map";
+    button.title = getThemeConfig().menuTitle || getThemeConfig().shortLabel;
     button.innerHTML = `<span class="mma-menu-icon extensionsMenuExtensionButton">${getExtensionMenuIcon()}</span><span class="mma-menu-label">지도</span>`;
     button.addEventListener('click', () => {
         openMap();
