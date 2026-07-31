@@ -4054,10 +4054,6 @@ button.mma-footstep:focus-visible em {
   color: #fff;
 }
 
-#mma-window.mma-theme-modern * {
-  scrollbar-color: rgba(94, 220, 244, .34) rgba(7, 12, 19, .4);
-}
-
 /* Activation and failure screens */
 #mma-window.mma-theme-modern .mma-spell-screen {
   color: var(--mma-modern-text);
@@ -8483,3 +8479,364 @@ button.mma-footstep:focus-visible em {
   }
 }
 
+/* v2.7.11 Bonbon unified pieces and strawberry-milk route */
+#mma-window.mma-theme-bonbon,
+#mma-root.mma-theme-bonbon {
+  --mma-bb-ivory: #fff9f1;
+  --mma-bb-cream: #fff4e6;
+  --mma-bb-cream-deep: #fbefe5;
+  --mma-bb-fig: #b76b8b;
+  --mma-bb-fig-soft: #f0d6df;
+  --mma-bb-fig-deep: #714759;
+  --mma-bb-chocolate: #a1715f;
+  --mma-bb-chocolate-deep: #684b41;
+  --mma-bb-pistachio: #cedcaa;
+  --mma-bb-pistachio-deep: #6e7b56;
+  --mma-bb-line: #e6cfc7;
+  --mma-bb-text: #514039;
+}
+
+#mma-window.mma-theme-bonbon {
+  border-color: #e6cfc7 !important;
+  background: #fff4e6 !important;
+  color: #514039 !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-brand,
+#mma-window.mma-theme-bonbon .mma-brand.small,
+#mma-window.mma-theme-bonbon .mma-place-header strong,
+#mma-window.mma-theme-bonbon .mma-event-title,
+#mma-window.mma-theme-bonbon .mma-event-title b,
+#mma-window.mma-theme-bonbon .mma-info-block h4,
+#mma-window.mma-theme-bonbon .mma-section-title,
+#mma-window.mma-theme-bonbon .mma-notebook-section summary,
+#mma-window.mma-theme-bonbon .mma-person-signal-block h4 {
+  color: #714759 !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-toolbar,
+#mma-window.mma-theme-bonbon .mma-world-summary {
+  border-color: #e6cfc7 !important;
+  background: #fff9f1 !important;
+  color: #514039 !important;
+  box-shadow: none !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-region,
+#mma-window.mma-theme-bonbon .mma-region span,
+#mma-window.mma-theme-bonbon .mma-event-location,
+#mma-window.mma-theme-bonbon .mma-event-detail,
+#mma-window.mma-theme-bonbon .mma-settings-note,
+#mma-window.mma-theme-bonbon .mma-card-hint,
+#mma-window.mma-theme-bonbon .mma-search-auto-save-note,
+#mma-window.mma-theme-bonbon .mma-last-checked {
+  color: #684b41 !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-box-cover {
+  border-color: #a1715f !important;
+  background: #fff4e6 !important;
+  box-shadow: none !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-box-cover::before {
+  background:
+    linear-gradient(#b76b8b, #b76b8b) top / 100% 9px no-repeat,
+    linear-gradient(#a1715f, #a1715f) bottom / 100% 9px no-repeat,
+    linear-gradient(#f0d6df, #f0d6df) left / 9px 100% no-repeat,
+    linear-gradient(#cedcaa, #cedcaa) right / 9px 100% no-repeat !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-cover-title {
+  color: #714759 !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-cover-copy,
+#mma-window.mma-theme-bonbon .mma-bonbon-cover-meta {
+  color: #684b41 !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-box-cover .mma-spell-button,
+#mma-window.mma-theme-bonbon .mma-bonbon-box-cover .mma-spell-button:hover,
+#mma-window.mma-theme-bonbon .mma-bonbon-box-cover .mma-spell-button:focus-visible {
+  border-color: #714759 !important;
+  background: #714759 !important;
+  color: #fff9f1 !important;
+}
+
+/* One visible route instead of four pale rails competing with map objects. */
+#mma-window.mma-theme-bonbon .mma-map-canvas {
+  border-color: #e6cfc7 !important;
+  background: #fff9f1 !important;
+  box-shadow: 0 1px 2px rgba(81, 64, 57, .07) !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-board-track::before {
+  content: "" !important;
+  display: block !important;
+  position: absolute;
+  top: calc(18% - 9px);
+  right: calc(18% - 9px);
+  bottom: calc(22% - 9px);
+  left: calc(18% - 9px);
+  box-sizing: border-box;
+  border: 18px solid #f0d6df !important;
+  border-radius: 18px !important;
+  outline: 0 !important;
+  background: transparent !important;
+  box-shadow: 0 0 0 2px #a1715f, inset 0 0 0 2px rgba(255, 249, 241, .72) !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-board-rail,
+#mma-window.mma-theme-bonbon [class*="mma-bonbon-board-corner"] {
+  display: none !important;
+}
+
+/* Only locations remain card-like board spaces. */
+#mma-window.mma-theme-bonbon .mma-node {
+  border-color: #a1715f !important;
+  background: #fff9f1 !important;
+  color: #514039 !important;
+  box-shadow: 0 1px 2px rgba(81, 64, 57, .08) !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-node:not(.selected):not(.current-location) {
+  border-color: rgba(161, 113, 95, .42) !important;
+  background: rgba(255, 249, 241, .9) !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-node:hover,
+#mma-window.mma-theme-bonbon .mma-node:focus-visible {
+  border-color: #b76b8b !important;
+  background: #fff4e6 !important;
+  outline-color: rgba(183, 107, 139, .3) !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-node.selected {
+  z-index: 7;
+  border-color: #714759 !important;
+  background: #714759 !important;
+  color: #fff9f1 !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-node.current-location {
+  z-index: 7;
+}
+
+#mma-window.mma-theme-bonbon .mma-node.current-location::before {
+  top: -9px !important;
+  left: 7px !important;
+  width: auto !important;
+  height: auto !important;
+  border: 0 !important;
+  background: transparent !important;
+  color: #6e7b56 !important;
+  font-size: 16px !important;
+  line-height: 1 !important;
+  transform: none !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-node.current-location::after {
+  inset: -2px !important;
+  border: 1px solid #6e7b56 !important;
+  border-radius: 8px !important;
+  box-shadow: none !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-event-badge {
+  min-width: 14px !important;
+  height: 14px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 5px !important;
+  background: #cedcaa !important;
+  color: #514039 !important;
+  font-size: 8.5px !important;
+  line-height: 1 !important;
+}
+
+/* One person is one compact pawn-and-name piece, not a pawn plus a white card. */
+#mma-window.mma-theme-bonbon .mma-footstep.mma-bonbon-piece {
+  z-index: 6;
+  gap: 0 !important;
+  min-width: 0 !important;
+  min-height: 22px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  opacity: .82;
+}
+
+#mma-window.mma-theme-bonbon .mma-footstep.mma-bonbon-piece:hover,
+#mma-window.mma-theme-bonbon .mma-footstep.mma-bonbon-piece:focus-visible {
+  z-index: 9;
+  opacity: 1;
+}
+
+#mma-window.mma-theme-bonbon .mma-footstep.mma-bonbon-piece .mma-bonbon-pawn {
+  z-index: 1;
+  width: 15px !important;
+  min-width: 15px !important;
+  height: 19px !important;
+  margin-right: -1px;
+  color: #b76b8b !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-footstep.mma-bonbon-piece .mma-bonbon-pawn::before {
+  font-size: 18px !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-footstep.mma-bonbon-piece em {
+  max-width: min(74px, 21vw) !important;
+  margin: 0 !important;
+  padding: 0 2px !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  color: rgba(81, 64, 57, .84) !important;
+  box-shadow: none !important;
+  font-size: calc(9px * var(--mma-font-scale, 1)) !important;
+  font-weight: 600 !important;
+  line-height: 1.05 !important;
+  text-shadow: 0 1px 0 #fff9f1, 0 0 3px #fff9f1;
+}
+
+#mma-window.mma-theme-bonbon button.mma-footstep:hover em,
+#mma-window.mma-theme-bonbon button.mma-footstep:focus-visible em {
+  border: 0 !important;
+  background: transparent !important;
+  color: #714759 !important;
+  box-shadow: none !important;
+}
+
+#mma-window.mma-theme-bonbon button.mma-footstep:focus-visible {
+  border-radius: 4px;
+  outline: 1px solid #b76b8b;
+  outline-offset: 2px;
+}
+
+/* Discoveries keep their click target but show only the discovered object. */
+#mma-window.mma-theme-bonbon .mma-discovery-marker {
+  z-index: 5;
+  width: 34px !important;
+  min-width: 34px !important;
+  height: 34px !important;
+  min-height: 34px !important;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-discovery-marker span {
+  display: inline-block !important;
+  width: auto !important;
+  height: auto !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  font-size: 20px !important;
+  filter: drop-shadow(0 2px 2px rgba(81, 64, 57, .2)) !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-discovery-marker:hover span,
+#mma-window.mma-theme-bonbon .mma-discovery-marker:focus-visible span {
+  border: 0 !important;
+  background: transparent !important;
+  filter: drop-shadow(0 3px 3px rgba(113, 71, 89, .28)) brightness(1.04) !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-map-discovery-trigger,
+#mma-window.mma-theme-bonbon .mma-board-key-card-trigger {
+  border-color: #a1715f !important;
+  background: #f0d6df !important;
+  box-shadow: none !important;
+}
+
+/* Nested details sit inside the board instead of stacking another white card. */
+#mma-window.mma-theme-bonbon .mma-side-panel {
+  border-color: #e6cfc7 !important;
+  background: #fff4e6 !important;
+  box-shadow: none !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-info-block,
+#mma-window.mma-theme-bonbon .mma-event-card,
+#mma-window.mma-theme-bonbon .tracked-card,
+#mma-window.mma-theme-bonbon .person-search-card,
+#mma-window.mma-theme-bonbon .recommendation-card,
+#mma-window.mma-theme-bonbon .search-history-card,
+#mma-window.mma-theme-bonbon .mma-discovery-list-card,
+#mma-window.mma-theme-bonbon .mma-discovery-confirm,
+#mma-window.mma-theme-bonbon .mma-discovery-card-icon {
+  border-color: #e6cfc7 !important;
+  background: #fbefe5 !important;
+  color: #514039 !important;
+  box-shadow: none !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-panel-note,
+#mma-window.mma-theme-bonbon .mma-empty,
+#mma-window.mma-theme-bonbon .mma-scroll-text,
+#mma-window.mma-theme-bonbon .mma-space-description,
+#mma-window.mma-theme-bonbon .mma-debug-entry pre,
+#mma-window.mma-theme-bonbon .mma-notebook-section,
+#mma-window.mma-theme-bonbon input,
+#mma-window.mma-theme-bonbon select,
+#mma-window.mma-theme-bonbon textarea,
+#mma-window.mma-theme-bonbon .mma-custom-search input,
+#mma-window.mma-theme-bonbon .mma-theme-picker select {
+  border-color: #e6cfc7 !important;
+  background: #fbefe5 !important;
+  color: #514039 !important;
+  box-shadow: none !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-status,
+#mma-window.mma-theme-bonbon .mma-status.injected,
+#mma-window.mma-theme-bonbon .mma-status.observed,
+#mma-window.mma-theme-bonbon .mma-quest-reward {
+  border-color: #6e7b56 !important;
+  background: rgba(206, 220, 170, .42) !important;
+  color: #514039 !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-status.held {
+  border-color: #b76b8b !important;
+  background: rgba(240, 214, 223, .72) !important;
+  color: #714759 !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-discovery-confirm::before {
+  margin: 0 auto 8px !important;
+  border-color: #a1715f !important;
+  background: #f0d6df !important;
+}
+
+#mma-window.mma-theme-bonbon #mma-busy {
+  background: rgba(81, 64, 57, .42) !important;
+  color: #fff9f1 !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-spinner {
+  border-color: rgba(255, 249, 241, .64) !important;
+  border-top-color: #b76b8b !important;
+  border-right-color: #cedcaa !important;
+}
+
+@media (max-width: 420px) {
+  #mma-window.mma-theme-bonbon .mma-bonbon-board-track::before {
+    top: calc(18% - 7px);
+    right: calc(18% - 7px);
+    bottom: calc(22% - 7px);
+    left: calc(18% - 7px);
+    border-width: 14px !important;
+    border-radius: 14px !important;
+  }
+
+  #mma-window.mma-theme-bonbon .mma-footstep.mma-bonbon-piece em {
+    max-width: min(60px, 19vw) !important;
+    font-size: calc(8.5px * var(--mma-font-scale, 1)) !important;
+  }
+}
