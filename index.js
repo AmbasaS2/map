@@ -18,7 +18,7 @@ const FOOTSTEP_REPAIR_MAX_TOKENS = 1600;
 const LOCATION_ICON_REVIEW_MAX_TOKENS = 600;
 const DEBUG_LOG_LIMIT = 40;
 const memoryDebugLogs = [];
-const EXTENSION_VERSION = '3.0.8';
+const EXTENSION_VERSION = '3.0.9';
 const SHARED_NOTEBOOK_KEYS = Object.freeze(['managedItems', 'footstepProfiles', 'trackedPeople', 'recommendations', 'searchResults']);
 const DISCOVERY_HISTORY_LIMIT = 30;
 const UNCOLLECTED_RECOMMENDATION_LIMIT = 24;
@@ -2440,74 +2440,7 @@ const FOOTSTEP_PROFILE_SCHEMA = {
 };
 
 
-function buildQuestContinuityRegistry(memory = ensureMemory()) {
-    const map = memory?.map;
-    const locationById = new Map((map?.locations || []).map(location => [String(location.id), location.name]));
-    const peopleByLocation = new Map();
-    const addPerson = (locationName, person) => {
-        const place = String(locationName || '').trim();
-        const name = String(person || '').replace(/\s+/g, ' ').trim();
-        if (!place || !isNamedMapSignalLabel(name)) return;
-        const names = peopleByLocation.get(place) || [];
-        peopleByLocation.set(place, uniqueStrings([...names, name], 8));
-    };
-
-    for (const location of map?.locations || []) {
-        for (const person of location.present || []) addPerson(location.name, person);
-    }
-    for (const footstep of map?.footsteps || []) {
-        addPerson(locationById.get(String(footstep.locationId)), footstep.label);
-    }
-
-    const currentAreaLocations = (map?.locations || []).filter(location => location?.source !== 'person-search');
-    const remoteSearchLocations = (map?.locations || []).filter(location => location?.source === 'person-search');
-    const locationLines = currentAreaLocations.slice(0, 12).map(location => {
-        const people = peopleByLocation.get(location.name) || [];
-        return `- ${location.name}${people.length ? ` | associated people: ${people.join(', ')}` : ''}`;
-    });
-    const remoteLocationLines = remoteSearchLocations.slice(0, 12).map(location => {
-        const people = peopleByLocation.get(location.name) || [];
-        const observedState = stripLong(`${location.situation || ''} ${location.details || ''}`, 260);
-        return `- ${location.name}${people.length ? ` | observed people: ${people.join(', ')}` : ''}${observedState ? ` | last observed state: ${observedState}` : ''}`;
-    });
-    const rememberedPeople = [
-        ...Object.values(memory?.footstepProfiles || {}).map(person => ({
-            name: person?.name,
-            location: person?.currentLocation || locationById.get(String(person?.sourceLocationId || '')),
-            context: person?.characterInfo || person?.currentActivity,
-        })),
-        ...Object.values(memory?.trackedPeople || {}).map(person => ({
-            name: person?.name,
-            location: person?.lastLocation,
-            context: person?.summary || person?.lastActivity,
-        })),
-        ...(memory?.searchResults || []).map(person => ({
-            name: person?.name,
-            location: person?.currentLocation,
-            context: person?.summary || person?.currentActivity,
-        })),
-    ];
-    const rememberedSeen = new Set();
-    const trackedLines = rememberedPeople.map(person => {
-        const name = String(person?.name || '').replace(/\s+/g, ' ').trim();
-        const key = name.toLowerCase();
-        if (!isNamedMapSignalLabel(name) || rememberedSeen.has(key)) return '';
-        rememberedSeen.add(key);
-        const location = String(person?.location || '').replace(/\s+/g, ' ').trim();
-        const context = stripLong(person?.context || '', 140);
-        return `- ${name}${location ? ` | last known place: ${location}` : ''}${context ? ` | known context: ${context}` : ''}`;
-    }).filter(Boolean).slice(0, 12);
-
-    if (!locationLines.length && !remoteLocationLines.length && !trackedLines.length) return '(none available yet)';
-    return [
-        locationLines.length ? `Earlier current-area locations and associated people:\n${locationLines.join('\n')}` : '',
-        remoteLocationLines.length ? `Remote person-search continuity leads at their own places:\n${remoteLocationLines.join('\n')}` : '',
-        trackedLines.length ? `Tracked or previously identified people:\n${trackedLines.join('\n')}` : '',
-    ].filter(Boolean).join('\n');
-}
-
 function buildMapPrompt(outputMode = getOutputModeKey()) {
-    const memory = ensureMemory();
     const mode = normalizeOutputMode(outputMode);
     const config = OUTPUT_MODE_CONFIGS[mode];
     const densityRules = mode === 'saver'
@@ -2576,6 +2509,7 @@ Quest writing:
 Names and continuity:
 - Write descriptive content in natural Korean while preserving established character and place names in their current display form.
 - Use confirmed roleplay facts as the primary source, followed by the character card and persona.
+- Treat a named supporting character as established only when that person appears in the supplied recent roleplay, character card, or persona. Otherwise fill a short roster with newly created minor NPCs suited to the returned places.
 - Keep unknown identities hidden only when the supplied story has already made that uncertainty meaningful.
 - Return only fields requested by the schema. IDs, internal status, map title, event links, visibility flags, and roleplay reflection text are added locally.
 
@@ -2587,11 +2521,6 @@ ${getCharacterSummary() || '(unavailable)'}
 
 [Persona]
 ${getPersonaSummary() || '(unavailable)'}
-
-[Wider continuity leads]
-${buildQuestContinuityRegistry(memory)}
-Use these as continuity leads for recurring people and places. The recent roleplay decides which of them still belong in the current snapshot.
-Remote person-search continuity leads describe separate places in the wider world. When one is included as a returned location, build its physical layout, sensory conditions, adjacency, people, and activity from that place's own observed state and established setting. Ground each other returned location in its own local evidence in the same way.
 
 [Recent roleplay]
 ${getChatSnapshot(10) || '(no recent roleplay)'}
@@ -2668,7 +2597,6 @@ function applyReviewedLocationIcons(map, raw, targetLocationIds = []) {
 }
 
 function buildFootstepRosterRepairPrompt(map, requestCount) {
-    const memory = ensureMemory();
     const accepted = (map?.footsteps || []).filter(isRenderableMapFootstep).map(item => ({
         label: item.label,
         locationName: map.locations.find(location => location.id === item.locationId)?.name || '',
@@ -2689,7 +2617,7 @@ The map itself is valid, but its whole-map person roster is short after invalid 
 Return exactly ${requestCount} additional named individual person signals for the already returned locations.
 
 Selection order:
-1. established supporting named characters grounded in the supplied continuity who plausibly belong at this time and one returned location;
+1. established supporting named characters who appear in the supplied recent roleplay, character card, or persona and plausibly belong at this time and one returned location;
 2. named actors already involved in the returned locations or quests;
 3. newly created named minor NPCs suited to the current world until the requested count is reached.
 
@@ -2717,9 +2645,6 @@ ${getCurrentUserName()}
 
 [Current character]
 ${getCurrentCharacterName()}
-
-[Wider continuity leads]
-${buildQuestContinuityRegistry(memory)}
 
 [Character card]
 ${getCharacterSummary() || '(unavailable)'}
