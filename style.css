@@ -10753,3 +10753,21 @@ button.mma-footstep:focus-visible em {
     transform: translate(-88%, -50%) scale(1.04) !important;
   }
 }
+
+/* v3.0.7 Bonbon map-label typography parity */
+#mma-window.mma-theme-bonbon .mma-bonbon-stop-people-list > .mma-footstep.mma-bonbon-piece em {
+  font-size: calc(10.5px * var(--mma-font-scale, 1)) !important;
+  font-weight: 400 !important;
+}
+
+@media (min-width: 701px) {
+  #mma-window.mma-theme-bonbon .mma-bonbon-route-stop > .mma-node.mma-bonbon-location-card {
+    max-width: 140px !important;
+  }
+
+  #mma-window.mma-theme-bonbon .mma-bonbon-route-stop > .mma-node.mma-bonbon-location-card .mma-node-label {
+    max-width: 102px;
+    font-size: calc(12px * var(--mma-font-scale, 1)) !important;
+    font-weight: 700 !important;
+  }
+}
