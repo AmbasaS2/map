@@ -15,9 +15,10 @@ const EXTENSION_PROMPT_KEY = 'marauders_map_active_context';
 const FOOTSTEP_LIMIT = 10;
 const FOOTSTEP_TARGET_MIN = 6;
 const FOOTSTEP_REPAIR_MAX_TOKENS = 1600;
+const LOCATION_ICON_REVIEW_MAX_TOKENS = 600;
 const DEBUG_LOG_LIMIT = 40;
 const memoryDebugLogs = [];
-const EXTENSION_VERSION = '3.0.7';
+const EXTENSION_VERSION = '3.0.8';
 const SHARED_NOTEBOOK_KEYS = Object.freeze(['managedItems', 'footstepProfiles', 'trackedPeople', 'recommendations', 'searchResults']);
 const DISCOVERY_HISTORY_LIMIT = 30;
 const UNCOLLECTED_RECOMMENDATION_LIMIT = 24;
@@ -218,6 +219,18 @@ function assertMapSnapshotUnchanged(startMap, operation = 'request', footstepSna
     if (!changed) return;
     pushDebugLog(`${operation}.cancelled.map_changed`, '요청 중 지도가 갱신되어 이전 지도 기준 결과를 저장하지 않았습니다.', {
         expectedFootstepId: footstepSnapshot?.id || '',
+    });
+    throw createMapGenerationCancelledError('map changed during request');
+}
+
+function assertMapStateUnchanged(startMap, startRevision, operation = 'request') {
+    const memory = ensureMemory();
+    const currentRevision = String(memory.mapRevision || '');
+    const expectedRevision = String(startRevision || '');
+    if (memory.map === startMap && currentRevision === expectedRevision) return;
+    pushDebugLog(`${operation}.cancelled.map_changed`, '요청 중 지도가 갱신되어 이전 지도 기준 결과를 저장하지 않았습니다.', {
+        expectedRevision,
+        currentRevision,
     });
     throw createMapGenerationCancelledError('map changed during request');
 }
@@ -1370,102 +1383,17 @@ function simplifyFootstepLabel(value) {
     return label.slice(0, 34) || '???';
 }
 
-const LOCATION_ICON_RULES = [
-    [/화덕|난로|벽난로|아궁이|오븐|hearth|fireplace|oven|furnace/, ['🔥', '♨️', '🧱']],
-    [/식재료|식료품|채소|곡물|향신료|ingredient|pantry|produce|spice/, ['🧺', '🥕', '🫘', '🫙']],
-    [/오크통|술통|맥주통|와인통|barrel|cask|keg/, ['🪵', '🍺', '🍷']],
-    [/세척|설거지|개수대|수도|wash|sink|scullery/, ['🫧', '🚰', '🧼']],
-    [/냉장|냉동|얼음|cold storage|freezer|ice/, ['🧊', '❄️', '🥶']],
-    [/보관실|저장고|창고|storage|store room|storeroom|warehouse/, ['📦', '🗄️', '🫙', '🧺']],
-    [/복도|corridor|hallway|통로|계단|stairs|passage/, ['🚪', '🧭', '🪜']],
-    [/도서관|library|서고|책장|archive|기록실/, ['📚', '📖', '🗃️']],
-    [/대연회장|연회장|great hall|식당|dining|banquet/, ['🍽️', '🥂', '🪑']],
-    [/주방|kitchen|부엌/, ['🍲', '🍳', '🥣', '🥄']],
-    [/휴게실|common room|lounge|거실/, ['🛋️', '☕', '🪟']],
-    [/교실|classroom|강의실|수업/, ['🏫', '📝', '📖']],
-    [/지하|dungeon|cellar|basement|crypt|지하실/, ['🕯️', '🗝️', '🧱']],
-    [/탑|tower|천문|astronomy|옥상|rooftop/, ['🔭', '🌙', '🗼']],
-    [/안뜰|courtyard|광장|yard/, ['🏛️', '⛲', '🪨']],
-    [/부엉이|owlery|owl/, ['🦉', '🪶', '✉️']],
-    [/운동장|퀴디치|pitch|stadium|arena|훈련장|training/, ['🏟️', '🏃', '🎯']],
-    [/숲|forest|wood|grove/, ['🌲', '🍂', '🪵']],
-    [/호수|lake|river|바다|shore|부두/, ['🌊', '🛶', '⚓']],
-    [/정원|garden|greenhouse|온실/, ['🌿', '🪴', '🌸']],
-    [/기숙사|dormitory|침실|bedroom/, ['🛏️', '🪟', '🧳']],
-    [/사무실|office|교수실|집무실/, ['🗄️', '🖋️', '📋']],
-    [/술집|bar|tavern|pub|여관|inn/, ['🍺', '🍷', '🛎️']],
-    [/상점|가게|shop|store|market|시장/, ['🛍️', '🧾', '🏪']],
-    [/의무실|병동|hospital|infirmary|clinic/, ['🩹', '🩺', '💊']],
-    [/역|station|터미널|platform/, ['🚉', '🚆', '🎫']],
-];
-
-function getMeaningfulLocationIconCandidates(name, situation = '', details = '') {
-    const nameText = String(name || '').toLowerCase();
-    const contextText = `${name || ''} ${situation || ''} ${details || ''}`.toLowerCase();
-    const candidates = [];
-    const addMatches = text => {
-        for (const [pattern, icons] of LOCATION_ICON_RULES) {
-            if (pattern.test(text)) candidates.push(...icons);
-        }
-    };
-    // A concrete place name is stronger evidence than a shared area description.
-    addMatches(nameText);
-    if (!candidates.length) addMatches(contextText);
-    return uniqueStrings(candidates, 18);
-}
-
-function inferLocationIcon(name, situation = '', details = '') {
-    return getMeaningfulLocationIconCandidates(name, situation, details)[0] || '📍';
-}
-
-function assignDistinctLocationIcons(locations = []) {
-    const source = Array.isArray(locations) ? locations : [];
-    const originalCounts = new Map();
-    for (const location of source) {
-        const icon = String(location?.icon || '').trim();
-        if (icon) originalCounts.set(icon, (originalCounts.get(icon) || 0) + 1);
+function normalizeLiteralEmoji(value, fallback = '') {
+    const compact = String(value || '').trim().replace(/\s+/g, '');
+    if (!compact || /[a-z0-9가-힣]/iu.test(compact)) return fallback;
+    let graphemeCount = Array.from(compact).length;
+    try {
+        graphemeCount = [...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(compact)].length;
+    } catch {
+        // Array.from remains a conservative fallback in older WebViews.
     }
-
-    // A model-supplied icon that appears exactly once is already distinctive.
-    // Reserve it before repairing repetitions so an earlier duplicate cannot
-    // consume a later location's intentional icon.
-    const reservedUniqueIcons = new Set(
-        [...originalCounts.entries()].filter(([, count]) => count === 1).map(([icon]) => icon),
-    );
-    const used = new Set();
-    const keptRepeatedIcons = new Set();
-    let changed = false;
-    for (const location of source) {
-        const current = String(location?.icon || '').trim();
-        const originalCount = originalCounts.get(current) || 0;
-        let chosen = '';
-
-        if (current && originalCount === 1) {
-            chosen = current;
-        } else if (current && !keptRepeatedIcons.has(current)) {
-            // Preserve one representative of a repeated model icon.
-            chosen = current;
-            keptRepeatedIcons.add(current);
-        }
-
-        if (!chosen) {
-            const replacement = getMeaningfulLocationIconCandidates(
-                location?.name,
-                location?.situation,
-                location?.details,
-            ).find(icon => !used.has(icon) && !reservedUniqueIcons.has(icon));
-            // Only replace a repeated icon when the location itself supplies a
-            // meaningful alternative. Keeping a rare duplicate is safer than
-            // inventing an unrelated key, chair, or window marker.
-            chosen = replacement || current || '📍';
-        }
-        if (location && chosen !== current) {
-            location.icon = chosen;
-            changed = true;
-        }
-        if (chosen) used.add(chosen);
-    }
-    return changed;
+    const hasEmoji = /\p{Extended_Pictographic}|\p{Regional_Indicator}/u.test(compact);
+    return hasEmoji && graphemeCount === 1 && Array.from(compact).length <= 12 ? compact : fallback;
 }
 
 const KNOWN_NAME_PATTERNS = [];
@@ -1666,7 +1594,10 @@ function normalizeMap(raw, options = {}) {
         const situation = String(loc.situation || loc.currentSituation || loc.description || '이 장소의 현재 상황이 아직 또렷하지 않다.');
         const details = String(loc.details || loc.detail || loc.observation || loc.situation || '');
         const rawIcon = String(loc.icon || '').trim();
-        const icon = (!rawIcon || rawIcon === '📍' || rawIcon === '핀' || rawIcon.toLowerCase() === 'pin') ? inferLocationIcon(name, situation, details) : rawIcon;
+        // Do not guess meaning from a local place-name dictionary. Missing or
+        // malformed model output gets only a technical pin until the focused
+        // AI icon review can judge every returned place together.
+        const icon = normalizeLiteralEmoji(rawIcon, '📍');
         const present = normalizePresentForLocation(loc, map, [index === 0 ? userName : '', index === 0 ? charName : ''].filter(Boolean), 6);
         return {
             id,
@@ -1680,8 +1611,6 @@ function normalizeMap(raw, options = {}) {
             injectionText: String(loc.injectionText || loc.injection || loc.roleplayContext || ''),
         };
     }).filter(Boolean);
-
-    assignDistinctLocationIcons(normalizedLocations);
 
     if (discardedLocations.length) {
         pushDebugLog('map.normalize.locations.discarded', '유효하지 않은 장소만 제외하고 나머지 지도를 사용합니다.', {
@@ -1825,7 +1754,7 @@ const MAP_SCHEMA = {
                     type: 'object',
                     properties: {
                         name: { type: 'string' },
-                        icon: { type: 'string' },
+                        icon: { type: 'string', description: "One literal emoji that directly depicts this place's defining function, object, or physical identity." },
                         situation: { type: 'string' },
                         details: { type: 'string' },
                         present: { type: 'array', items: { type: 'string' } },
@@ -1889,6 +1818,36 @@ function getFootstepRosterRepairSchema(requestCount = FOOTSTEP_TARGET_MIN) {
                 },
             },
             required: ['footsteps'],
+        },
+    };
+}
+
+function getLocationIconReviewSchema(locationIds = []) {
+    const ids = uniqueStrings(locationIds.map(id => String(id || '').trim()).filter(Boolean), 12);
+    const count = ids.length;
+    return {
+        name: 'RoleplayMapLocationIconReview',
+        description: 'A focused semantic review of the literal emoji used for each generated map location.',
+        strict: true,
+        value: {
+            '$schema': 'http://json-schema.org/draft-04/schema#',
+            type: 'object',
+            properties: {
+                icons: {
+                    type: 'array',
+                    minItems: count,
+                    maxItems: count,
+                    items: {
+                        type: 'object',
+                        properties: {
+                            id: { type: 'string', enum: ids },
+                            icon: { type: 'string' },
+                        },
+                        required: ['id', 'icon'],
+                    },
+                },
+            },
+            required: ['icons'],
         },
     };
 }
@@ -2575,7 +2534,7 @@ Map structure:
 - timeHint states the current time, scene phase, or immediate timing.
 - worldSummary describes the active area in 1 to 2 Korean sentences.
 - currentLocationName exactly matches one returned location name.
-- Every location has a specific in-world name, a fitting emoji icon, a situation, details, present, and clues. Use a different literal icon for each returned location so adjacent sub-areas remain distinguishable.
+- Every location has a specific in-world name, one literal emoji icon, a situation, details, present, and clues. Choose icons only after comparing all returned places. Each icon directly depicts the place's defining function, characteristic object, or physical identity. Semantic accuracy comes first; use a distinct icon only when an equally direct alternative exists.
 - Every footstep has a person's proper name or a proper name plus an established short title, the exact returned locationName, and a concrete visible activity in status.
 - Every worldEvents and personalEvents quest has a concrete title, the exact returned locationName, summary, details, and reward.
 
@@ -2638,6 +2597,74 @@ Remote person-search continuity leads describe separate places in the wider worl
 ${getChatSnapshot(10) || '(no recent roleplay)'}
 
 Return JSON only.`;
+}
+
+function buildLocationIconReviewPrompt(map, targetLocationIds = []) {
+    const requestedIds = uniqueStrings((Array.isArray(targetLocationIds) ? targetLocationIds : []).map(id => String(id || '').trim()).filter(Boolean), 12);
+    const targetIds = requestedIds.length
+        ? requestedIds
+        : (Array.isArray(map?.locations) ? map.locations : []).map(location => String(location?.id || '')).filter(Boolean);
+    const targetSet = new Set(targetIds);
+    const locations = (Array.isArray(map?.locations) ? map.locations : []).map(location => ({
+        id: String(location?.id || ''),
+        name: String(location?.name || ''),
+        currentIcon: String(location?.icon || '📍'),
+        situation: stripLong(location?.situation || '', 180),
+        details: stripLong(location?.details || '', 120),
+        reviewRequired: targetSet.has(String(location?.id || '')),
+    }));
+    const context = {
+        regionName: stripLong(map?.regionName || '', 100),
+        timeHint: stripLong(map?.timeHint || '', 100),
+        worldSummary: stripLong(map?.worldSummary || '', 180),
+        targetLocationIds: targetIds,
+        locations,
+    };
+    return `
+Review only the literal emoji assigned to the generated roleplay-map locations below.
+
+Rules:
+- Read every location before choosing any icon. Use the location name together with its situation and details.
+- Each icon directly depicts the place's defining function, characteristic object, or physical identity.
+- Represent the place itself, rather than a temporary person, action, incident, mood, clue, importance marker, or interface concept.
+- Keep a current icon when it is already a direct semantic match.
+- Semantic accuracy comes first. Use a different icon for another place only when an equally direct alternative exists. If changing it would make the meaning less accurate, repeating an icon is allowed.
+- Compare every supplied location, but return only targetLocationIds. Return each target id exactly once with one literal emoji and no words or explanation.
+- Do not change, summarize, or add any location content.
+
+[Generated map locations]
+${JSON.stringify(context)}
+
+Return JSON only.`;
+}
+
+function applyReviewedLocationIcons(map, raw, targetLocationIds = []) {
+    const locations = Array.isArray(map?.locations) ? map.locations : [];
+    const rows = Array.isArray(raw?.icons) ? raw.icons : null;
+    if (!locations.length || !rows) return false;
+
+    const allLocationIds = new Set(locations.map(location => String(location?.id || '')));
+    const requestedIds = uniqueStrings((Array.isArray(targetLocationIds) ? targetLocationIds : []).map(id => String(id || '').trim()).filter(Boolean), 12);
+    const expectedIds = new Set(requestedIds.length ? requestedIds : allLocationIds);
+    if (!expectedIds.size || rows.length !== expectedIds.size || expectedIds.has('')) return false;
+    if ([...expectedIds].some(id => !allLocationIds.has(id))) return false;
+    const reviewed = new Map();
+    for (const row of rows) {
+        if (!row || typeof row !== 'object' || Array.isArray(row)) return false;
+        const id = String(row.id || '').trim();
+        const icon = normalizeLiteralEmoji(row.icon, '');
+        // 📍 is reserved for the local technical fallback and is not accepted
+        // as a completed semantic review result.
+        if (!expectedIds.has(id) || reviewed.has(id) || !icon || icon === '📍') return false;
+        reviewed.set(id, icon);
+    }
+    if (reviewed.size !== expectedIds.size) return false;
+
+    for (const location of locations) {
+        const id = String(location.id);
+        if (reviewed.has(id)) location.icon = reviewed.get(id);
+    }
+    return true;
 }
 
 function buildFootstepRosterRepairPrompt(map, requestCount) {
@@ -2763,7 +2790,11 @@ async function repairFootstepRosterIfNeeded(map, outputMode, job) {
         const rawText = await generateQuietWithSelectedProfile(
             buildFootstepRosterRepairPrompt(map, requestCount),
             schema,
-            { maxTokens: FOOTSTEP_REPAIR_MAX_TOKENS, signal: job?.controller?.signal },
+            {
+                maxTokens: FOOTSTEP_REPAIR_MAX_TOKENS,
+                signal: job?.controller?.signal,
+                connectionProfile: job?.connectionProfile,
+            },
         );
         if (job) assertCurrentMapGeneration(job);
         const parsed = parseJson(rawText, 'map.people.repair');
@@ -4378,6 +4409,13 @@ The JSON must include location, events, and footsteps for the refreshed location
 Never return only an empty object {}.
 The JSON must include footsteps with exactly ${count} additional named individual people. Every item includes label, locationName, and status. Labels must be proper names or proper names plus one short title; do not use ???, counts, activity phrases, generic roles, crowds, or groups.`;
     }
+    if (String(jsonSchema?.name || '') === 'RoleplayMapLocationIconReview') {
+        const count = Number(jsonSchema?.value?.properties?.icons?.minItems || 0);
+        return `${getJsonOnlyInstruction(jsonSchema)}
+
+Never return only an empty object {}.
+The JSON must include icons with exactly ${count} items. Every item includes one supplied id and exactly one literal emoji in icon. Return every supplied id exactly once and no additional ids.`;
+    }
     if (jsonSchema === FOOTSTEP_PROFILE_SCHEMA) {
         return `${getJsonOnlyInstruction(jsonSchema)}
 
@@ -4521,6 +4559,7 @@ function beginMapGeneration(kind, locationId = '') {
         controller: new AbortController(),
         cancelled: false,
         startedAt: Date.now(),
+        connectionProfile: String(getSettings().connectionProfile || 'main').trim() || 'main',
     };
     activeMapGeneration = job;
     refreshMapGenerationControls();
@@ -4556,7 +4595,8 @@ async function generateQuietWithSelectedProfile(quietPrompt, jsonSchema = null, 
     const prompt = String(quietPrompt || '');
     const maxTokens = Number(options.maxTokens || 5000);
     const externalSignal = options.signal || null;
-    const target = String(settings.connectionProfile || 'main').trim();
+    const allowStructuredFallback = options.allowStructuredFallback !== false;
+    const target = String(options.connectionProfile || settings.connectionProfile || 'main').trim();
     const ctx = stContext();
 
     if (externalSignal?.aborted) throw createMapGenerationCancelledError('request was cancelled before start');
@@ -4582,7 +4622,7 @@ async function generateQuietWithSelectedProfile(quietPrompt, jsonSchema = null, 
             return result;
         } catch (error) {
             if (externalSignal?.aborted || isMapGenerationCancelledError(error)) throw createMapGenerationCancelledError('request was cancelled');
-            if (jsonSchema) {
+            if (jsonSchema && allowStructuredFallback) {
                 pushDebugLog('request.main.structured.error', '메인 API 구조화 출력 실패, 일반 JSON 지시문으로 재시도합니다.', {
                     error: String(error?.message || error),
                 });
@@ -4618,7 +4658,11 @@ async function generateQuietWithSelectedProfile(quietPrompt, jsonSchema = null, 
     const controller = new AbortController();
     const forwardExternalAbort = () => controller.abort(externalSignal?.reason || createMapGenerationCancelledError('request was cancelled'));
     if (externalSignal) externalSignal.addEventListener('abort', forwardExternalAbort, { once: true });
-    const timer = setTimeout(() => controller.abort(new Error(`Connection profile request timed out after ${timeoutMs}ms`)), timeoutMs);
+    let timedOut = false;
+    const timer = setTimeout(() => {
+        timedOut = true;
+        controller.abort(new Error(`Connection profile request timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
 
     try {
         pushDebugLog('request.profile.cm.try', 'ConnectionManagerRequestService로 확장 전용 프로필 요청을 보냅니다.', {
@@ -4651,12 +4695,20 @@ async function generateQuietWithSelectedProfile(quietPrompt, jsonSchema = null, 
         if (jsonSchema && isEmptyObjectResponse(text)) throw new Error('Empty object response');
         return text;
     } catch (error) {
-        if (controller.signal.aborted || externalSignal?.aborted || isMapGenerationCancelledError(error)) {
+        if (externalSignal?.aborted || isMapGenerationCancelledError(error) || (controller.signal.aborted && !timedOut)) {
             pushDebugLog('request.profile.cm.cancelled', '확장 전용 프로필 요청을 취소했습니다.', {
                 profileId: profile.id,
                 profileName: profile.name,
             });
             throw createMapGenerationCancelledError('connection profile request was cancelled');
+        }
+        if (timedOut) {
+            pushDebugLog('request.profile.cm.timeout', '확장 전용 프로필 요청 시간이 초과되었습니다.', {
+                profileId: profile.id,
+                profileName: profile.name,
+                timeoutMs,
+            });
+            throw new Error(`Connection profile request timed out after ${timeoutMs}ms`);
         }
         pushDebugLog('request.profile.cm.error', '확장 전용 프로필 요청 실패', {
             profileId: profile.id,
@@ -4667,6 +4719,67 @@ async function generateQuietWithSelectedProfile(quietPrompt, jsonSchema = null, 
     } finally {
         clearTimeout(timer);
         if (externalSignal) externalSignal.removeEventListener('abort', forwardExternalAbort);
+    }
+}
+
+async function reviewLocationIconsWithAi(map, options = {}) {
+    const locations = Array.isArray(map?.locations) ? map.locations : [];
+    if (!locations.length) return false;
+    const allIds = locations.map(location => String(location?.id || '')).filter(Boolean);
+    if (allIds.length !== locations.length) return false;
+    const requestedTargetIds = Array.isArray(options.targetLocationIds)
+        ? uniqueStrings(options.targetLocationIds.map(id => String(id || '').trim()).filter(Boolean), 12)
+        : [];
+    const ids = requestedTargetIds.length ? requestedTargetIds : allIds;
+    const allIdSet = new Set(allIds);
+    if (ids.some(id => !allIdSet.has(id))) return false;
+
+    const job = options.job || null;
+    const startChatSignature = options.startChatSignature || '';
+    const hasMapSnapshot = Object.prototype.hasOwnProperty.call(options, 'startMap');
+    const schema = getLocationIconReviewSchema(ids);
+    pushDebugLog('map.icons.review.start', '장소 이모지 의미 검수를 시작합니다.', {
+        locations: ids.length,
+        maxTokens: LOCATION_ICON_REVIEW_MAX_TOKENS,
+    });
+
+    try {
+        if (job) assertCurrentMapGeneration(job);
+        if (startChatSignature) assertChatSignatureUnchanged(startChatSignature, 'map.icons.review');
+        if (hasMapSnapshot) assertMapStateUnchanged(options.startMap, options.startMapRevision, 'map.icons.review');
+        const rawText = await generateQuietWithSelectedProfile(
+            buildLocationIconReviewPrompt(map, ids),
+            schema,
+            {
+                maxTokens: LOCATION_ICON_REVIEW_MAX_TOKENS,
+                signal: job?.controller?.signal,
+                connectionProfile: job?.connectionProfile,
+                // This is one optional review. If structured output itself
+                // fails, keep the already valid map instead of retrying.
+                allowStructuredFallback: false,
+            },
+        );
+        if (job) assertCurrentMapGeneration(job);
+        if (startChatSignature) assertChatSignatureUnchanged(startChatSignature, 'map.icons.review');
+        if (hasMapSnapshot) assertMapStateUnchanged(options.startMap, options.startMapRevision, 'map.icons.review');
+        const parsed = parseJson(rawText, 'map.icons.review');
+        if (!parsed || !applyReviewedLocationIcons(map, parsed, ids)) {
+            pushDebugLog('map.icons.review.invalid', '이모지 검수 응답이 완전하지 않아 처음 생성된 이모지를 유지합니다.', {
+                locations: ids.length,
+            });
+            return false;
+        }
+        pushDebugLog('map.icons.review.success', '장소 이모지 의미 검수를 완료했습니다.', {
+            locations: ids.length,
+        });
+        return true;
+    } catch (error) {
+        if (isMapGenerationCancelledError(error) || job?.controller?.signal?.aborted) throw error;
+        pushDebugLog('map.icons.review.error', '이모지 검수에 실패해 처음 생성된 이모지를 유지합니다.', {
+            locations: ids.length,
+            error: serializeForDebug(error),
+        });
+        return false;
     }
 }
 
@@ -4691,6 +4804,8 @@ async function generateMap(force = false) {
     const mapSchema = getMapSchema(outputMode);
     const job = beginMapGeneration(force ? 'refresh-all' : 'generate-map');
     if (!job) return;
+    const startMap = memory.map;
+    const startMapRevision = memory.mapRevision;
     // Keep the old map in-flight only. A failed refresh must not create a stale
     // ↩️ target; commit this snapshot only when the new map succeeds.
     const rollbackSnapshot = force && hadMapBefore
@@ -4700,7 +4815,7 @@ async function generateMap(force = false) {
     pushDebugLog('map.generate.start', force ? 'force refresh' : 'open/generate', {
         jobId: job.id,
         notebookKey: getCurrentCharacterKey(),
-        connectionProfile: getSettings().connectionProfile || 'main',
+        connectionProfile: job.connectionProfile,
         outputMode,
         maxTokens: modeConfig.mapMaxTokens,
         chatSignature: startChatSignature || '(unknown)',
@@ -4716,9 +4831,13 @@ async function generateMap(force = false) {
                 schema: true,
                 outputMode,
                 maxTokens: modeConfig.mapMaxTokens,
-                profile: getSettings().connectionProfile || 'main',
+                profile: job.connectionProfile,
             });
-            const rawText = await generateQuietWithSelectedProfile(prompt, mapSchema, { maxTokens: modeConfig.mapMaxTokens, signal: job.controller.signal });
+            const rawText = await generateQuietWithSelectedProfile(prompt, mapSchema, {
+                maxTokens: modeConfig.mapMaxTokens,
+                signal: job.controller.signal,
+                connectionProfile: job.connectionProfile,
+            });
             assertCurrentMapGeneration(job);
             pushDebugLog('response.received', `지도 생성 응답 수신: ${String(rawText || '').length}자`, {
                 jobId: job.id,
@@ -4735,13 +4854,20 @@ async function generateMap(force = false) {
             assertCurrentMapGeneration(job);
             const normalizedMap = normalizeMap(parsed, { source: 'full-generation', outputMode });
             await repairFootstepRosterIfNeeded(normalizedMap, outputMode, job);
+            await reviewLocationIconsWithAi(normalizedMap, {
+                job,
+                startChatSignature,
+                startMap,
+                startMapRevision,
+            });
             const finalChatSignature = getStableChatSignature();
             if (startChatSignature && finalChatSignature && startChatSignature !== finalChatSignature) {
-                cancelActiveMapGeneration('chat changed during person roster repair');
-                throw createMapGenerationCancelledError('chat changed during person roster repair');
+                cancelActiveMapGeneration('chat changed during map review');
+                throw createMapGenerationCancelledError('chat changed during map review');
             }
             const freshMemory = ensureMemory();
             assertCurrentMapGeneration(job);
+            assertMapStateUnchanged(startMap, startMapRevision, 'map.generate');
             if (rollbackSnapshot) commitPreviousMapSnapshot(freshMemory, rollbackSnapshot);
             freshMemory.map = normalizedMap;
             freshMemory.mapRevision = createMapRevisionToken();
@@ -4926,6 +5052,8 @@ async function refreshLocation(locationId) {
 
     const job = beginMapGeneration('refresh-location', locationId);
     if (!job) return;
+    const startChatSignature = rememberCurrentChatSignature?.() || getStableChatSignature();
+    const startMapRevision = memory.mapRevision;
     // Keep the complete pre-refresh map until this location update succeeds.
     const rollbackSnapshot = createPreviousMapSnapshot(memory, 'refresh-location');
     try {
@@ -4933,7 +5061,11 @@ async function refreshLocation(locationId) {
             const rawText = await generateQuietWithSelectedProfile(
                 buildLocationRefreshPrompt(location),
                 LOCATION_SCHEMA,
-                { maxTokens: 6500, signal: job.controller.signal }
+                {
+                    maxTokens: 6500,
+                    signal: job.controller.signal,
+                    connectionProfile: job.connectionProfile,
+                }
             );
             assertCurrentMapGeneration(job);
             const parsed = parseJson(rawText, 'location.refresh');
@@ -4943,11 +5075,27 @@ async function refreshLocation(locationId) {
             }
             const normalized = normalizeMap({
                 ...map,
-                locations: map.locations.map(l => l.id === locationId ? { ...parsed.location, id: location.id, name: location.name } : l),
+                // The focused review below may replace it, but an optional
+                // review failure must not discard the place's last valid icon.
+                locations: map.locations.map(l => l.id === locationId ? {
+                    ...parsed.location,
+                    id: location.id,
+                    name: location.name,
+                    icon: location.icon,
+                } : l),
                 events: mergeLocationEvents(map.events, parsed.events || [], locationId),
                 footsteps: mergeLocationFootsteps(map.footsteps, parsed.footsteps || [], locationId),
             });
+            await reviewLocationIconsWithAi(normalized, {
+                job,
+                startChatSignature,
+                startMap: map,
+                startMapRevision,
+                targetLocationIds: [locationId],
+            });
             assertCurrentMapGeneration(job);
+            assertChatSignatureUnchanged(startChatSignature, 'location.refresh');
+            assertMapStateUnchanged(map, startMapRevision, 'location.refresh');
             if (rollbackSnapshot) commitPreviousMapSnapshot(memory, rollbackSnapshot);
             memory.map = normalized;
             memory.mapRevision = createMapRevisionToken();
@@ -5812,10 +5960,6 @@ function renderCanvas() {
     const memory = ensureMemory();
     const map = memory.map;
     const locations = (map?.locations || []).map(location => ({ ...location }));
-    // Older saved maps may contain repeated model-supplied icons. This
-    // idempotent display normalization fixes them without making an API call
-    // or mutating the stored map while it is merely being rendered.
-    assignDistinctLocationIcons(locations);
     const bonbon = isBonbonTheme();
     const bonbonTrackMarkup = bonbon ? `
         <div class="mma-bonbon-board-track" aria-hidden="true">
