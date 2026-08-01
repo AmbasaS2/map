@@ -18,7 +18,7 @@ const FOOTSTEP_REPAIR_MAX_TOKENS = 1600;
 const LOCATION_ICON_REVIEW_MAX_TOKENS = 600;
 const DEBUG_LOG_LIMIT = 40;
 const memoryDebugLogs = [];
-const EXTENSION_VERSION = '3.0.9';
+const EXTENSION_VERSION = '3.1.0';
 const SHARED_NOTEBOOK_KEYS = Object.freeze(['managedItems', 'footstepProfiles', 'trackedPeople', 'recommendations', 'searchResults']);
 const DISCOVERY_HISTORY_LIMIT = 30;
 const UNCOLLECTED_RECOMMENDATION_LIMIT = 24;
@@ -2463,7 +2463,7 @@ ${questAllocation}
 ${densityRules}
 
 Map structure:
-- regionName is the concrete area covered by this snapshot.
+- Derive regionName and timeHint from the protagonists' current scene. All returned locations belong to one geographically coherent mapped area observed at the same current time; do not widen the area merely to accommodate familiar supporting characters.
 - timeHint states the current time, scene phase, or immediate timing.
 - worldSummary describes the active area in 1 to 2 Korean sentences.
 - currentLocationName exactly matches one returned location name.
@@ -2484,7 +2484,7 @@ Location writing:
 
 Footstep selection:
 - Footsteps are a selected set of 6 to 10 named individual person signals across the whole map. Each item represents exactly one identifiable person.
-- Choose candidates in this order: established supporting named characters already grounded in the supplied continuity; named actors involved in returned events or quests; then newly created named minor NPCs suited to the current world.
+- Choose candidates in this order: established supporting named characters who pass the current-region and current-time presence test below; named actors involved in returned events or quests; then newly created named minor NPCs suited to the current world.
 - When grounded named people total fewer than six, create enough named minor NPCs to reach at least six. Give each new minor NPC an ordinary proper name suited to this world, one modest local role, a current action, and one returned location. Do not invent an earlier relationship or shared history with the protagonists.
 - label contains only the proper name, or the proper name plus one short established title. Do not use ???, a count, an activity phrase, a generic role such as "student" or "guard", a crowd, a group, or an animal group as a label.
 - Distribute the selected people across the returned map. When at least four locations are returned, use at least four locations for footsteps; the protagonists and people in the current scene must not consume the whole roster.
@@ -2509,7 +2509,8 @@ Quest writing:
 Names and continuity:
 - Write descriptive content in natural Korean while preserving established character and place names in their current display form.
 - Use confirmed roleplay facts as the primary source, followed by the character card and persona.
-- Treat a named supporting character as established only when that person appears in the supplied recent roleplay, character card, or persona. Otherwise fill a short roster with newly created minor NPCs suited to the returned places.
+- For every established named character used in location prose, present, footsteps, or quests, require both: the person appears in the supplied recent roleplay, character card, or persona; and those sources establish a concrete current-time reason for that person to be physically inside the returned mapped region. Current presence may be supported by being observed there; confirmed arrival or movement within that region now; a duty currently being performed there; a meeting or event underway there now; or an established routine that places the person there at that current time.
+- A relationship, shared history, or known existence in the setting establishes identity only, not current presence. When regional presence is not established, omit that person and use a local named minor NPC if the map needs another actor.
 - Keep unknown identities hidden only when the supplied story has already made that uncertainty meaningful.
 - Return only fields requested by the schema. IDs, internal status, map title, event links, visibility flags, and roleplay reflection text are added locally.
 
@@ -2597,6 +2598,12 @@ function applyReviewedLocationIcons(map, raw, targetLocationIds = []) {
 }
 
 function buildFootstepRosterRepairPrompt(map, requestCount) {
+    const currentLocationName = map?.locations?.find(location => String(location.id) === String(map?.currentLocationId))?.name || '';
+    const scope = {
+        regionName: map?.regionName || '',
+        timeHint: map?.timeHint || '',
+        currentLocationName,
+    };
     const accepted = (map?.footsteps || []).filter(isRenderableMapFootstep).map(item => ({
         label: item.label,
         locationName: map.locations.find(location => location.id === item.locationId)?.name || '',
@@ -2617,11 +2624,12 @@ The map itself is valid, but its whole-map person roster is short after invalid 
 Return exactly ${requestCount} additional named individual person signals for the already returned locations.
 
 Selection order:
-1. established supporting named characters who appear in the supplied recent roleplay, character card, or persona and plausibly belong at this time and one returned location;
+1. established supporting named characters who appear in the supplied recent roleplay, character card, or persona and have a concrete current-time reason to be physically inside the returned mapped region and one returned location;
 2. named actors already involved in the returned locations or quests;
 3. newly created named minor NPCs suited to the current world until the requested count is reached.
 
 Rules:
+- A relationship, shared history, or known existence in the setting establishes identity only, not current presence. If the supplied sources do not place an established character in this mapped region now through direct observation, confirmed arrival or movement there now, a duty currently being performed there, an event underway there now, or a routine that places the person there at this time, use a local named minor NPC instead.
 - Every label is one proper personal name, or a proper name plus one short established title.
 - Do not repeat any accepted label below.
 - Do not return ???, counts, activity phrases, generic role-only labels, crowds, groups, plural roles, or animal groups.
@@ -2630,6 +2638,9 @@ Rules:
 - Prefer returned locations that do not yet have an accepted person signal.
 - status is one concise, concrete Korean sentence describing what that person is visibly doing now.
 - Write labels and status in the display language used by the current roleplay.
+
+[Returned map scope]
+${JSON.stringify(scope, null, 2)}
 
 [Accepted person signals — do not duplicate]
 ${JSON.stringify(accepted, null, 2)}
