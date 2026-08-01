@@ -10692,3 +10692,64 @@ button.mma-footstep:focus-visible em {
     max-width: min(88px, 30vw) !important;
   }
 }
+
+/* v3.0.6 Bonbon responsive place cards */
+@media (min-width: 701px) {
+  #mma-window.mma-theme-bonbon .mma-bonbon-route-stop > .mma-node.mma-bonbon-location-card {
+    box-sizing: border-box;
+    justify-content: flex-start !important;
+    width: max-content !important;
+    min-width: 46px !important;
+    max-width: 116px !important;
+    height: 36px !important;
+    min-height: 36px !important;
+    padding: 4px 7px !important;
+    gap: 4px !important;
+    overflow: visible !important;
+  }
+
+  #mma-window.mma-theme-bonbon .mma-bonbon-route-stop > .mma-node.mma-bonbon-location-card > b {
+    display: block !important;
+    flex: 0 0 auto;
+    min-width: 20px !important;
+    font-size: calc(15px * var(--mma-font-scale, 1)) !important;
+    line-height: 1 !important;
+  }
+
+  #mma-window.mma-theme-bonbon .mma-bonbon-route-stop > .mma-node.mma-bonbon-location-card .mma-node-label {
+    display: block !important;
+    flex: 1 1 auto;
+    min-width: 0;
+    max-width: 78px;
+    overflow: hidden !important;
+    color: var(--mma-bb-text) !important;
+    font-size: inherit !important;
+    font-weight: 600 !important;
+    line-height: 1.15 !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+  }
+
+  #mma-window.mma-theme-bonbon .mma-bonbon-route-stop.edge-left > .mma-node.mma-bonbon-location-card {
+    transform: translate(-12%, -50%) !important;
+  }
+
+  #mma-window.mma-theme-bonbon .mma-bonbon-route-stop.edge-right > .mma-node.mma-bonbon-location-card {
+    transform: translate(-88%, -50%) !important;
+  }
+
+  #mma-window.mma-theme-bonbon .mma-bonbon-route-stop > .mma-node.mma-bonbon-location-card:hover,
+  #mma-window.mma-theme-bonbon .mma-bonbon-route-stop > .mma-node.mma-bonbon-location-card:focus-visible {
+    transform: translate(-50%, -50%) scale(1.04) !important;
+  }
+
+  #mma-window.mma-theme-bonbon .mma-bonbon-route-stop.edge-left > .mma-node.mma-bonbon-location-card:hover,
+  #mma-window.mma-theme-bonbon .mma-bonbon-route-stop.edge-left > .mma-node.mma-bonbon-location-card:focus-visible {
+    transform: translate(-12%, -50%) scale(1.04) !important;
+  }
+
+  #mma-window.mma-theme-bonbon .mma-bonbon-route-stop.edge-right > .mma-node.mma-bonbon-location-card:hover,
+  #mma-window.mma-theme-bonbon .mma-bonbon-route-stop.edge-right > .mma-node.mma-bonbon-location-card:focus-visible {
+    transform: translate(-88%, -50%) scale(1.04) !important;
+  }
+}
