@@ -10593,3 +10593,102 @@ button.mma-footstep:focus-visible em {
     font-size: calc(16px * var(--mma-font-scale, 1)) !important;
   }
 }
+
+/* v3.0.5 individual map signals and Bonbon narrow-layout fixes */
+#mma-window.mma-theme-bonbon .mma-bonbon-cover-title {
+  position: relative !important;
+  display: block !important;
+  width: max-content !important;
+  max-width: none !important;
+  margin-right: auto !important;
+  margin-left: auto !important;
+  overflow: visible !important;
+  white-space: nowrap !important;
+  text-align: center !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-cover-title-die {
+  position: absolute !important;
+  top: 50% !important;
+  left: calc(100% + .22em) !important;
+  margin: 0 !important;
+  transform: translateY(-50%) rotate(5deg) !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-cover-piece.mma-bonbon-cover-piece-die {
+  top: 20px !important;
+  left: 20px !important;
+  width: 36px !important;
+  height: 36px !important;
+  transform: none !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-cover-side-label {
+  top: 38px;
+  left: 70px;
+  max-width: calc(100% - 90px);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-stop-people-inner {
+  align-items: flex-start;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-stop-people-list {
+  display: flex;
+  flex-direction: column;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  justify-content: flex-start;
+  width: max-content;
+  max-width: min(112px, 34vw);
+  gap: 0;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-stop-people-list > .mma-footstep.mma-bonbon-piece {
+  flex: 0 0 auto;
+  justify-content: flex-start;
+  width: 100% !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-stop-people-list > .mma-footstep.mma-bonbon-piece + .mma-footstep.mma-bonbon-piece {
+  border-top: 1px solid rgba(161, 113, 95, .18) !important;
+  border-left: 0 !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-stop-people-list > .mma-footstep.mma-bonbon-piece em {
+  width: 100%;
+  max-width: min(105px, 32vw) !important;
+  overflow: hidden !important;
+  white-space: nowrap !important;
+  text-overflow: ellipsis !important;
+}
+
+@media (max-width: 700px) {
+  #mma-window.mma-theme-bonbon .mma-bonbon-cover-title {
+    font-size: clamp(20px, 7.1vw, 36px) !important;
+  }
+
+  #mma-window.mma-theme-bonbon .mma-bonbon-cover-piece.mma-bonbon-cover-piece-die {
+    top: 15px !important;
+    left: 15px !important;
+    width: 32px !important;
+    height: 32px !important;
+  }
+
+  #mma-window.mma-theme-bonbon .mma-bonbon-cover-side-label {
+    top: 31px;
+    left: 56px;
+    max-width: calc(100% - 71px);
+  }
+
+  #mma-window.mma-theme-bonbon .mma-bonbon-stop-people-list {
+    max-width: min(94px, 32vw);
+  }
+
+  #mma-window.mma-theme-bonbon .mma-bonbon-stop-people-list > .mma-footstep.mma-bonbon-piece em {
+    max-width: min(88px, 30vw) !important;
+  }
+}

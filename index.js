@@ -13,9 +13,10 @@ const METADATA_KEY = 'marauders_map_state';
 const EXTENSION_ROOT_ID = 'mma-root';
 const EXTENSION_PROMPT_KEY = 'marauders_map_active_context';
 const FOOTSTEP_LIMIT = 10;
+const FOOTSTEP_TARGET_MIN = 6;
 const DEBUG_LOG_LIMIT = 40;
 const memoryDebugLogs = [];
-const EXTENSION_VERSION = '3.0.4';
+const EXTENSION_VERSION = '3.0.5';
 const SHARED_NOTEBOOK_KEYS = Object.freeze(['managedItems', 'footstepProfiles', 'trackedPeople', 'recommendations', 'searchResults']);
 const DISCOVERY_HISTORY_LIMIT = 30;
 const UNCOLLECTED_RECOMMENDATION_LIMIT = 24;
@@ -1212,16 +1213,48 @@ function isGenericPersonLabel(value) {
 }
 
 
+function isGroupPersonLabel(value) {
+    const raw = String(value || '').replace(/\s+/g, ' ').trim();
+    if (!raw) return false;
+    const body = raw.replace(/^👥\s*/, '').trim();
+    if (raw.startsWith('👥')) return true;
+    if (/\b(?:groups?|crowds?|students|people|guests|workers|passengers|spectators|attendees|visitors|professors|guards|prefects|ghosts|officers|children|adults)\b/i.test(body)) return true;
+    if (/\bstaff\b(?!\s+(?:member|officer|sergeant)\b)/i.test(body)) return true;
+
+    // A numeric count is plural only when the upper count is greater than one.
+    // This deliberately preserves useful singular signals such as "경비원 1명".
+    for (const match of body.matchAll(/(\d{1,3})(?:\s*(?:~|-|–|—)\s*(\d{1,3}))?\s*(명|인|마리)(?:가량|정도)?/g)) {
+        if (Number(match[2] || match[1]) > 1) return true;
+    }
+
+    const countedPlural = '(?:한두|두세|네댓|두|세|네|넷|다섯|여섯|일곱|여덟|아홉|열두|열세|열네|열한|열|스무|스물|서른|마흔|쉰|예순|일흔|여든|아흔|몇|수십|수백|수)';
+    const countedTarget = '(?:명|인|마리|사람|인물|학생|손님|직원|승객|집요정)';
+    if (new RegExp(`${countedPlural}\\s*${countedTarget}`).test(body)) return true;
+    if (/(?:여러|몇몇|다수의?)\s*(?:명|인|마리|사람|인물|학생|손님|직원|교직원|승객|집요정|요정|주민|관중|참가자|방문객|동물|마법사|교수|반장|경비원)/.test(body)) return true;
+    if (/(?:사람|인물|학생|집요정|요정|손님|직원|교직원|행인|방문객|주민|관중|선수|병사|기사|경비원|요원|시종|하인|아이|어른|마법사|상인|점원|연구원|간호사|의사|환자|기자|경찰|작업자|관계자|참가자|관람객|승객|선원|부엉이|동물)들(?:은|는|이|가|을|를|의|과|와|도|만|에서|에게|으로|로)?(?:\s|$|[,·])/.test(body)) return true;
+    if (/(?:무리|군중|일행|떼|군단|대열|행렬|인파|단체|집단)(?:은|는|이|가|을|를|의|과|와|도|만|에서|에게|으로|로)?(?:\s|$|[,·])/.test(body)) return true;
+    return false;
+}
+
+
+function isIndividualSignalLabel(value) {
+    const raw = String(value || '').replace(/\s+/g, ' ').trim();
+    if (!raw || isGenericPersonLabel(raw) || isGroupPersonLabel(raw)) return false;
+    return true;
+}
+
+function isLegacyUnknownPersonLabel(value) {
+    return /^(?:unknown|이름이 흐릿한 발자국|정체 불명|정체불명|알 수 없는 사람)$/i.test(String(value || '').replace(/\s+/g, ' ').trim());
+}
+
+
 function exactPresentTextKey(value) {
     return String(value || '').replace(/\s+/g, ' ').trim().toLowerCase();
 }
 
 function isCrowdSummaryLabel(value) {
     const raw = String(value || '').replace(/\s+/g, ' ').trim();
-    if (!raw.startsWith('👥')) return false;
-    const body = raw.replace(/^👥\s*/, '').trim();
-    if (!body || presentIdentityKey(body).startsWith('person:') || extractKnownNames(body).length) return false;
-    return /(?:학생들|사람들|손님들|직원들|승객들|무리|일행|몇\s*명|여러\s*명|군중|관중|groups?|students?|people|guests?|staff|workers?|passengers?|crowd)/i.test(body);
+    return Boolean(raw) && isGroupPersonLabel(raw);
 }
 
 function normalizePresentDisplayLabel(value) {
@@ -1239,7 +1272,7 @@ function normalizePresentDisplayLabel(value) {
 function isAmbientPresenceLabel(value) {
     const raw = String(value || '').replace(/\s+/g, ' ').trim();
     if (!raw || isGenericPersonLabel(raw)) return true;
-    if (raw.startsWith('👥')) return isCrowdSummaryLabel(raw);
+    if (isGroupPersonLabel(raw)) return true;
 
     // Existing aliases are used only to recognise a known person, never to
     // rewrite its displayed name. Named characters must come from the model.
@@ -1274,7 +1307,7 @@ function enforceExactNamedPersonLocations(locations) {
 function simplifyFootstepLabel(value) {
     let label = String(value || '').replace(/\s+/g, ' ').trim();
     if (!label) return '???';
-    if (/^(\?\?\?|unknown|이름이 흐릿한 발자국|정체 불명|알 수 없는 사람)$/i.test(label)) return '???';
+    if (/^\?\?\?$/.test(label) || isLegacyUnknownPersonLabel(label)) return '???';
 
     // The map should show names/titles only. Remove activity/status fragments
     // such as "[busy]", "(carrying books)", "— whispering", or ": waiting".
@@ -1434,14 +1467,13 @@ function synthesizeFootsteps(map, locations, existingFootsteps, currentLocationI
     const out = [];
     const existingKey = new Set();
     const add = (label, locationId, status = '지도 위를 지나가는 중') => {
-        if (out.length >= FOOTSTEP_LIMIT || !label || !locationId) return;
+        if (out.length >= FOOTSTEP_LIMIT || !isIndividualSignalLabel(label) || !locationId) return;
 
-        const named = isNamedPresentLabel(label);
         const nameKey = exactPresentTextKey(label);
-        const assignedLocation = named && namedPlacements.get(nameKey)
+        const assignedLocation = namedPlacements.get(nameKey)
             ? namedPlacements.get(nameKey)
             : locationId;
-        const key = named ? `named:${nameKey}` : `${label}|${assignedLocation}`;
+        const key = /^\?\?\?$/.test(label) ? `unknown:${assignedLocation}` : `person:${nameKey}`;
         if (existingKey.has(key)) return;
 
         existingKey.add(key);
@@ -1458,17 +1490,22 @@ function synthesizeFootsteps(map, locations, existingFootsteps, currentLocationI
         add(fp.label, fp.locationId, fp.status || '지도 위를 지나가는 중');
     }
 
-    const current = (locations || []).find(loc => loc.id === currentLocationId);
-    if (current) {
-        (current.present || []).filter(p => !isGenericPersonLabel(p)).slice(0, 3)
-            .forEach(person => add(person, current.id, '현재 장면 근처에 머무름'));
-    }
-
-    for (const loc of locations || []) {
-        if (out.length >= FOOTSTEP_LIMIT) break;
-        const people = (loc.present || []).filter(p => !isGenericPersonLabel(p));
-        const take = loc.id === currentLocationId ? 2 : 1;
-        people.slice(0, take).forEach(person => add(person, loc.id, loc.id === currentLocationId ? '현재 장면 근처에 머무름' : `${loc.name} 근처에 있음`));
+    if (out.length < FOOTSTEP_TARGET_MIN) {
+        const candidates = [];
+        for (const loc of locations || []) {
+            for (const person of loc.present || []) {
+                if (!isIndividualSignalLabel(person) || /^\?\?\?$/.test(String(person || '').trim())) continue;
+                candidates.push({
+                    label: person,
+                    locationId: loc.id,
+                    status: loc.id === currentLocationId ? '현재 장면 근처에 머무름' : `${loc.name} 근처에 있음`,
+                });
+            }
+        }
+        for (const candidate of candidates) {
+            if (out.length >= FOOTSTEP_TARGET_MIN) break;
+            add(candidate.label, candidate.locationId, candidate.status);
+        }
     }
 
     return out.slice(0, FOOTSTEP_LIMIT);
@@ -1639,18 +1676,22 @@ function normalizeMap(raw, options = {}) {
         if (loc && !loc.eventIds.includes(event.id)) loc.eventIds.push(event.id);
     }
 
-    let footsteps = Array.isArray(map.footsteps) ? map.footsteps.slice(0, FOOTSTEP_LIMIT).map((fp, index) => {
+    let footsteps = Array.isArray(map.footsteps) ? map.footsteps.map((fp, index) => {
         if (!fp || typeof fp !== 'object' || Array.isArray(fp)) return null;
         const resolvedLocationId = resolveLocationId(fp);
         if (!resolvedLocationId) return null;
+        const rawLabel = String(fp.label || fp.name || fp.person || '???').replace(/\s+/g, ' ').trim();
+        if (!isIndividualSignalLabel(rawLabel)) return null;
+        const label = simplifyFootstepLabel(rawLabel);
+        if (!isIndividualSignalLabel(label)) return null;
         return {
             id: String(fp.id || `foot-${safeId(fp.label || fp.name || fp.person || 'unknown')}-${index + 1}`),
-            label: simplifyFootstepLabel(fp.label || fp.name || fp.person || '???'),
+            label,
             locationId: resolvedLocationId,
             status: String(fp.status || fp.activity || '움직임이 희미하다.'),
-            visibleName: fp.visibleName !== false && !/^\?\?\?$/.test(String(fp.label || fp.name || '')),
+            visibleName: fp.visibleName !== false && !/^\?\?\?$/.test(label),
         };
-    }).filter(Boolean) : [];
+    }).filter(Boolean).slice(0, FOOTSTEP_LIMIT) : [];
 
     footsteps = synthesizeFootsteps(map, normalizedLocations, footsteps, currentLocationId, namedPlacements);
 
@@ -2225,7 +2266,7 @@ function buildDiscoveryPrompt(outputMode = getOutputModeKey()) {
     const map = memory.map;
     const mapContext = (map?.locations || []).map(location => {
         const footsteps = (map.footsteps || [])
-            .filter(footstep => footstep.locationId === location.id)
+            .filter(footstep => footstep.locationId === location.id && isIndividualSignalLabel(footstep.label))
             .map(footstep => `${footstep.label}: ${footstep.status}`);
         return `- ${location.name}\n  Known baseline: ${stripLong(location.situation, 300)}\n  Additional known details: ${stripLong(location.details, 220)}\n  Present: ${(location.present || []).join(', ') || '(none visible)'}\n  Movement already represented by footsteps: ${footsteps.join(' / ') || '(none)'}\n  Existing local anchors: ${(location.clues || []).join(' / ') || '(none)'}`;
     }).join('\n');
@@ -2338,7 +2379,7 @@ function buildQuestContinuityRegistry(memory = ensureMemory()) {
     const addPerson = (locationName, person) => {
         const place = String(locationName || '').trim();
         const name = String(person || '').replace(/\s+/g, ' ').trim();
-        if (!place || !name || isGenericPersonLabel(name)) return;
+        if (!place || !isIndividualSignalLabel(name) || /^\?\?\?$/.test(name) || isLegacyUnknownPersonLabel(name)) return;
         const names = peopleByLocation.get(place) || [];
         peopleByLocation.set(place, uniqueStrings([...names, name], 8));
     };
@@ -2361,13 +2402,33 @@ function buildQuestContinuityRegistry(memory = ensureMemory()) {
         const observedState = stripLong(`${location.situation || ''} ${location.details || ''}`, 260);
         return `- ${location.name}${people.length ? ` | observed people: ${people.join(', ')}` : ''}${observedState ? ` | last observed state: ${observedState}` : ''}`;
     });
-    const trackedLines = Object.values(memory?.trackedPeople || {}).slice(0, 12).map(person => {
+    const rememberedPeople = [
+        ...Object.values(memory?.footstepProfiles || {}).map(person => ({
+            name: person?.name,
+            location: person?.currentLocation || locationById.get(String(person?.sourceLocationId || '')),
+            context: person?.characterInfo || person?.currentActivity,
+        })),
+        ...Object.values(memory?.trackedPeople || {}).map(person => ({
+            name: person?.name,
+            location: person?.lastLocation,
+            context: person?.summary || person?.lastActivity,
+        })),
+        ...(memory?.searchResults || []).map(person => ({
+            name: person?.name,
+            location: person?.currentLocation,
+            context: person?.summary || person?.currentActivity,
+        })),
+    ];
+    const rememberedSeen = new Set();
+    const trackedLines = rememberedPeople.map(person => {
         const name = String(person?.name || '').replace(/\s+/g, ' ').trim();
-        if (!name) return '';
-        const location = String(person?.lastLocation || '').replace(/\s+/g, ' ').trim();
-        const role = stripLong(person?.summary || person?.lastActivity || '', 140);
-        return `- ${name}${location ? ` | last known place: ${location}` : ''}${role ? ` | known context: ${role}` : ''}`;
-    }).filter(Boolean);
+        const key = name.toLowerCase();
+        if (!isIndividualSignalLabel(name) || /^\?\?\?$/.test(name) || isLegacyUnknownPersonLabel(name) || rememberedSeen.has(key)) return '';
+        rememberedSeen.add(key);
+        const location = String(person?.location || '').replace(/\s+/g, ' ').trim();
+        const context = stripLong(person?.context || '', 140);
+        return `- ${name}${location ? ` | last known place: ${location}` : ''}${context ? ` | known context: ${context}` : ''}`;
+    }).filter(Boolean).slice(0, 12);
 
     if (!locationLines.length && !remoteLocationLines.length && !trackedLines.length) return '(none available yet)';
     return [
@@ -2394,7 +2455,7 @@ Output density:
 - Mode: ${config.label}
 - Locations: ${config.locationRange}
 - Location situation length: ${config.situationRange} Korean sentences; details: ${config.detailsRange} Korean sentences
-- Footsteps or person movement signals: 6 to 10
+- Footsteps: target 6 to 10 selected individual signals across the whole map; a shorter truthful list is valid when the supplied world cannot support six
 - Quest allocation:
 ${questAllocation}
 - Every quest summary and details field: 3 to 5 complete Korean sentences each
@@ -2416,9 +2477,18 @@ Location writing:
 - A visible group is one complete Korean phrase stating what kind of group is there, what they are doing or where they gather, and a plausible rough count.
 - situation establishes the recognizable physical place: layout, entrances, surfaces, furniture or structures, light, air, sound, material, movement, and the activity already occurring there.
 - details is a second view of the same place and moment. Add a distinct local beat, object, exchange, trace, risk, expectation, or change without repeating situation.
-- Place named people through visible posture, movement, work, dialogue, objects, attention, avoidance, or interaction. Align their actions across situation, present, footsteps, and quests.
+- Place named people through visible posture, movement, work, dialogue, objects, attention, avoidance, or interaction. When the same individual appears in more than one field, align that person's actions across situation, present, footsteps, and quests.
 - Quiet places remain playable through a concrete routine, object, expectation, interruption, or unsettled detail. Busy places remain readable through the visible flow of people and competing activity.
 - clues are short locally observable anchors that can help continue a scene.
+
+Footstep selection:
+- Footsteps are a selected set of individual person signals across the whole map. Each item represents exactly one identifiable person or one intentionally unidentified individual.
+- Choose candidates in this order: established supporting named characters already grounded in the supplied continuity; specific actors involved in returned events or quests; new named minor NPCs suited to the setting; a singular role or title; an intentional ??? only when uncertainty itself is meaningful in the scene.
+- A new named minor NPC begins with a modest local role, current action, and current location. Any earlier relationship or shared history must come from the supplied continuity.
+- Footsteps represent individuals; crowd, group, counted-person, animal-group, and plural role descriptions are excluded and remain in location.present.
+- Do not copy or mirror location.present into footsteps. Select only the individuals that make the wider simultaneous snapshot useful.
+- When the available individual candidates still total fewer than six, return fewer footsteps instead of padding the list with a crowd or invented history.
+- When the same individual appears in present and footsteps, keep that person's location and current action consistent.
 
 Quest writing:
 - The protagonists are the Current user and Current character named below. The protagonists' current activity belongs in currentLocationName, location.situation, and location.details.
@@ -2474,7 +2544,9 @@ Writing requirements:
 - location.details adds 4 to 6 complete Korean sentences from a distinct second angle in the same place and moment.
 - location.present contains 0 to 6 people or complete group descriptions physically visible here.
 - location.clues contains short locally observable anchors.
-- Each footstep uses a person name or established title, locationName ${location.name}, and a concrete visible activity in status.
+- Each footstep uses one individual person's name, a singular identifying title, or an intentional ???; locationName remains ${location.name}, and status gives that individual's concrete visible activity.
+- Footsteps are a selected subset of the individuals at this location. Crowd, group, counted-person, animal-group, and plural role descriptions remain in location.present, and location.present is not copied wholesale into footsteps.
+- Return fewer footsteps when this location supports only a small number of identifiable individuals.
 - Keep the protagonists' activity already under way in location.situation and location.details.
 - Return zero or one quest. Include one only when a separate named person or group at this location has a specific aim, obstacle, consequence, and unresolved entry point through which the protagonists could become involved. Its summary and details each contain 3 to 5 complete Korean sentences.
 - A quest reward is a concrete result the people or situation can plausibly provide: a named item, key, equipment, access or use right, specific invitation or appointment, defined role or authority, one favor from a named NPC, or evidence or information with a clear subject and source.
@@ -3015,7 +3087,8 @@ function findPersonInMap(query) {
     const map = memory.map;
     const needle = String(query || '').trim().toLowerCase();
     if (!needle || !map) return null;
-    const footstep = (map.footsteps || []).find(fp => String(fp.label || '').toLowerCase().includes(needle));
+    const footstep = (map.footsteps || []).find(fp => isIndividualSignalLabel(fp?.label)
+        && String(fp.label || '').toLowerCase().includes(needle));
     if (footstep) {
         const loc = map.locations.find(l => l.id === footstep.locationId);
         const savedProfile = memory.footstepProfiles?.[footstep.id] || null;
@@ -3046,7 +3119,9 @@ function findPersonInMap(query) {
         });
     }
     for (const loc of map.locations || []) {
-        const person = (loc.present || []).find(p => String(p || '').toLowerCase().includes(needle));
+        const person = (loc.present || []).find(p => isIndividualSignalLabel(p)
+            && !/^\?\?\?$/.test(String(p || '').trim())
+            && String(p || '').toLowerCase().includes(needle));
         if (person) {
             return normalizeSearchResult({}, query, {
                 isOnMap: true,
@@ -3251,6 +3326,10 @@ async function addSearchResultToMap(result) {
     const memory = ensureMemory();
     const map = memory.map;
     if (!map || !result) return;
+    if (!isIndividualSignalLabel(result.name)) {
+        toast('지도에는 한 명의 인물로 확인되는 검색 결과만 표시할 수 있습니다.', 'info');
+        return;
+    }
     const resultMapGeneratedAt = String(result.mapGeneratedAt || '');
     const currentMapGeneratedAt = getMapLinkStamp(memory);
     const belongsToCurrentMap = Boolean(resultMapGeneratedAt && currentMapGeneratedAt && resultMapGeneratedAt === currentMapGeneratedAt);
@@ -3337,6 +3416,7 @@ function uniqueFootsteps(list) {
     const seen = new Set();
     const out = [];
     for (const fp of list || []) {
+        if (!isIndividualSignalLabel(fp?.label)) continue;
         const key = `${String(fp.label || '').toLowerCase()}|${fp.locationId}`;
         if (seen.has(key)) continue;
         seen.add(key);
@@ -4012,7 +4092,7 @@ The JSON must include these top-level fields:
 - worldSummary: string
 - currentLocationName: string matching one returned location name
 - locations: array of map locations
-- footsteps: array of character/location signals visible in the current scene
+- footsteps: selected individual character/location signals across the returned map snapshot; each item represents one person, and crowds remain in locations[].present
 - worldEvents: array of independent quests already unfolding elsewhere in the supplied world
 - personalEvents: array containing 0 or 1 quest caused by or directed toward the protagonists
 If locations is empty, the response is invalid.`;
@@ -5535,7 +5615,7 @@ function renderCanvas() {
     occupiedPoints.push({ x: 96, y: 94, r: 9 });
     const footstepCountByLocation = {};
 
-    (map?.footsteps || []).forEach((fp, index) => {
+    (map?.footsteps || []).filter(fp => isIndividualSignalLabel(fp?.label)).forEach((fp, index) => {
         const locIndex = locations.findIndex(l => l.id === fp.locationId);
         if (locIndex < 0) return;
         const pos = positions[locIndex] || { x: 50, y: 50 };
