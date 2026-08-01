@@ -10250,3 +10250,253 @@ button.mma-footstep:focus-visible em {
     animation: none !important;
   }
 }
+
+/* v3.0.3 Bonbon readable place cards and grouped people */
+#mma-window.mma-theme-bonbon .mma-bonbon-cover-title {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: .22em !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-cover-title-die {
+  display: inline-block;
+  flex: 0 0 auto;
+  font-size: .52em;
+  line-height: 1;
+  transform: translateY(-.03em) rotate(5deg);
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-cover-side-label {
+  position: absolute;
+  z-index: 3;
+  top: 50%;
+  right: 13px;
+  display: block;
+  max-height: 48%;
+  color: var(--mma-bb-chocolate-deep);
+  font-size: calc(9px * var(--mma-font-scale, 1));
+  font-weight: 600;
+  letter-spacing: .05em;
+  line-height: 1.35;
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  transform: translateY(-50%);
+  opacity: .76;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-route-stop > .mma-node.mma-bonbon-location-card {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  width: max-content !important;
+  min-width: 46px !important;
+  max-width: 104px !important;
+  height: 34px !important;
+  min-height: 34px !important;
+  padding: 4px 7px !important;
+  gap: 4px !important;
+  overflow: visible !important;
+  border-radius: 9px !important;
+  box-shadow: 0 3px 8px rgba(81, 64, 57, .16) !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-route-stop > .mma-node.mma-bonbon-location-card > b {
+  display: block !important;
+  flex: 0 0 auto;
+  font-size: calc(15px * var(--mma-font-scale, 1)) !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-route-stop > .mma-node.mma-bonbon-location-card .mma-node-label {
+  display: block !important;
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 72px;
+  overflow: hidden !important;
+  color: var(--mma-bb-text) !important;
+  font-size: inherit !important;
+  font-weight: 600 !important;
+  line-height: 1.15 !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-route-stop.edge-left > .mma-node.mma-bonbon-location-card {
+  transform: translate(-12%, -50%) !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-route-stop.edge-right > .mma-node.mma-bonbon-location-card {
+  transform: translate(-88%, -50%) !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-route-stop.edge-left > .mma-node.mma-bonbon-location-card:hover,
+#mma-window.mma-theme-bonbon .mma-bonbon-route-stop.edge-left > .mma-node.mma-bonbon-location-card:focus-visible {
+  transform: translate(-12%, -50%) scale(1.04) !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-route-stop.edge-right > .mma-node.mma-bonbon-location-card:hover,
+#mma-window.mma-theme-bonbon .mma-bonbon-route-stop.edge-right > .mma-node.mma-bonbon-location-card:focus-visible {
+  transform: translate(-88%, -50%) scale(1.04) !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-stop-people {
+  top: 23px;
+  display: block;
+  box-sizing: border-box;
+  width: max-content;
+  max-width: min(160px, 40vw);
+  min-height: 0;
+  padding: 2px 4px;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-route-stop.people-up .mma-bonbon-stop-people {
+  top: auto;
+  bottom: 23px;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-route-stop.edge-left .mma-bonbon-stop-people {
+  transform: translateX(-8%);
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-route-stop.edge-right .mma-bonbon-stop-people {
+  transform: translateX(-92%);
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-stop-people-inner {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 3px;
+  transform-origin: 50% 80%;
+  animation: mma-bonbon-group-sway 3.8s ease-in-out infinite;
+  animation-delay: var(--mma-bonbon-sway-delay, 0s);
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-group-pawn {
+  display: inline-block;
+  align-self: center;
+  width: auto;
+  min-width: 0;
+  height: auto;
+  color: var(--mma-bb-fig-deep);
+  font-size: 9px;
+  line-height: 1;
+  filter: none;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-stop-people-list {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 1px 3px;
+  min-width: 0;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-stop-people-list > .mma-footstep.mma-bonbon-piece {
+  position: relative !important;
+  top: auto !important;
+  left: auto !important;
+  display: inline-flex !important;
+  flex: 0 1 auto;
+  align-items: center;
+  width: auto !important;
+  min-width: 0 !important;
+  height: auto !important;
+  min-height: 0 !important;
+  padding: 1px 2px !important;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: var(--mma-bb-text) !important;
+  opacity: 1 !important;
+  transform: none !important;
+  animation: none !important;
+  pointer-events: auto !important;
+  cursor: pointer;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-stop-people-list > .mma-footstep.mma-bonbon-piece + .mma-footstep.mma-bonbon-piece {
+  border-left: 1px solid rgba(161, 113, 95, .18) !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-stop-people-list > .mma-footstep.mma-bonbon-piece em {
+  max-width: min(58px, 17vw) !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  color: var(--mma-bb-text) !important;
+  box-shadow: none !important;
+  font-size: inherit !important;
+  font-weight: 600 !important;
+  line-height: 1.15 !important;
+}
+
+@keyframes mma-bonbon-group-sway {
+  0%, 100% { transform: translateX(-.75px) rotate(-.35deg); }
+  50% { transform: translateX(.75px) rotate(.35deg); }
+}
+
+@media (max-width: 700px) {
+  #mma-window.mma-theme-bonbon .mma-bonbon-cover-side-label {
+    right: 8px;
+    max-height: 42%;
+    font-size: calc(8px * var(--mma-font-scale, 1));
+  }
+
+  #mma-window.mma-theme-bonbon .mma-bonbon-route-stop > .mma-node.mma-bonbon-location-card {
+    min-width: 42px !important;
+    max-width: 82px !important;
+    height: 30px !important;
+    min-height: 30px !important;
+    padding: 3px 5px !important;
+    gap: 3px !important;
+    border-radius: 8px !important;
+  }
+
+  #mma-window.mma-theme-bonbon .mma-bonbon-route-stop > .mma-node.mma-bonbon-location-card > b {
+    font-size: calc(14px * var(--mma-font-scale, 1)) !important;
+  }
+
+  #mma-window.mma-theme-bonbon .mma-bonbon-route-stop > .mma-node.mma-bonbon-location-card .mma-node-label {
+    max-width: 50px;
+  }
+
+  #mma-window.mma-theme-bonbon .mma-bonbon-stop-people {
+    top: 21px;
+    max-width: min(108px, 34vw);
+    padding: 1px 3px;
+  }
+
+  #mma-window.mma-theme-bonbon .mma-bonbon-route-stop.people-up .mma-bonbon-stop-people {
+    top: auto;
+    bottom: 21px;
+  }
+
+  #mma-window.mma-theme-bonbon .mma-bonbon-group-pawn {
+    font-size: 8px;
+  }
+
+  #mma-window.mma-theme-bonbon .mma-bonbon-stop-people-inner {
+    gap: 2px;
+  }
+
+  #mma-window.mma-theme-bonbon .mma-bonbon-stop-people-list {
+    gap: 1px 2px;
+  }
+
+  #mma-window.mma-theme-bonbon .mma-bonbon-stop-people-list > .mma-footstep.mma-bonbon-piece {
+    padding: 1px !important;
+  }
+
+  #mma-window.mma-theme-bonbon .mma-bonbon-stop-people-list > .mma-footstep.mma-bonbon-piece em {
+    max-width: min(46px, 15vw) !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #mma-window.mma-theme-bonbon .mma-bonbon-stop-people-inner {
+    animation: none !important;
+  }
+}

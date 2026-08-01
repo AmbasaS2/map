@@ -15,7 +15,7 @@ const EXTENSION_PROMPT_KEY = 'marauders_map_active_context';
 const FOOTSTEP_LIMIT = 10;
 const DEBUG_LOG_LIMIT = 40;
 const memoryDebugLogs = [];
-const EXTENSION_VERSION = '3.0.2';
+const EXTENSION_VERSION = '3.0.3';
 const SHARED_NOTEBOOK_KEYS = Object.freeze(['managedItems', 'footstepProfiles', 'trackedPeople', 'recommendations', 'searchResults']);
 const DISCOVERY_HISTORY_LIMIT = 30;
 const UNCOLLECTED_RECOMMENDATION_LIMIT = 24;
@@ -5286,7 +5286,8 @@ function renderSpellScreen() {
                         <span class="mma-bonbon-cover-piece mma-bonbon-cover-piece-pawn"></span>
                         <span class="mma-bonbon-cover-piece mma-bonbon-cover-piece-tile"></span>
                     </div>
-                    <div class="mma-bonbon-cover-title">BONBON BOARD</div>
+                    <div class="mma-bonbon-cover-title">BONBON BOARD<span class="mma-bonbon-cover-title-die" aria-hidden="true">🎲</span></div>
+                    <span class="mma-bonbon-cover-side-label">전체 이용가 · 1인 이상용 보드게임</span>
                     <p class="mma-bonbon-cover-copy">상자를 열면 게임이 시작됩니다.</p>
                     <p class="mma-bonbon-cover-copy">주사위를 굴려 이야기를 확장해 보세요.</p>
                     <div class="mma-bonbon-cover-meta"><span>1인 이상</span><b aria-hidden="true">·</b><span>제한 시간 없음</span><b aria-hidden="true">·</b><span>정해진 경로 없음</span></div>
@@ -5510,7 +5511,9 @@ function renderCanvas() {
         node.addEventListener('click', () => selectLocation(loc.id));
         if (bonbon) {
             const stop = document.createElement('div');
-            stop.className = `mma-bonbon-route-stop${pos.y >= 72 ? ' people-up' : ''}`;
+            const peopleAbove = pos.y >= 72 || (pos.y >= 35 && pos.y < 60 && index % 2 === 0);
+            const edgeClass = pos.x <= 20 ? ' edge-left' : (pos.x >= 78 ? ' edge-right' : '');
+            stop.className = `mma-bonbon-route-stop${peopleAbove ? ' people-up' : ''}${edgeClass}`;
             stop.style.left = `${pos.x}%`;
             stop.style.top = `${pos.y}%`;
             stop.dataset.locationId = loc.id;
@@ -5547,16 +5550,13 @@ function renderCanvas() {
             foot.style.left = `${footPos.x}%`;
             foot.style.top = `${footPos.y}%`;
         }
-        if (bonbon) {
-            foot.style.setProperty('--mma-bonbon-sway-delay', `${-((index % 5) * 0.37)}s`);
-        }
         foot.title = `${fp.visibleName ? fp.label : '???'} — ${fp.status || ''}`;
         foot.dataset.footstepId = fp.id;
         foot.dataset.locationId = fp.locationId;
         foot.innerHTML = isModernTheme()
             ? `<span class="mma-tracker-dot" aria-hidden="true"></span><em>${escapeHtml(fp.visibleName ? fp.label : '???')}</em>`
             : bonbon
-                ? `<span class="mma-bonbon-pawn" aria-hidden="true">♟</span><em>${escapeHtml(fp.visibleName ? fp.label : '???')}</em>`
+                ? `<em>${escapeHtml(fp.visibleName ? fp.label : '???')}</em>`
                 : `<span>👣</span><em>${escapeHtml(fp.visibleName ? fp.label : '???')}</em>`;
         foot.addEventListener('click', (event) => {
             event.stopPropagation();
@@ -5570,9 +5570,14 @@ function renderCanvas() {
                 people = document.createElement('div');
                 people.className = 'mma-bonbon-stop-people';
                 people.setAttribute('aria-label', `${locations[locIndex]?.name || '장소'}의 인물`);
+                people.style.setProperty('--mma-bonbon-sway-delay', `${-((locIndex % 5) * 0.37)}s`);
+                const peopleInner = document.createElement('div');
+                peopleInner.className = 'mma-bonbon-stop-people-inner';
+                peopleInner.innerHTML = '<span class="mma-bonbon-group-pawn" aria-hidden="true">♟</span><div class="mma-bonbon-stop-people-list"></div>';
+                people.appendChild(peopleInner);
                 stop.appendChild(people);
             }
-            people.appendChild(foot);
+            people.querySelector('.mma-bonbon-stop-people-list')?.appendChild(foot);
         } else {
             canvas.appendChild(foot);
         }
@@ -5583,7 +5588,7 @@ function renderCanvas() {
             if (!stop.querySelector('.mma-bonbon-stop-people')) return;
             const locIndex = locations.findIndex(location => location.id === locationId);
             const anchor = positions[locIndex] || { x: 50, y: 50 };
-            const yOffset = anchor.y >= 72 ? -9 : 9;
+            const yOffset = stop.classList.contains('people-up') ? -9 : 9;
             occupiedPoints.push({ x: anchor.x, y: clampPositionValue(anchor.y + yOffset, 8, 92), r: 14 });
         });
     }
