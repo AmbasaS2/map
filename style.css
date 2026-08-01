@@ -9714,3 +9714,539 @@ button.mma-footstep:focus-visible em {
     font-size: calc(12px * var(--mma-font-scale, 1));
   }
 }
+
+/* Keep the extension settings drawer inside its host column. */
+#mma-settings-block {
+  box-sizing: border-box !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  container-type: inline-size;
+}
+
+#mma-settings-block *,
+#mma-settings-block *::before,
+#mma-settings-block *::after {
+  box-sizing: border-box !important;
+}
+
+#mma-settings-block > .mma-settings-content,
+#mma-settings-block .mma-settings-inner,
+#mma-settings-block .mma-settings-grid,
+#mma-settings-block .mma-settings-field,
+#mma-settings-block .mma-font-scale-row,
+#mma-settings-block .mma-settings-debug-panel,
+#mma-settings-block .mma-debug-actions {
+  width: 100%;
+  max-width: 100% !important;
+  min-width: 0 !important;
+}
+
+#mma-settings-block select,
+#mma-settings-block input,
+#mma-settings-block textarea,
+#mma-settings-block button {
+  max-width: 100% !important;
+  min-width: 0 !important;
+}
+
+#mma-settings-block #mma-font-scale.mma-font-scale-input {
+  flex: 0 1 92px !important;
+  width: 92px !important;
+  max-width: calc(100% - 22px) !important;
+  min-width: 0 !important;
+}
+
+@container (max-width: 360px) {
+  #mma-settings-block .mma-settings-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}
+
+@media (max-width: 520px) {
+  #mma-settings-block .mma-settings-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}
+
+/* v3.0.2 Bonbon fold-out journey board */
+#mma-window.mma-theme-bonbon .mma-spell-top .mma-brand {
+  font-size: calc(34px * var(--mma-font-scale, 1)) !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-toolbar .mma-brand.small {
+  font-size: calc(21px * var(--mma-font-scale, 1)) !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-box-cover {
+  width: min(700px, 90%) !important;
+  min-height: min(520px, 70vh) !important;
+  padding: clamp(86px, 12vh, 118px) clamp(28px, 7vw, 64px) 38px !important;
+  gap: 9px !important;
+  overflow: hidden !important;
+  border: 1px solid var(--mma-bb-line) !important;
+  border-radius: 18px !important;
+  background:
+    linear-gradient(
+      to right,
+      transparent 0 calc(33.333% - .5px),
+      rgba(161, 113, 95, .18) calc(33.333% - .5px) calc(33.333% + .5px),
+      transparent calc(33.333% + .5px) calc(66.666% - .5px),
+      rgba(161, 113, 95, .18) calc(66.666% - .5px) calc(66.666% + .5px),
+      transparent calc(66.666% + .5px)
+    ),
+    var(--mma-bb-ivory) !important;
+  box-shadow: 0 10px 26px rgba(81, 64, 57, .11) !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-box-cover::before {
+  content: "" !important;
+  display: block !important;
+  position: absolute !important;
+  z-index: 0 !important;
+  top: 29% !important;
+  right: 0 !important;
+  bottom: auto !important;
+  left: 0 !important;
+  width: auto !important;
+  height: 37% !important;
+  border: 0 !important;
+  border-top: 1px solid rgba(183, 107, 139, .28) !important;
+  border-bottom: 1px solid rgba(183, 107, 139, .28) !important;
+  border-radius: 0 !important;
+  background: var(--mma-bb-fig-soft) !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-box-cover::after {
+  content: none !important;
+  display: none !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-cover-title,
+#mma-window.mma-theme-bonbon .mma-bonbon-cover-copy,
+#mma-window.mma-theme-bonbon .mma-bonbon-cover-meta,
+#mma-window.mma-theme-bonbon .mma-bonbon-box-cover .mma-spell-button {
+  position: relative;
+  z-index: 3;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-cover-title {
+  color: var(--mma-bb-chocolate-deep) !important;
+  text-shadow: none !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-cover-copy {
+  color: var(--mma-bb-text) !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-cover-copy + .mma-bonbon-cover-copy {
+  margin-top: -5px !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-cover-meta {
+  margin-top: clamp(42px, 7vh, 62px) !important;
+  border-color: var(--mma-bb-line) !important;
+  background: rgba(255, 249, 241, .92) !important;
+  color: var(--mma-bb-chocolate-deep) !important;
+  box-shadow: 0 2px 6px rgba(81, 64, 57, .07) !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-cover-piece-pawn,
+#mma-window.mma-theme-bonbon .mma-bonbon-cover-piece-tile {
+  display: none !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-cover-piece-die {
+  top: 20px !important;
+  left: 20px !important;
+  width: 36px !important;
+  height: 36px !important;
+  border-color: var(--mma-bb-line) !important;
+  background: var(--mma-bb-ivory) !important;
+  color: var(--mma-bb-chocolate-deep) !important;
+  box-shadow: 0 2px 6px rgba(81, 64, 57, .08) !important;
+  font-size: 21px !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-box-cover .mma-bonbon-cover-piece-key-card {
+  top: auto !important;
+  right: 24px !important;
+  bottom: 24px !important;
+  width: 46px !important;
+  height: 30px !important;
+  border-color: var(--mma-bb-fig) !important;
+  background: var(--mma-bb-fig-soft) !important;
+  color: var(--mma-bb-chocolate-deep) !important;
+  box-shadow: 0 3px 7px rgba(81, 64, 57, .09) !important;
+  font-size: 18px !important;
+  transform: rotate(5deg) !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-box-cover .mma-spell-button,
+#mma-window.mma-theme-bonbon .mma-bonbon-box-cover .mma-spell-button:hover,
+#mma-window.mma-theme-bonbon .mma-bonbon-box-cover .mma-spell-button:focus-visible {
+  border-color: var(--mma-bb-chocolate-deep) !important;
+  background: var(--mma-bb-chocolate) !important;
+  color: var(--mma-bb-ivory) !important;
+  box-shadow: 0 3px 8px rgba(81, 64, 57, .12) !important;
+  transform: none !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-map-canvas {
+  border-color: var(--mma-bb-line) !important;
+  background: var(--mma-bb-cream-deep) !important;
+  box-shadow:
+    inset 0 0 0 4px rgba(255, 249, 241, .38),
+    0 2px 7px rgba(81, 64, 57, .07) !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-board-track {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-board-track::before,
+#mma-window.mma-theme-bonbon .mma-bonbon-board-track::after {
+  content: none !important;
+  display: none !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-board-fold {
+  position: absolute;
+  z-index: 0;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: rgba(161, 113, 95, .16);
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-board-fold-left {
+  left: 33.333%;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-board-fold-right {
+  left: 66.666%;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-journey-route {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-journey-route path {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-route-edge {
+  stroke: rgba(104, 75, 65, .82);
+  stroke-width: 29px;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-route-paper {
+  stroke: var(--mma-bb-ivory);
+  stroke-width: 24px;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-route-accent {
+  stroke-width: 5px;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-route-accent-fig {
+  stroke: var(--mma-bb-fig);
+  stroke-dasharray: 11 89;
+  stroke-dashoffset: -39;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-route-accent-pistachio {
+  stroke: var(--mma-bb-pistachio-deep);
+  stroke-dasharray: 12 88;
+  stroke-dashoffset: -7;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-board-rail,
+#mma-window.mma-theme-bonbon [class*="mma-bonbon-board-corner"] {
+  display: none !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-board-mark {
+  top: 57% !important;
+  left: 50% !important;
+  color: var(--mma-bb-chocolate) !important;
+  opacity: .07 !important;
+  transform: translate(-50%, -50%) rotate(-3deg) !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-route-stop {
+  position: absolute;
+  z-index: 8;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-route-stop > .mma-node.mma-bonbon-location-card {
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 38px !important;
+  min-width: 38px !important;
+  max-width: 38px !important;
+  height: 38px !important;
+  min-height: 38px !important;
+  padding: 0 !important;
+  border: 1px solid var(--mma-bb-chocolate) !important;
+  border-radius: 9px !important;
+  background: var(--mma-bb-ivory) !important;
+  box-shadow: 0 3px 8px rgba(81, 64, 57, .11) !important;
+  transform: translate(-50%, -50%) !important;
+  pointer-events: auto;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-route-stop > .mma-node.mma-bonbon-location-card:hover,
+#mma-window.mma-theme-bonbon .mma-bonbon-route-stop > .mma-node.mma-bonbon-location-card:focus-visible {
+  border-color: var(--mma-bb-fig-deep) !important;
+  background: var(--mma-bb-cream) !important;
+  box-shadow: 0 4px 10px rgba(81, 64, 57, .13) !important;
+  transform: translate(-50%, -50%) scale(1.04) !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-route-stop > .mma-node.mma-bonbon-location-card.selected {
+  border: 2px solid var(--mma-bb-fig-deep) !important;
+  background: var(--mma-bb-fig-soft) !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-route-stop > .mma-node.mma-bonbon-location-card.current-location,
+#mma-window.mma-theme-bonbon .mma-bonbon-route-stop > .mma-node.mma-bonbon-location-card.selected.current-location {
+  border: 2px solid var(--mma-bb-pistachio-deep) !important;
+  background: var(--mma-bb-pistachio) !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-stop-people {
+  position: absolute;
+  z-index: 7;
+  top: 25px;
+  left: 0;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 2px;
+  width: max-content;
+  max-width: 128px;
+  min-height: 18px;
+  padding: 2px 4px;
+  border: 1px solid rgba(161, 113, 95, .25);
+  border-radius: 6px;
+  background: rgba(255, 249, 241, .94);
+  box-shadow: 0 2px 6px rgba(81, 64, 57, .08);
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-stop-people::before {
+  content: "";
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  width: 1px;
+  height: 8px;
+  background: rgba(161, 113, 95, .38);
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-route-stop.people-up .mma-bonbon-stop-people {
+  top: auto;
+  bottom: 25px;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-route-stop.people-up .mma-bonbon-stop-people::before {
+  top: 100%;
+  bottom: auto;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-stop-people > .mma-footstep.mma-bonbon-piece {
+  position: relative !important;
+  top: auto !important;
+  left: auto !important;
+  flex: 0 1 auto;
+  min-width: 0;
+  gap: 2px !important;
+  padding: 0 2px !important;
+  color: var(--mma-bb-text) !important;
+  opacity: 1 !important;
+  transform: none !important;
+  animation: mma-bonbon-stop-piece-sway 3.6s ease-in-out infinite !important;
+  animation-delay: var(--mma-bonbon-sway-delay, 0s) !important;
+  pointer-events: auto !important;
+  cursor: pointer;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-stop-people > .mma-footstep.mma-bonbon-piece + .mma-footstep.mma-bonbon-piece {
+  border-left: 1px solid rgba(161, 113, 95, .18);
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-stop-people .mma-bonbon-pawn {
+  width: auto !important;
+  min-width: 0 !important;
+  height: auto !important;
+  color: var(--mma-bb-fig-deep) !important;
+  filter: none !important;
+  font-size: 11px !important;
+  line-height: 1 !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-stop-people .mma-footstep em {
+  max-width: min(62px, 18vw) !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  color: var(--mma-bb-text) !important;
+  box-shadow: none !important;
+  font-size: inherit !important;
+  line-height: 1.15 !important;
+}
+
+@keyframes mma-bonbon-stop-piece-sway {
+  0%, 100% { transform: translateX(-1px) rotate(-.45deg); }
+  50% { transform: translateX(1px) rotate(.45deg); }
+}
+
+#mma-window.mma-theme-bonbon .mma-map-discovery-trigger.mma-board-key-card-trigger,
+#mma-window.mma-theme-bonbon .mma-map-discovery-trigger.mma-board-key-card-trigger:hover,
+#mma-window.mma-theme-bonbon .mma-map-discovery-trigger.mma-board-key-card-trigger:focus-visible {
+  border-color: var(--mma-bb-fig) !important;
+  background: var(--mma-bb-fig-soft) !important;
+  color: var(--mma-bb-chocolate-deep) !important;
+  box-shadow: 0 2px 6px rgba(81, 64, 57, .09) !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-region {
+  font-size: calc(15px * var(--mma-font-scale, 1)) !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-info-block,
+#mma-window.mma-theme-bonbon .mma-event-card,
+#mma-window.mma-theme-bonbon .tracked-card,
+#mma-window.mma-theme-bonbon .person-search-card,
+#mma-window.mma-theme-bonbon .recommendation-card,
+#mma-window.mma-theme-bonbon .search-history-card,
+#mma-window.mma-theme-bonbon .mma-discovery-list-card {
+  box-shadow: 0 2px 7px rgba(81, 64, 57, .07) !important;
+}
+
+@media (max-width: 700px) {
+  #mma-window.mma-theme-bonbon .mma-spell-top .mma-brand {
+    font-size: calc(18px * var(--mma-font-scale, 1)) !important;
+  }
+
+  #mma-window.mma-theme-bonbon .mma-toolbar .mma-brand.small {
+    font-size: calc(16px * var(--mma-font-scale, 1)) !important;
+  }
+
+  #mma-window.mma-theme-modern .mma-top-right .mma-toolbar-actions button,
+  #mma-window.mma-theme-bonbon .mma-top-right .mma-toolbar-actions button,
+  #mma-window.mma-theme-modern .mma-top-right > .mma-close-button,
+  #mma-window.mma-theme-bonbon .mma-top-right > .mma-close-button {
+    width: 28px !important;
+    min-width: 28px !important;
+    height: 28px !important;
+    min-height: 28px !important;
+    padding: 0 !important;
+  }
+
+  #mma-window.mma-theme-bonbon .mma-bonbon-box-cover {
+    width: min(92%, 560px) !important;
+    min-height: min(500px, 72vh) !important;
+    padding: 82px 20px 30px !important;
+  }
+
+  #mma-window.mma-theme-bonbon .mma-bonbon-box-cover::before {
+    top: 28% !important;
+    height: 38% !important;
+  }
+
+  #mma-window.mma-theme-bonbon .mma-bonbon-cover-title {
+    font-size: clamp(30px, 10vw, 42px) !important;
+  }
+
+  #mma-window.mma-theme-bonbon .mma-bonbon-cover-copy {
+    font-size: calc(11px * var(--mma-font-scale, 1)) !important;
+  }
+
+  #mma-window.mma-theme-bonbon .mma-bonbon-cover-meta {
+    margin-top: 36px !important;
+  }
+
+  #mma-window.mma-theme-bonbon .mma-bonbon-cover-piece-die {
+    top: 15px !important;
+    left: 15px !important;
+    width: 32px !important;
+    height: 32px !important;
+    font-size: 19px !important;
+  }
+
+  #mma-window.mma-theme-bonbon .mma-bonbon-box-cover .mma-bonbon-cover-piece-key-card {
+    right: 18px !important;
+    bottom: 18px !important;
+    width: 42px !important;
+    height: 28px !important;
+  }
+
+  #mma-window.mma-theme-bonbon .mma-region {
+    font-size: calc(11px * var(--mma-font-scale, 1)) !important;
+  }
+
+  #mma-window.mma-theme-bonbon .mma-bonbon-route-stop > .mma-node.mma-bonbon-location-card {
+    width: 34px !important;
+    min-width: 34px !important;
+    max-width: 34px !important;
+    height: 34px !important;
+    min-height: 34px !important;
+    border-radius: 8px !important;
+  }
+
+  #mma-window.mma-theme-bonbon .mma-bonbon-stop-people {
+    top: 22px;
+    max-width: min(112px, 31vw);
+    padding: 2px 3px;
+  }
+
+  #mma-window.mma-theme-bonbon .mma-bonbon-route-stop.people-up .mma-bonbon-stop-people {
+    top: auto;
+    bottom: 22px;
+  }
+
+  #mma-window.mma-theme-bonbon .mma-bonbon-stop-people .mma-footstep em {
+    max-width: min(48px, 15vw) !important;
+  }
+
+  #mma-window.mma-theme-bonbon .mma-bonbon-route-edge {
+    stroke-width: 24px;
+  }
+
+  #mma-window.mma-theme-bonbon .mma-bonbon-route-paper {
+    stroke-width: 20px;
+  }
+
+  #mma-window.mma-theme-bonbon .mma-bonbon-route-accent {
+    stroke-width: 4px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #mma-window.mma-theme-bonbon .mma-bonbon-stop-people > .mma-footstep.mma-bonbon-piece {
+    animation: none !important;
+  }
+}

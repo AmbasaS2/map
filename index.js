@@ -15,7 +15,7 @@ const EXTENSION_PROMPT_KEY = 'marauders_map_active_context';
 const FOOTSTEP_LIMIT = 10;
 const DEBUG_LOG_LIMIT = 40;
 const memoryDebugLogs = [];
-const EXTENSION_VERSION = '3.0.0';
+const EXTENSION_VERSION = '3.0.2';
 const SHARED_NOTEBOOK_KEYS = Object.freeze(['managedItems', 'footstepProfiles', 'trackedPeople', 'recommendations', 'searchResults']);
 const DISCOVERY_HISTORY_LIMIT = 30;
 const UNCOLLECTED_RECOMMENDATION_LIMIT = 24;
@@ -86,10 +86,10 @@ const THEME_OPTIONS = Object.freeze({
         menuTitle: 'S.H.I.E.L.D. Field Locator',
         activationVariant: 'warning',
         closeText: '×',
-        idleNote: 'S.H.I.E.L.D. Field Locator는 합법적인 동의하에 위치 추적 서비스를 지원합니다.',
-        activateText: '위치 추적 활성화',
-        castingText: '위치 추적 서비스를 활성화하는 중...',
-        completeText: '모든 타겟의 위치가 파악되었습니다.',
+        idleNote: '내부 위협 경계가 유지되고 있습니다. 요원 신원과 임무 권한을 확인한 뒤 위치 신호망에 접속하십시오.',
+        activateText: '보안 인증 후 신호망 접속',
+        castingText: '요원 신원과 임무 권한을 교차 확인하는 중...',
+        completeText: '인증이 완료되었습니다. 현장 위치 신호망을 개방합니다.',
         readyHint: '',
         loaderTitle: 'S.H.I.E.L.D. LOCATOR',
         locationInfoIcon: '⌖',
@@ -817,14 +817,16 @@ function hasPreviousMapSnapshot(memory = null) {
 
 async function restorePreviousMap() {
     if (activeMapGeneration) {
-        toast('지도를 생성하는 동안에는 직전 지도를 되돌릴 수 없습니다.', 'info');
+        toast(isModernTheme()
+            ? '위치 신호망을 갱신하는 동안에는 직전 기록을 복원할 수 없습니다.'
+            : '지도를 생성하는 동안에는 직전 지도를 되돌릴 수 없습니다.', 'info');
         return false;
     }
 
     const memory = ensureMemory();
     const snapshot = normalizePreviousMapSnapshot(memory.previousMap);
     if (!snapshot) {
-        toast('되돌릴 직전 지도가 없습니다.', 'info');
+        toast(isModernTheme() ? '복원할 직전 위치 신호 기록이 없습니다.' : '되돌릴 직전 지도가 없습니다.', 'info');
         return false;
     }
 
@@ -841,7 +843,7 @@ async function restorePreviousMap() {
     await saveMemory(memory);
     syncExtensionPrompt();
     renderMapView();
-    toast('직전 지도로 되돌렸습니다.', 'success');
+    toast(isModernTheme() ? '직전 위치 신호 기록을 복원했습니다.' : '직전 지도로 되돌렸습니다.', 'success');
     pushDebugLog('map.rollback.restore', '현재 채팅의 직전 지도 스냅샷을 복구했습니다.', {
         locations: memory.map.locations.length,
         reason: snapshot.reason || 'refresh',
@@ -4423,7 +4425,9 @@ async function generateMap(force = false) {
             if (force || !rendered) {
                 toast(isBonbonTheme()
                     ? (force ? '게임판을 새로 배치했습니다.' : '게임판 준비가 끝났습니다.')
-                    : (force ? '지도 새로고침이 완료되었습니다.' : '지도 출력이 완료되었습니다.'), 'success');
+                    : isModernTheme()
+                        ? (force ? '현재 작전 구역의 위치 신호를 다시 확보했습니다.' : getMapActivationCompleteText())
+                        : (force ? '지도 새로고침이 완료되었습니다.' : '지도 출력이 완료되었습니다.'), 'success');
             }
         });
     } finally {
@@ -5257,17 +5261,19 @@ function renderSpellScreen() {
     const bonbon = isBonbonTheme();
     applyThemeClass();
     const activationNotice = modern ? `
-                <div class="mma-tracker-warning" aria-label="S.H.I.E.L.D. Field Locator notice">
-                    <div class="mma-warning-title">경 고 문</div>
-                    <p class="mma-warning-copy">실제 사람의 위치를 수집·이용·제공하는 행위는 관련 법령과 서비스 약관의 적용을 받을 수 있습니다. 위치 추적 서비스를 이용할 때에는 목적, 보관 기간, 제공 범위를 사전에 고지하고, 당사자의 명시적인 동의를 받아야 합니다.</p>
-                    <p class="mma-warning-copy">상대방의 동의 없이 위치를 확인하거나 제3자에게 공유하는 행위는 위치정보 관련 법령, 개인정보 보호 규정, 통신 관련 규정 등에 따라 법적 책임이 발생할 수 있습니다. 실제 서비스 이용 시에는 적법한 권한과 동의를 확보한 뒤 이용하시기 바랍니다.</p>
-                    <p class="mma-warning-copy">S.H.I.E.L.D. Field Locator는 이 앱을 사용함으로써 발생하는 문제에 대하여 책임지지 않습니다.</p>
-                    <p class="mma-warning-copy">RP 속 인물들은 허구의 인물이기에 처벌은 받지 않습니다.</p>
-                    <p class="mma-warning-question">위치 추적을 활성화하시겠습니까?</p>
+                <div class="mma-tracker-warning" aria-label="내부 위치 신호망 접근 통지">
+                    <div class="mma-warning-title">내부 위협 경계 // 위치 신호망 접근</div>
+                    <p class="mma-warning-copy">현재 내부 위협 경계가 유지되고 있습니다. 위치 신호망에 접속하기 전, 단말은 접속자의 요원 신원과 임무 권한을 복수의 보안 기록과 교차 확인합니다.</p>
+                    <p class="mma-warning-copy">접속이 승인되면 현재 작전 구역의 인물 신호, 최근 이동 경로, 장소별 활동과 주변의 비정상 신호를 수집·교차 분석합니다. 위치는 신호 강도와 마지막 확인 시각에 따라 추정값으로 표시될 수 있습니다.</p>
+                    <p class="mma-warning-copy">본 세션의 조회 대상, 접속 시각, 기록 복제 및 외부 전송 내역은 독립 감사 로그에 남으며 현장 단말에서 수정하거나 삭제할 수 없습니다.</p>
+                    <p class="mma-warning-copy">승인되지 않은 접근, 신원 위조, 로그 변조 또는 임무 범위를 벗어난 추적은 단말 격리와 즉시 보안 조사의 사유가 됩니다.</p>
+                    <p class="mma-warning-question">요원 신원을 재확인하고 현장 위치 신호망을 개방하시겠습니까?</p>
                 </div>` : '';
     const activateText = bonbon
         ? (memory.map ? '봉봉보드 이어하기' : '봉봉보드 시작하기')
-        : theme.activateText;
+        : modern
+            ? (memory.map ? '보안 인증 후 기록 복원' : theme.activateText)
+            : theme.activateText;
     const activationButton = `
                 <button id="mma-spell-button" class="mma-spell-button" type="button">
                     <span>${escapeHtml(activateText)}</span>
@@ -5287,7 +5293,9 @@ function renderSpellScreen() {
                     ${activationButton}
                 </div>` : '';
     const readyHint = modern
-        ? (memory.map ? '저장된 지도를 다시 펼칩니다.' : '현재 장면을 읽어 새 지도를 만듭니다.')
+        ? (memory.map
+            ? '접근 승인 후 보관된 작전 구역 기록과 마지막 위치 신호를 복원합니다.'
+            : '접근 승인 후 현재 작전 구역의 인물 신호와 이동 경로를 스캔합니다.')
         : bonbon
             ? ''
             : `${theme.readyHint} ${memory.map ? '저장된 지도 메모리를 다시 펼칩니다.' : '현재 장면을 읽어 새 지도를 만듭니다.'}`;
@@ -5296,7 +5304,7 @@ function renderSpellScreen() {
             <div class="mma-spell-top">
                 <div class="mma-brand">${escapeHtml(theme.shortLabel)}</div>
                 <div class="mma-spell-actions">
-                    ${hasPreviousMapSnapshot(memory) ? '<button class="mma-managed-button mma-restore-previous-button" data-action="restore-previous-map" title="이전 지도 불러오기" aria-label="이전 지도 불러오기">↩️</button>' : ''}
+                    ${!bonbon && hasPreviousMapSnapshot(memory) ? `<button class="mma-managed-button mma-restore-previous-button" data-action="restore-previous-map" title="${modern ? '직전 위치 신호 기록 복원' : '이전 지도 불러오기'}" aria-label="${modern ? '직전 위치 신호 기록 복원' : '이전 지도 불러오기'}">↩️</button>` : ''}
                     <button class="mma-managed-button mma-close-button" data-action="close" aria-label="${bonbon ? '게임 상자 닫기' : '닫기'}" title="${bonbon ? '게임 상자 닫기' : '닫기'}">${escapeHtml(theme.closeText)}</button>
                 </div>
             </div>
@@ -5352,7 +5360,9 @@ function wireSpellButton() {
                 if (currentLabel) {
                     currentLabel.textContent = isBonbonTheme() && ensureMemory().map
                         ? '봉봉보드 이어하기'
-                        : getThemeConfig().activateText;
+                        : isModernTheme() && ensureMemory().map
+                            ? '보안 인증 후 기록 복원'
+                            : getThemeConfig().activateText;
                 }
             }
         }
@@ -5402,8 +5412,8 @@ function renderMapView() {
                 <div class="mma-top-right">
                     <button class="mma-managed-button mma-close-button" data-action="close" aria-label="${isBonbonTheme() ? '게임 상자 닫기' : '닫기'}" title="${isBonbonTheme() ? '게임 상자 닫기' : '닫기'}">${escapeHtml(theme.closeText)}</button>
                     <nav class="mma-toolbar-actions" aria-label="지도 버튼">
-                        <button title="현재 상황으로 전체 지도 새로고침" data-action="refresh-all">🔄</button>
-                        <button title="이전 지도 불러오기" data-action="restore-previous-map" ${hasPreviousMapSnapshot(memory) ? '' : 'disabled'}>↩️</button>
+                        <button title="${isModernTheme() ? '현재 작전 구역 위치 신호 다시 스캔' : '현재 상황으로 전체 지도 새로고침'}" data-action="refresh-all">🔄</button>
+                        <button title="${isModernTheme() ? '직전 위치 신호 기록 복원' : '이전 지도 불러오기'}" data-action="restore-previous-map" ${hasPreviousMapSnapshot(memory) ? '' : 'disabled'}>↩️</button>
                         <button title="검색" data-action="recommend">🔎</button>
                         <button title="수첩" data-action="notebook">📓</button>
                         <button title="지도 메모리 보기" data-action="memory">🧠</button>
@@ -5440,16 +5450,17 @@ function renderCanvas() {
     const memory = ensureMemory();
     const map = memory.map;
     const locations = map?.locations || [];
-    const bonbonTrackMarkup = isBonbonTheme() ? `
+    const bonbon = isBonbonTheme();
+    const bonbonTrackMarkup = bonbon ? `
         <div class="mma-bonbon-board-track" aria-hidden="true">
-            <span class="mma-bonbon-board-rail mma-bonbon-board-rail-top"></span>
-            <span class="mma-bonbon-board-rail mma-bonbon-board-rail-right"></span>
-            <span class="mma-bonbon-board-rail mma-bonbon-board-rail-bottom"></span>
-            <span class="mma-bonbon-board-rail mma-bonbon-board-rail-left"></span>
-            <span class="mma-bonbon-board-corner mma-bonbon-board-corner-top-left"></span>
-            <span class="mma-bonbon-board-corner mma-bonbon-board-corner-top-right"></span>
-            <span class="mma-bonbon-board-corner mma-bonbon-board-corner-bottom-right"></span>
-            <span class="mma-bonbon-board-corner mma-bonbon-board-corner-bottom-left"></span>
+            <span class="mma-bonbon-board-fold mma-bonbon-board-fold-left"></span>
+            <span class="mma-bonbon-board-fold mma-bonbon-board-fold-right"></span>
+            <svg class="mma-bonbon-journey-route" viewBox="0 0 100 100" preserveAspectRatio="none" focusable="false">
+                <path class="mma-bonbon-route-edge" pathLength="100" d="M 14 20 C 32 10, 62 10, 79 22 C 91 31, 85 42, 66 46 C 50 50, 26 48, 19 58 C 10 70, 27 78, 45 81 C 62 84, 75 80, 86 88"></path>
+                <path class="mma-bonbon-route-paper" pathLength="100" d="M 14 20 C 32 10, 62 10, 79 22 C 91 31, 85 42, 66 46 C 50 50, 26 48, 19 58 C 10 70, 27 78, 45 81 C 62 84, 75 80, 86 88"></path>
+                <path class="mma-bonbon-route-accent mma-bonbon-route-accent-fig" pathLength="100" d="M 14 20 C 32 10, 62 10, 79 22 C 91 31, 85 42, 66 46 C 50 50, 26 48, 19 58 C 10 70, 27 78, 45 81 C 62 84, 75 80, 86 88"></path>
+                <path class="mma-bonbon-route-accent mma-bonbon-route-accent-pistachio" pathLength="100" d="M 14 20 C 32 10, 62 10, 79 22 C 91 31, 85 42, 66 46 C 50 50, 26 48, 19 58 C 10 70, 27 78, 45 81 C 62 84, 75 80, 86 88"></path>
+            </svg>
             <span class="mma-bonbon-board-mark"><b>BONBON</b><small>BOARD</small></span>
         </div>` : '';
     canvas.innerHTML = `${bonbonTrackMarkup}<button id="mma-map-resize-handle" type="button" aria-label="지도판 세로 크기 조절" title="위아래로 드래그해 지도판 크기를 조절합니다."></button>`;
@@ -5471,19 +5482,18 @@ function renderCanvas() {
     });
     canvas.appendChild(discoverButton);
 
-    const positions = isBonbonTheme()
-        ? getBonbonBoardPositions(locations.length)
+    const positions = bonbon
+        ? getBonbonJourneyPositions(locations.length)
         : getNodePositions(locations.length);
+    const bonbonRouteStops = new Map();
     locations.forEach((loc, index) => {
         const pos = positions[index] || { x: 50, y: 50 };
         const node = document.createElement('button');
         const selectedClass = loc.id === memory.selectedLocationId ? 'selected' : '';
         const currentClass = loc.id === map.currentLocationId ? 'current-location' : '';
-        const bonbonClass = isBonbonTheme() ? 'mma-bonbon-location-card' : '';
+        const bonbonClass = bonbon ? 'mma-bonbon-location-card' : '';
         node.type = 'button';
         node.className = `mma-node ${bonbonClass} ${selectedClass} ${currentClass}`.trim();
-        node.style.left = `${pos.x}%`;
-        node.style.top = `${pos.y}%`;
         node.dataset.id = loc.id;
         const locationQuestCount = (map.events || []).filter(event => event.locationId === loc.id && event.status !== 'ignored').length;
         const locationLabel = [
@@ -5498,7 +5508,20 @@ function renderCanvas() {
         }
         node.innerHTML = `<b aria-hidden="true">${escapeHtml(loc.icon || '📍')}</b><span class="mma-node-label">${escapeHtml(loc.name)}</span>${eventBadgeForLocation(loc.id)}`;
         node.addEventListener('click', () => selectLocation(loc.id));
-        canvas.appendChild(node);
+        if (bonbon) {
+            const stop = document.createElement('div');
+            stop.className = `mma-bonbon-route-stop${pos.y >= 72 ? ' people-up' : ''}`;
+            stop.style.left = `${pos.x}%`;
+            stop.style.top = `${pos.y}%`;
+            stop.dataset.locationId = loc.id;
+            stop.appendChild(node);
+            canvas.appendChild(stop);
+            bonbonRouteStops.set(loc.id, stop);
+        } else {
+            node.style.left = `${pos.x}%`;
+            node.style.top = `${pos.y}%`;
+            canvas.appendChild(node);
+        }
     });
 
     const occupiedPoints = locations.map((loc, index) => {
@@ -5515,31 +5538,55 @@ function renderCanvas() {
         const pos = positions[locIndex] || { x: 50, y: 50 };
         const localIndex = footstepCountByLocation[fp.locationId] || 0;
         footstepCountByLocation[fp.locationId] = localIndex + 1;
-        const footPos = isBonbonTheme()
-            ? getBonbonBoardPiecePosition(pos, localIndex, index, occupiedPoints, 'person')
-            : getFootstepPosition(pos, localIndex, index, occupiedPoints);
-        occupiedPoints.push({ x: footPos.x, y: footPos.y, r: isBonbonTheme() ? 15 : 8 });
+        const footPos = bonbon ? null : getFootstepPosition(pos, localIndex, index, occupiedPoints);
+        if (footPos) occupiedPoints.push({ x: footPos.x, y: footPos.y, r: 8 });
         const foot = document.createElement('button');
         foot.type = 'button';
-        foot.className = `mma-footstep ${isModernTheme() ? 'mma-modern-tracker' : (isBonbonTheme() ? `mma-bonbon-piece mma-bonbon-piece-${index % 4}` : '')}`.trim();
-        foot.style.left = `${footPos.x}%`;
-        foot.style.top = `${footPos.y}%`;
-        if (isBonbonTheme()) {
+        foot.className = `mma-footstep ${isModernTheme() ? 'mma-modern-tracker' : (bonbon ? `mma-bonbon-piece mma-bonbon-piece-${index % 4}` : '')}`.trim();
+        if (footPos) {
+            foot.style.left = `${footPos.x}%`;
+            foot.style.top = `${footPos.y}%`;
+        }
+        if (bonbon) {
             foot.style.setProperty('--mma-bonbon-sway-delay', `${-((index % 5) * 0.37)}s`);
         }
         foot.title = `${fp.visibleName ? fp.label : '???'} — ${fp.status || ''}`;
         foot.dataset.footstepId = fp.id;
+        foot.dataset.locationId = fp.locationId;
         foot.innerHTML = isModernTheme()
             ? `<span class="mma-tracker-dot" aria-hidden="true"></span><em>${escapeHtml(fp.visibleName ? fp.label : '???')}</em>`
-            : isBonbonTheme()
+            : bonbon
                 ? `<span class="mma-bonbon-pawn" aria-hidden="true">♟</span><em>${escapeHtml(fp.visibleName ? fp.label : '???')}</em>`
                 : `<span>👣</span><em>${escapeHtml(fp.visibleName ? fp.label : '???')}</em>`;
         foot.addEventListener('click', (event) => {
             event.stopPropagation();
             handleFootstepClick(fp.id);
         });
-        canvas.appendChild(foot);
+        if (bonbon) {
+            const stop = bonbonRouteStops.get(fp.locationId);
+            if (!stop) return;
+            let people = stop.querySelector('.mma-bonbon-stop-people');
+            if (!people) {
+                people = document.createElement('div');
+                people.className = 'mma-bonbon-stop-people';
+                people.setAttribute('aria-label', `${locations[locIndex]?.name || '장소'}의 인물`);
+                stop.appendChild(people);
+            }
+            people.appendChild(foot);
+        } else {
+            canvas.appendChild(foot);
+        }
     });
+
+    if (bonbon) {
+        bonbonRouteStops.forEach((stop, locationId) => {
+            if (!stop.querySelector('.mma-bonbon-stop-people')) return;
+            const locIndex = locations.findIndex(location => location.id === locationId);
+            const anchor = positions[locIndex] || { x: 50, y: 50 };
+            const yOffset = anchor.y >= 72 ? -9 : 9;
+            occupiedPoints.push({ x: anchor.x, y: clampPositionValue(anchor.y + yOffset, 8, 92), r: 14 });
+        });
+    }
 
     const discoveryCountByLocation = {};
     (memory.discoveries || []).forEach((item, index) => {
@@ -5548,10 +5595,10 @@ function renderCanvas() {
         const anchor = positions[locIndex] || { x: 50, y: 50 };
         const localIndex = discoveryCountByLocation[item.locationId] || 0;
         discoveryCountByLocation[item.locationId] = localIndex + 1;
-        const markerPos = isBonbonTheme()
-            ? getBonbonBoardPiecePosition(anchor, localIndex, index + 19, occupiedPoints, 'discovery')
+        const markerPos = bonbon
+            ? getBonbonJourneyDiscoveryPosition(anchor, localIndex, index + 19, occupiedPoints)
             : getFootstepPosition(anchor, localIndex + 5, index + 19, occupiedPoints);
-        occupiedPoints.push({ x: markerPos.x, y: markerPos.y, r: isBonbonTheme() ? 10 : 8 });
+        occupiedPoints.push({ x: markerPos.x, y: markerPos.y, r: bonbon ? 10 : 8 });
         const marker = document.createElement('button');
         marker.type = 'button';
         marker.className = 'mma-discovery-marker';
@@ -5679,79 +5726,52 @@ function getNodePositions(count) {
     return presets[count] || presets[12];
 }
 
-function getBonbonBoardPositions(count) {
+function getBonbonJourneyPositions(count) {
     const nodeCount = Math.max(0, Math.floor(Number(count) || 0));
     if (!nodeCount) return [];
-
-    const bounds = { left: 18, right: 82, top: 18, bottom: 78 };
-    const width = bounds.right - bounds.left;
-    const height = bounds.bottom - bounds.top;
-    const sideCounts = { top: Math.floor(nodeCount / 4), right: Math.floor(nodeCount / 4), bottom: Math.floor(nodeCount / 4), left: Math.floor(nodeCount / 4) };
-    const remainderOrder = ['top', 'bottom', 'right', 'left'];
-    for (let index = 0; index < nodeCount % 4; index++) {
-        sideCounts[remainderOrder[index]] += 1;
-    }
-
-    const positions = [];
-    for (let index = 0; index < sideCounts.top; index++) {
-        positions.push({ x: bounds.left + (width * ((index + 1) / (sideCounts.top + 1))), y: bounds.top });
-    }
-    for (let index = 0; index < sideCounts.right; index++) {
-        positions.push({ x: bounds.right, y: bounds.top + (height * ((index + 1) / (sideCounts.right + 1))) });
-    }
-    for (let index = 0; index < sideCounts.bottom; index++) {
-        positions.push({ x: bounds.right - (width * ((index + 1) / (sideCounts.bottom + 1))), y: bounds.bottom });
-    }
-    for (let index = 0; index < sideCounts.left; index++) {
-        positions.push({ x: bounds.left, y: bounds.bottom - (height * ((index + 1) / (sideCounts.left + 1))) });
-    }
-    return positions;
+    const journeyPoints = [
+        { x: 15, y: 20 },
+        { x: 31, y: 15 },
+        { x: 48, y: 14 },
+        { x: 66, y: 17 },
+        { x: 80, y: 25 },
+        { x: 78, y: 38 },
+        { x: 62, y: 46 },
+        { x: 42, y: 49 },
+        { x: 23, y: 57 },
+        { x: 19, y: 69 },
+        { x: 36, y: 79 },
+        { x: 58, y: 82 },
+        { x: 82, y: 87 },
+    ];
+    if (nodeCount === 1) return [{ x: 50, y: 48 }];
+    return Array.from({ length: nodeCount }, (_, index) => {
+        const pointIndex = Math.round((index * (journeyPoints.length - 1)) / (nodeCount - 1));
+        return { ...journeyPoints[pointIndex] };
+    });
 }
 
-function getBonbonBoardPiecePosition(anchor, localIndex, globalIndex, occupiedPoints, kind = 'person') {
-    const bounds = { left: 18, right: 82, top: 18, bottom: 78 };
-    const sideDistances = [
-        { side: 'top', distance: Math.abs(anchor.y - bounds.top) },
-        { side: 'right', distance: Math.abs(anchor.x - bounds.right) },
-        { side: 'bottom', distance: Math.abs(anchor.y - bounds.bottom) },
-        { side: 'left', distance: Math.abs(anchor.x - bounds.left) },
+function getBonbonJourneyDiscoveryPosition(anchor, localIndex, globalIndex, occupiedPoints) {
+    const offsets = [
+        { x: -10, y: -12 },
+        { x: 11, y: -10 },
+        { x: 12, y: 9 },
+        { x: -11, y: 10 },
+        { x: 0, y: -16 },
+        { x: 15, y: 1 },
+        { x: 0, y: 15 },
+        { x: -15, y: 0 },
     ];
-    const side = sideDistances.sort((a, b) => a.distance - b.distance)[0]?.side || 'top';
-    const vectors = {
-        top: { inwardX: 0, inwardY: 1, tangentX: 1, tangentY: 0 },
-        right: { inwardX: -1, inwardY: 0, tangentX: 0, tangentY: 1 },
-        bottom: { inwardX: 0, inwardY: -1, tangentX: -1, tangentY: 0 },
-        left: { inwardX: 1, inwardY: 0, tangentX: 0, tangentY: -1 },
-    };
-    const vector = vectors[side];
-    const slotOrder = [0, -1, 1, -2, 2, -3, 3];
-    const discovery = kind === 'discovery';
-    const direction = discovery ? -1 : 1;
-    const baseDistance = discovery ? 14 : 15 + ((Math.abs(globalIndex) % 2) * 5);
-    const laneStep = discovery ? 6 : 7;
-    const tangentStep = discovery ? 11 : 14;
-    const collisionDistance = discovery ? 9 : 15;
-
-    for (let attempt = 0; attempt < 28; attempt++) {
-        const placementIndex = Math.max(0, localIndex) + attempt;
-        const lane = Math.floor(placementIndex / slotOrder.length);
-        const tangentSlot = slotOrder[placementIndex % slotOrder.length];
-        const inwardDistance = baseDistance + (lane * laneStep);
-        const tangentOffset = tangentSlot * tangentStep;
-        const x = clampPositionValue(
-            anchor.x + (vector.inwardX * inwardDistance * direction) + (vector.tangentX * tangentOffset),
-            discovery ? 6 : 8,
-            discovery ? 94 : 92,
-        );
-        const y = clampPositionValue(
-            anchor.y + (vector.inwardY * inwardDistance * direction) + (vector.tangentY * tangentOffset),
-            discovery ? 8 : 10,
-            discovery ? 92 : 90,
-        );
-        if (!hasFootstepCollision(x, y, occupiedPoints, collisionDistance)) return { x, y };
+    for (let attempt = 0; attempt < 32; attempt++) {
+        const placementIndex = Math.max(0, localIndex) + attempt + Math.abs(globalIndex % 3);
+        const offset = offsets[placementIndex % offsets.length];
+        const lane = Math.floor(placementIndex / offsets.length);
+        const multiplier = 1 + (lane * .34);
+        const x = clampPositionValue(anchor.x + (offset.x * multiplier), 6, 94);
+        const y = clampPositionValue(anchor.y + (offset.y * multiplier), 8, 92);
+        if (!hasFootstepCollision(x, y, occupiedPoints, 9)) return { x, y };
     }
-
-    return getFootstepPosition(anchor, localIndex, globalIndex, occupiedPoints);
+    return getFootstepPosition(anchor, localIndex + 5, globalIndex, occupiedPoints);
 }
 
 
