@@ -10500,3 +10500,96 @@ button.mma-footstep:focus-visible em {
     animation: none !important;
   }
 }
+
+/* v3.0.4 Bonbon horizontal box label and icon-only place cards */
+#mma-window.mma-theme-bonbon .mma-bonbon-cover-side-label {
+  box-sizing: border-box;
+  top: 38px;
+  right: auto !important;
+  left: 64px;
+  display: inline-flex;
+  align-items: center;
+  max-width: calc(100% - 84px);
+  max-height: none;
+  padding: 4px 8px;
+  border: 1px solid var(--mma-bb-line);
+  border-radius: 999px;
+  background: rgba(255, 249, 241, .92);
+  box-shadow: 0 2px 6px rgba(81, 64, 57, .07);
+  font-size: clamp(8px, calc(9px * var(--mma-font-scale, 1)), 11px);
+  letter-spacing: 0;
+  line-height: 1.2;
+  writing-mode: horizontal-tb !important;
+  text-orientation: mixed;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transform: translateY(-50%);
+  opacity: .82;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-route-stop > .mma-node.mma-bonbon-location-card {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 38px !important;
+  min-width: 38px !important;
+  max-width: 38px !important;
+  height: 38px !important;
+  min-height: 38px !important;
+  padding: 0 !important;
+  gap: 0 !important;
+  border-radius: 9px !important;
+  transform: translate(-50%, -50%) !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-route-stop > .mma-node.mma-bonbon-location-card .mma-node-label {
+  display: none !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-route-stop > .mma-node.mma-bonbon-location-card > b {
+  font-size: calc(18px * var(--mma-font-scale, 1)) !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-route-stop > .mma-node.mma-bonbon-location-card:hover,
+#mma-window.mma-theme-bonbon .mma-bonbon-route-stop > .mma-node.mma-bonbon-location-card:focus-visible,
+#mma-window.mma-theme-bonbon .mma-bonbon-route-stop.edge-left > .mma-node.mma-bonbon-location-card:hover,
+#mma-window.mma-theme-bonbon .mma-bonbon-route-stop.edge-left > .mma-node.mma-bonbon-location-card:focus-visible,
+#mma-window.mma-theme-bonbon .mma-bonbon-route-stop.edge-right > .mma-node.mma-bonbon-location-card:hover,
+#mma-window.mma-theme-bonbon .mma-bonbon-route-stop.edge-right > .mma-node.mma-bonbon-location-card:focus-visible {
+  transform: translate(-50%, -50%) scale(1.04) !important;
+}
+
+#mma-window.mma-theme-bonbon .mma-bonbon-route-stop.edge-left > .mma-node.mma-bonbon-location-card,
+#mma-window.mma-theme-bonbon .mma-bonbon-route-stop.edge-right > .mma-node.mma-bonbon-location-card {
+  transform: translate(-50%, -50%) !important;
+}
+
+@media (max-width: 700px) {
+  #mma-window.mma-theme-bonbon .mma-bonbon-cover-side-label {
+    top: 31px;
+    right: auto !important;
+    left: 55px;
+    max-width: calc(100% - 70px);
+    max-height: none;
+    padding: 4px 7px;
+    font-size: clamp(8px, calc(8px * var(--mma-font-scale, 1)), 10px);
+    writing-mode: horizontal-tb !important;
+    transform: translateY(-50%);
+  }
+
+  #mma-window.mma-theme-bonbon .mma-bonbon-route-stop > .mma-node.mma-bonbon-location-card {
+    width: 34px !important;
+    min-width: 34px !important;
+    max-width: 34px !important;
+    height: 34px !important;
+    min-height: 34px !important;
+    padding: 0 !important;
+    gap: 0 !important;
+    border-radius: 8px !important;
+  }
+
+  #mma-window.mma-theme-bonbon .mma-bonbon-route-stop > .mma-node.mma-bonbon-location-card > b {
+    font-size: calc(16px * var(--mma-font-scale, 1)) !important;
+  }
+}

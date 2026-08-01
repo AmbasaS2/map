@@ -15,7 +15,7 @@ const EXTENSION_PROMPT_KEY = 'marauders_map_active_context';
 const FOOTSTEP_LIMIT = 10;
 const DEBUG_LOG_LIMIT = 40;
 const memoryDebugLogs = [];
-const EXTENSION_VERSION = '3.0.3';
+const EXTENSION_VERSION = '3.0.4';
 const SHARED_NOTEBOOK_KEYS = Object.freeze(['managedItems', 'footstepProfiles', 'trackedPeople', 'recommendations', 'searchResults']);
 const DISCOVERY_HISTORY_LIMIT = 30;
 const UNCOLLECTED_RECOMMENDATION_LIMIT = 24;
@@ -5287,7 +5287,7 @@ function renderSpellScreen() {
                         <span class="mma-bonbon-cover-piece mma-bonbon-cover-piece-tile"></span>
                     </div>
                     <div class="mma-bonbon-cover-title">BONBON BOARD<span class="mma-bonbon-cover-title-die" aria-hidden="true">🎲</span></div>
-                    <span class="mma-bonbon-cover-side-label">전체 이용가 · 1인 이상용 보드게임</span>
+                    <span class="mma-bonbon-cover-side-label">전체 이용가 · 주사위 보드게임</span>
                     <p class="mma-bonbon-cover-copy">상자를 열면 게임이 시작됩니다.</p>
                     <p class="mma-bonbon-cover-copy">주사위를 굴려 이야기를 확장해 보세요.</p>
                     <div class="mma-bonbon-cover-meta"><span>1인 이상</span><b aria-hidden="true">·</b><span>제한 시간 없음</span><b aria-hidden="true">·</b><span>정해진 경로 없음</span></div>
