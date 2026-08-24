@@ -1,3 +1,5 @@
+import { POPUP_RESULT, POPUP_TYPE, Popup } from '../../../popup.js';
+
 /*
  * 지도 — SillyTavern UI Extension
  * Universal enchanted parchment map for roleplay scenes.
@@ -18,8 +20,9 @@ const FOOTSTEP_REPAIR_MAX_TOKENS = 1600;
 const LOCATION_ICON_REVIEW_MAX_TOKENS = 600;
 const DEBUG_LOG_LIMIT = 40;
 const memoryDebugLogs = [];
-const EXTENSION_VERSION = '3.1.0';
+const EXTENSION_VERSION = '3.1.1';
 const SHARED_NOTEBOOK_KEYS = Object.freeze(['managedItems', 'footstepProfiles', 'trackedPeople', 'recommendations', 'searchResults']);
+const SHARED_NOTEBOOK_MIGRATION_VERSION = 1;
 const DISCOVERY_HISTORY_LIMIT = 30;
 const UNCOLLECTED_RECOMMENDATION_LIMIT = 24;
 const OUTPUT_MODE_CONFIGS = Object.freeze({
@@ -169,6 +172,9 @@ let mapRevisionSequence = 0;
 // Only one map/selected-location generation may commit at a time.
 let activeMapGeneration = null;
 let activeDiscoveryConfirm = null;
+const attachedNotebookMemories = new WeakSet();
+const attachedNotebookFingerprints = new WeakMap();
+const sharedNotebookMigrationSaveQueued = new WeakSet();
 
 function shouldIgnoreChatChanged() {
     return profileSwitchDepth > 0 || Date.now() < suppressChatChangeUntil;
@@ -643,12 +649,16 @@ function isMarauderTheme() {
     return getThemeKey() === 'marauder';
 }
 
+function getCharacterKeyForRecord(character, fallback = 'default-character') {
+    const stableSource = character?.avatar || character?.name || fallback || 'default-character';
+    return safeId(String(stableSource), 'character');
+}
+
 function getCurrentCharacterKey() {
     try {
         const ctx = stContext();
         const char = Number.isInteger(ctx.characterId) ? ctx.characters?.[ctx.characterId] : null;
-        const stableSource = char?.avatar || char?.name || ctx.name2 || ctx.characterId || 'default-character';
-        return safeId(String(stableSource), 'character');
+        return getCharacterKeyForRecord(char, ctx.name2 || ctx.characterId || 'default-character');
     } catch {
         return 'character-default';
     }
@@ -673,14 +683,69 @@ function normalizeNotebookShape(notebook) {
     if (!book.trackedPeople || typeof book.trackedPeople !== 'object' || Array.isArray(book.trackedPeople)) book.trackedPeople = {};
     if (!Array.isArray(book.recommendations)) book.recommendations = [];
     if (!Array.isArray(book.searchResults)) book.searchResults = [];
-
-    // Storage-scope migration: map copies must never live in a character-wide
-    // notebook. Keep only explicitly collected notebook information.
-    delete book.lastMaps;
-    delete book.activeMapBackups;
-
     book.updatedAt = book.updatedAt || nowStamp();
     return book;
+}
+
+function cloneSharedNotebookData(source) {
+    const book = normalizeNotebookShape(clone(source && typeof source === 'object' && !Array.isArray(source)
+        ? source
+        : createEmptyNotebook()));
+    return {
+        managedItems: clone(book.managedItems),
+        footstepProfiles: clone(book.footstepProfiles),
+        trackedPeople: clone(book.trackedPeople),
+        recommendations: clone(book.recommendations),
+        searchResults: clone(book.searchResults),
+    };
+}
+
+function assignSharedNotebookData(memory, source = null) {
+    if (!memory || typeof memory !== 'object') return;
+    const data = cloneSharedNotebookData(source);
+    for (const key of SHARED_NOTEBOOK_KEYS) memory[key] = data[key];
+}
+
+function clearSharedNotebookData(memory) {
+    assignSharedNotebookData(memory, null);
+}
+
+function sharedNotebookFingerprint(source) {
+    try {
+        const book = source && typeof source === 'object' && !Array.isArray(source) ? source : {};
+        return JSON.stringify({
+            managedItems: Array.isArray(book.managedItems) ? book.managedItems : [],
+            footstepProfiles: book.footstepProfiles && typeof book.footstepProfiles === 'object' && !Array.isArray(book.footstepProfiles) ? book.footstepProfiles : {},
+            trackedPeople: book.trackedPeople && typeof book.trackedPeople === 'object' && !Array.isArray(book.trackedPeople) ? book.trackedPeople : {},
+            recommendations: Array.isArray(book.recommendations) ? book.recommendations : [],
+            searchResults: Array.isArray(book.searchResults) ? book.searchResults : [],
+        });
+    } catch {
+        return '';
+    }
+}
+
+function isCompletelyEmptyStoredNotebook(notebook) {
+    if (!notebook || typeof notebook !== 'object' || Array.isArray(notebook)) return false;
+    const allowedKeys = new Set([
+        ...SHARED_NOTEBOOK_KEYS,
+        'createdAt',
+        'updatedAt',
+        'resetToken',
+    ]);
+    if (Object.keys(notebook).some(key => !allowedKeys.has(key))) return false;
+
+    const arrayKeys = ['managedItems', 'recommendations', 'searchResults'];
+    for (const key of arrayKeys) {
+        if (!Object.hasOwn(notebook, key)) continue;
+        if (!Array.isArray(notebook[key]) || notebook[key].length > 0) return false;
+    }
+    const objectKeys = ['footstepProfiles', 'trackedPeople'];
+    for (const key of objectKeys) {
+        if (!Object.hasOwn(notebook, key)) continue;
+        if (!notebook[key] || typeof notebook[key] !== 'object' || Array.isArray(notebook[key]) || Object.keys(notebook[key]).length > 0) return false;
+    }
+    return true;
 }
 
 function arrayIdentity(item, index, prefix = 'item') {
@@ -745,27 +810,44 @@ function purgeLegacyMapBackupsFromChat(memory) {
     return changed;
 }
 
-function purgeLegacySharedMapBackups(settings = getSettings()) {
-    const notebooks = settings?.characterNotebooks;
-    if (!notebooks || typeof notebooks !== 'object' || Array.isArray(notebooks)) return 0;
+function runLegacySharedNotebookCleanupOnce(settings = getSettings()) {
+    const completedVersion = Number(settings?.sharedNotebookMigrationVersion || 0);
+    if (completedVersion >= SHARED_NOTEBOOK_MIGRATION_VERSION) {
+        return { ran: false, cleanedBackups: 0, removedEmptyNotebooks: 0 };
+    }
 
-    let cleaned = 0;
-    for (const notebook of Object.values(notebooks)) {
-        if (!notebook || typeof notebook !== 'object' || Array.isArray(notebook)) continue;
-        let changed = false;
-        for (const key of ['lastMaps', 'activeMapBackups']) {
-            if (Object.hasOwn(notebook, key)) {
-                delete notebook[key];
-                changed = true;
+    const notebooks = settings?.characterNotebooks;
+    let cleanedBackups = 0;
+    let removedEmptyNotebooks = 0;
+    if (notebooks && typeof notebooks === 'object' && !Array.isArray(notebooks)) {
+        for (const [key, notebook] of Object.entries(notebooks)) {
+            if (!notebook || typeof notebook !== 'object' || Array.isArray(notebook)) continue;
+            let removedLegacyBackup = false;
+            for (const legacyKey of ['lastMaps', 'activeMapBackups']) {
+                if (Object.hasOwn(notebook, legacyKey)) {
+                    delete notebook[legacyKey];
+                    removedLegacyBackup = true;
+                }
+            }
+            if (removedLegacyBackup) cleanedBackups += 1;
+            if (isCompletelyEmptyStoredNotebook(notebook)) {
+                delete notebooks[key];
+                removedEmptyNotebooks += 1;
             }
         }
-        if (changed) cleaned += 1;
+        if (Object.keys(notebooks).length === 0) delete settings.characterNotebooks;
     }
-    if (cleaned) {
-        saveSettings();
-        pushDebugLog('migration.sharedMapBackups.purged', '캐릭터 공용 수첩의 예전 지도 백업을 정리했습니다.', { notebooks: cleaned });
-    }
-    return cleaned;
+
+    // The marker is deliberately persisted even when there was nothing to
+    // purge, so the all-character scan never repeats on later starts/uses.
+    settings.sharedNotebookMigrationVersion = SHARED_NOTEBOOK_MIGRATION_VERSION;
+    saveSettings();
+    pushDebugLog('migration.sharedNotebooks.completed', '캐릭터 공용 수첩의 1회 저장소 정리를 완료했습니다.', {
+        cleanedBackups,
+        removedEmptyNotebooks,
+        version: SHARED_NOTEBOOK_MIGRATION_VERSION,
+    });
+    return { ran: true, cleanedBackups, removedEmptyNotebooks };
 }
 
 const legacyChatMapCleanupQueued = new WeakSet();
@@ -868,13 +950,25 @@ async function restorePreviousMap() {
 
 
 function getCharacterNotebook(settings = getSettings(), key = getCurrentCharacterKey()) {
-    if (!settings.characterNotebooks || typeof settings.characterNotebooks !== 'object' || Array.isArray(settings.characterNotebooks)) {
-        settings.characterNotebooks = {};
+    const notebooks = settings?.characterNotebooks;
+    if (!notebooks || typeof notebooks !== 'object' || Array.isArray(notebooks)) {
+        return { key, notebook: null };
     }
-    if (!settings.characterNotebooks[key]) settings.characterNotebooks[key] = createEmptyNotebook();
-    const notebook = normalizeNotebookShape(settings.characterNotebooks[key]);
-    settings.characterNotebooks[key] = notebook;
+    const notebook = notebooks[key];
+    if (!notebook || typeof notebook !== 'object' || Array.isArray(notebook)) {
+        return { key, notebook: null };
+    }
     return { key, notebook };
+}
+
+function getSharedNotebookResetToken(settings = getSettings(), key = getCurrentCharacterKey()) {
+    const resets = settings?.characterNotebookResets;
+    if (!resets || typeof resets !== 'object' || Array.isArray(resets)) return '';
+    return String(resets[key] || '');
+}
+
+function createSharedNotebookResetToken() {
+    return `reset-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
 function mergeMemoryIntoNotebook(notebook, memory) {
@@ -888,10 +982,69 @@ function mergeMemoryIntoNotebook(notebook, memory) {
     return normalizeNotebookShape(notebook);
 }
 
+function scheduleSharedNotebookMigrationSave(memory) {
+    if (!memory || sharedNotebookMigrationSaveQueued.has(memory)) return;
+    sharedNotebookMigrationSaveQueued.add(memory);
+    Promise.resolve().then(async () => {
+        sharedNotebookMigrationSaveQueued.delete(memory);
+        const ctx = safeContext();
+        if (!ctx?.chatMetadata || ctx.chatMetadata[METADATA_KEY] !== memory) return;
+        await saveMemory(memory);
+    });
+}
+
 function attachCharacterNotebook(memory) {
-    const { key, notebook } = getCharacterNotebook();
-    if (memory.sharedNotebookKey !== key && notebookHasData(memory)) {
-        mergeMemoryIntoNotebook(notebook, memory);
+    const settings = getSettings();
+    const key = getCurrentCharacterKey();
+    const resetToken = getSharedNotebookResetToken(settings, key);
+    if (
+        attachedNotebookMemories.has(memory)
+        && memory.sharedNotebookKey === key
+        && String(memory.sharedNotebookResetAt || '') === resetToken
+    ) {
+        return memory;
+    }
+
+    let { notebook } = getCharacterNotebook(settings, key);
+    let settingsChanged = false;
+    if (resetToken && notebook && String(notebook.resetToken || '') !== resetToken) {
+        // A 3.1.0 (or stale-device) notebook copy predating the explicit reset
+        // must not be allowed to repopulate the character after cleanup.
+        delete settings.characterNotebooks[key];
+        if (Object.keys(settings.characterNotebooks).length === 0) delete settings.characterNotebooks;
+        notebook = null;
+        settingsChanged = true;
+        pushDebugLog('notebook.reset.staleStoreDiscarded', '초기화 이전의 공용 수첩 복사본을 다시 불러오지 않았습니다.', { key });
+    }
+
+    const storedFingerprint = notebook ? sharedNotebookFingerprint(notebook) : '';
+    const resetChanged = Boolean(resetToken && String(memory.sharedNotebookResetAt || '') !== resetToken);
+    if (resetChanged) clearSharedNotebookData(memory);
+
+    const mayMigrateChatCopy = !resetChanged && notebookHasData(memory) && (
+        memory.sharedNotebookKey !== key
+        || !notebook
+    );
+
+    if (notebook) {
+        const hydrated = normalizeNotebookShape(clone(notebook));
+        if (mayMigrateChatCopy) mergeMemoryIntoNotebook(hydrated, memory);
+        assignSharedNotebookData(memory, hydrated);
+    } else if (mayMigrateChatCopy) {
+        const hydrated = normalizeNotebookShape(createEmptyNotebook());
+        mergeMemoryIntoNotebook(hydrated, memory);
+        assignSharedNotebookData(memory, hydrated);
+    } else {
+        clearSharedNotebookData(memory);
+    }
+
+    memory.sharedNotebookKey = key;
+    memory.sharedNotebookResetAt = resetToken;
+    attachedNotebookMemories.add(memory);
+    attachedNotebookFingerprints.set(memory, storedFingerprint);
+
+    if (settingsChanged) saveSettings();
+    if (mayMigrateChatCopy) {
         memory.sharedNotebookMigratedAt = nowStamp();
         pushDebugLog('notebook.migrate', `채팅 수첩을 캐릭터 공용 수첩으로 옮겼습니다: ${key}`, {
             managedItems: memory.managedItems?.length || 0,
@@ -900,36 +1053,56 @@ function attachCharacterNotebook(memory) {
             trackedPeople: Object.keys(memory.trackedPeople || {}).length,
         });
     }
-    memory.sharedNotebookKey = key;
-    memory.managedItems = notebook.managedItems;
-    memory.footstepProfiles = notebook.footstepProfiles;
-    memory.trackedPeople = notebook.trackedPeople;
-    memory.recommendations = notebook.recommendations;
-    memory.searchResults = notebook.searchResults;
-    return notebook;
+    if (resetChanged || mayMigrateChatCopy) scheduleSharedNotebookMigrationSave(memory);
+    return memory;
 }
 
 function persistCharacterNotebook(memory) {
-    if (!memory || typeof memory !== 'object') return;
+    if (!memory || typeof memory !== 'object') return false;
+    const settings = getSettings();
     const key = memory.sharedNotebookKey || getCurrentCharacterKey();
-    const { notebook } = getCharacterNotebook(getSettings(), key);
+    const resetToken = getSharedNotebookResetToken(settings, key);
+    const { notebook: storedNotebook } = getCharacterNotebook(settings, key);
+    const before = attachedNotebookFingerprints.has(memory)
+        ? attachedNotebookFingerprints.get(memory)
+        : (storedNotebook ? sharedNotebookFingerprint(storedNotebook) : '');
+    const after = sharedNotebookFingerprint(memory);
+    const hasData = notebookHasData(memory);
+    const resetMatches = !resetToken || String(storedNotebook?.resetToken || '') === resetToken;
 
-    // v2.5.9: Persist the current notebook state as-is.
-    // Older builds merged notebook data back into itself on every save. That was
-    // safe for migration, but it also resurrected items after the user deleted
-    // collected/reflected notebook entries. At this point ensureMemory() has
-    // already attached the character notebook, so user actions should replace
-    // the saved notebook state rather than merge deleted items back in.
-    notebook.managedItems = Array.isArray(memory.managedItems) ? memory.managedItems : [];
-    notebook.footstepProfiles = memory.footstepProfiles && typeof memory.footstepProfiles === 'object' && !Array.isArray(memory.footstepProfiles) ? memory.footstepProfiles : {};
-    notebook.trackedPeople = memory.trackedPeople && typeof memory.trackedPeople === 'object' && !Array.isArray(memory.trackedPeople) ? memory.trackedPeople : {};
-    notebook.recommendations = Array.isArray(memory.recommendations) ? memory.recommendations : [];
-    notebook.searchResults = Array.isArray(memory.searchResults) ? memory.searchResults : [];
+    // Empty map/chat state must not manufacture a characterNotebooks entry.
+    if (!storedNotebook && !hasData) {
+        memory.sharedNotebookKey = key;
+        memory.sharedNotebookResetAt = resetToken;
+        attachedNotebookFingerprints.set(memory, '');
+        return false;
+    }
+    if (storedNotebook && before === after && resetMatches) {
+        memory.sharedNotebookKey = key;
+        memory.sharedNotebookResetAt = resetToken;
+        attachedNotebookFingerprints.set(memory, after);
+        return false;
+    }
+
+    if (!settings.characterNotebooks || typeof settings.characterNotebooks !== 'object' || Array.isArray(settings.characterNotebooks)) {
+        settings.characterNotebooks = {};
+    }
+    const notebook = storedNotebook && typeof storedNotebook === 'object'
+        ? storedNotebook
+        : createEmptyNotebook();
+    const shared = cloneSharedNotebookData(memory);
+    for (const sharedKey of SHARED_NOTEBOOK_KEYS) notebook[sharedKey] = shared[sharedKey];
     delete notebook.lastMaps;
     delete notebook.activeMapBackups;
+    if (resetToken) notebook.resetToken = resetToken;
+    else delete notebook.resetToken;
+    notebook.createdAt = notebook.createdAt || nowStamp();
     notebook.updatedAt = nowStamp();
-    normalizeNotebookShape(notebook);
+    settings.characterNotebooks[key] = notebook;
     memory.sharedNotebookKey = key;
+    memory.sharedNotebookResetAt = resetToken;
+    attachedNotebookFingerprints.set(memory, after);
+    return true;
 }
 
 
@@ -992,20 +1165,25 @@ function ensureMemory() {
     if (!Array.isArray(memory.discoveries)) memory.discoveries = [];
     if (!Array.isArray(memory.discoveryHistory)) memory.discoveryHistory = [];
     if (isValidMapData(memory.map) && !memory.mapRevision) memory.mapRevision = createMapRevisionToken();
-    const cleanedSharedNotebooks = purgeLegacySharedMapBackups();
+    const sharedCleanup = runLegacySharedNotebookCleanupOnce();
     const cleanedCurrentChat = purgeLegacyMapBackupsFromChat(memory);
     memory.previousMap = normalizePreviousMapSnapshot(memory.previousMap);
     attachCharacterNotebook(memory);
     if (cleanedCurrentChat) scheduleLegacyChatMapCleanupSave(memory);
-    if (cleanedSharedNotebooks || cleanedCurrentChat) {
+    if (sharedCleanup.cleanedBackups || sharedCleanup.removedEmptyNotebooks || cleanedCurrentChat) {
         pushDebugLog('migration.mapScope.cleaned', '공용 지도 백업을 정리하고 지도 데이터를 채팅 전용으로 전환했습니다.', {
-            sharedNotebooks: cleanedSharedNotebooks,
+            sharedNotebooks: sharedCleanup.cleanedBackups,
+            emptyNotebooks: sharedCleanup.removedEmptyNotebooks,
             currentChat: cleanedCurrentChat,
         });
     }
     // Migration from older versions.
+    let sharedStatusMigrated = false;
     memory.managedItems.forEach(item => {
-        if (item && item.status === 'observed') item.status = 'held';
+        if (item && item.status === 'observed') {
+            item.status = 'held';
+            sharedStatusMigrated = true;
+        }
     });
     if (memory.map?.events) {
         memory.map.events.forEach(event => {
@@ -1013,10 +1191,7 @@ function ensureMemory() {
         });
         enforceSingleQuestPerLocation(memory);
     }
-    const notebook = attachCharacterNotebook(memory);
-    notebook.managedItems.forEach(item => {
-        if (item && item.status === 'observed') item.status = 'held';
-    });
+    if (sharedStatusMigrated) scheduleSharedNotebookMigrationSave(memory);
     delete memory.logs;
     delete memory.injectionMode;
     return memory;
@@ -1045,6 +1220,10 @@ function saveMemory(memoryArg = null) {
                 pushDebugLog('memory.save.skipped.chatChanged', '채팅이 바뀌어 이전 채팅의 저장 작업을 건너뛰었습니다.', { sequence });
                 return false;
             }
+            if (memoryArg && currentContext.chatMetadata?.[METADATA_KEY] !== memoryArg) {
+                pushDebugLog('memory.save.skipped.replacedMemory', '더 최신 지도 메모리가 적용되어 이전 작업의 저장을 건너뛰었습니다.', { sequence });
+                return false;
+            }
             const currentSignature = getStableChatSignature();
             if (chatSignatureAtQueue && currentSignature && chatSignatureAtQueue !== currentSignature) {
                 pushDebugLog('memory.save.skipped.chatChanged', '채팅 서명이 바뀌어 이전 채팅의 저장 작업을 건너뛰었습니다.', {
@@ -1060,13 +1239,16 @@ function saveMemory(memoryArg = null) {
             // ensureMemory() here can reattach an older notebook copy over a
             // just-edited array before persistence.
             const memory = memoryArg || ctx.chatMetadata?.[METADATA_KEY] || ensureMemory();
-            persistCharacterNotebook(memory);
-            saveSettings();
+            const sharedNotebookChanged = persistCharacterNotebook(memory);
+            if (sharedNotebookChanged) saveSettings();
             if (typeof ctx.saveMetadata === 'function') await ctx.saveMetadata();
             else if (typeof ctx.saveChatMetadata === 'function') await ctx.saveChatMetadata();
-            pushDebugLog('memory.save.success', '지도 메모리와 캐릭터 수첩을 저장했습니다.', {
+            pushDebugLog('memory.save.success', sharedNotebookChanged
+                ? '지도 메모리와 변경된 캐릭터 공용 수첩을 저장했습니다.'
+                : '지도 메모리만 저장했습니다. 캐릭터 공용 수첩은 변경되지 않았습니다.', {
                 sequence,
                 notebookKey: memory.sharedNotebookKey,
+                sharedNotebookChanged,
                 managedItems: memory.managedItems?.length || 0,
                 recommendations: memory.recommendations?.length || 0,
                 searchResults: memory.searchResults?.length || 0,
@@ -4006,7 +4188,7 @@ async function deleteRecommendation(id) {
     const saved = await saveMemory(memory);
     const { notebook } = getCharacterNotebook(getSettings(), memory.sharedNotebookKey || getCurrentCharacterKey());
     const removedFromChat = !(memory.recommendations || []).some(x => x.id === id);
-    const removedFromNotebook = !(notebook.recommendations || []).some(x => x.id === id);
+    const removedFromNotebook = !(notebook?.recommendations || []).some(x => x.id === id);
     const removedManaged = !(memory.managedItems || []).some(x => x.sourceId === `recommendation:${id}` || x.id === `recommendation:${id}`);
     const verified = Boolean(saved && removedFromChat && removedFromNotebook && removedManaged);
 
@@ -4214,7 +4396,7 @@ async function deletePersonSearchResult(id) {
     const saved = await saveMemory(memory);
     const { notebook } = getCharacterNotebook(getSettings(), memory.sharedNotebookKey || getCurrentCharacterKey());
     const removedFromChat = !(memory.searchResults || []).some(result => result.id === id);
-    const removedFromNotebook = !(notebook.searchResults || []).some(result => result.id === id);
+    const removedFromNotebook = !(notebook?.searchResults || []).some(result => result.id === id);
     const verified = Boolean(saved && removedFromChat && removedFromNotebook);
     pushDebugLog(verified ? 'search.person.delete.success' : 'search.person.delete.verify_failed', verified
         ? '인물 검색 기록 삭제와 수첩 동기화를 확인했습니다.'
@@ -7070,6 +7252,137 @@ function escapeHtml(value) {
         .replace(/'/g, '&#039;');
 }
 
+function getStoredCharacterNotebookEntries() {
+    const settings = getSettings();
+    const notebooks = settings?.characterNotebooks;
+    if (!notebooks || typeof notebooks !== 'object' || Array.isArray(notebooks)) return [];
+
+    const context = safeContext();
+    const currentKey = getCurrentCharacterKey();
+    const namesByKey = new Map();
+    const characters = Array.isArray(context?.characters) ? context.characters : [];
+    characters.forEach((character, index) => {
+        const key = getCharacterKeyForRecord(character, `character-${index}`);
+        if (!namesByKey.has(key)) namesByKey.set(key, String(character?.name || `캐릭터 ${index + 1}`));
+    });
+    if (!namesByKey.has(currentKey)) {
+        const currentName = String(getCurrentCharacterName() || '').trim();
+        if (currentName && currentName !== '{{char}}') namesByKey.set(currentKey, currentName);
+    }
+
+    return Object.keys(notebooks).map(key => {
+        const matchedName = namesByKey.get(key) || '';
+        const isCurrent = key === currentKey;
+        return {
+            key,
+            isCurrent,
+            matched: Boolean(matchedName),
+            label: matchedName
+                ? `${matchedName}${isCurrent ? ' (현재 캐릭터)' : ''} · ${key}`
+                : `[미매칭 저장 데이터] ${key}`,
+        };
+    }).sort((left, right) => {
+        if (left.isCurrent !== right.isCurrent) return left.isCurrent ? -1 : 1;
+        if (left.matched !== right.matched) return left.matched ? -1 : 1;
+        return left.label.localeCompare(right.label, 'ko');
+    });
+}
+
+async function resetStoredCharacterNotebook(key) {
+    const settings = getSettings();
+    const notebooks = settings?.characterNotebooks;
+    if (!key || !notebooks || typeof notebooks !== 'object' || Array.isArray(notebooks) || !Object.hasOwn(notebooks, key)) {
+        toast('선택한 캐릭터의 저장 데이터를 찾지 못했습니다. 목록을 다시 열어 주세요.', 'warning');
+        return false;
+    }
+
+    const isCurrentCharacter = key === getCurrentCharacterKey();
+    if (isCurrentCharacter) {
+        if (activeDiscoveryConfirm) activeDiscoveryConfirm(false);
+        cancelActiveMapGeneration('shared notebook reset');
+    }
+
+    const resetToken = createSharedNotebookResetToken();
+    if (!settings.characterNotebookResets || typeof settings.characterNotebookResets !== 'object' || Array.isArray(settings.characterNotebookResets)) {
+        settings.characterNotebookResets = {};
+    }
+    settings.characterNotebookResets[key] = resetToken;
+    delete notebooks[key];
+    if (Object.keys(notebooks).length === 0) delete settings.characterNotebooks;
+    saveSettings();
+
+    if (isCurrentCharacter) {
+        const context = safeContext();
+        const previousMemory = getExistingMemory();
+        if (context?.chatMetadata && previousMemory) {
+            // Replace the metadata state object instead of clearing it in
+            // place. Any older async search/profile closure still holding the
+            // previous object is then rejected by saveMemory's identity guard.
+            const memory = clone(previousMemory);
+            clearSharedNotebookData(memory);
+            memory.sharedNotebookKey = key;
+            memory.sharedNotebookResetAt = resetToken;
+            context.chatMetadata[METADATA_KEY] = memory;
+            attachedNotebookMemories.add(memory);
+            attachedNotebookFingerprints.set(memory, '');
+            syncExtensionPrompt({ createMemory: false });
+            if (isMapOverlayVisible()) renderMapView();
+            await saveMemory(memory);
+        } else {
+            syncExtensionPrompt({ createMemory: false });
+        }
+    }
+
+    pushDebugLog('notebook.reset.success', '선택한 캐릭터의 공용 지도 데이터를 초기화했습니다.', {
+        key,
+        currentCharacter: isCurrentCharacter,
+    });
+    toast('선택한 캐릭터의 공용 지도 데이터를 초기화했습니다.', 'success');
+    return true;
+}
+
+async function openStoredCharacterNotebookResetPopup() {
+    runLegacySharedNotebookCleanupOnce();
+    const entries = getStoredCharacterNotebookEntries();
+    if (!entries.length) {
+        toast('초기화할 공용 지도 저장 데이터가 없습니다.', 'info');
+        return;
+    }
+
+    const content = document.createElement('div');
+    const question = document.createElement('strong');
+    question.textContent = '어떤 캐릭터의 공용 지도 데이터를 초기화할까요?';
+    const explanation = document.createElement('p');
+    explanation.textContent = '수첩·RP 반영 항목·발자국 상세·추적 인물·장소 추천·인물 검색 기록이 삭제됩니다. 각 채팅의 현재 지도·직전 지도·발견 기록은 유지됩니다.';
+    const select = document.createElement('select');
+    select.className = 'text_pole';
+    select.setAttribute('aria-label', '초기화할 캐릭터');
+    select.style.width = '100%';
+    select.style.maxWidth = '100%';
+    select.style.boxSizing = 'border-box';
+    for (const entry of entries) {
+        const option = document.createElement('option');
+        option.value = entry.key;
+        option.textContent = entry.label;
+        option.selected = entry.isCurrent;
+        select.appendChild(option);
+    }
+    const warning = document.createElement('p');
+    warning.textContent = '다른 기기의 SillyTavern을 닫거나 새로고침한 뒤 진행해 주세요.';
+    content.append(question, explanation, select, warning);
+
+    // This single confirmation popup contains both the real stored-key select
+    // and the complete deletion warning; no second confirmation is shown.
+    const popup = new Popup(content, POPUP_TYPE.CONFIRM, null, {
+        okButton: '공용 데이터 초기화',
+        cancelButton: '취소',
+        leftAlign: true,
+    });
+    const result = await popup.show();
+    if (result !== POPUP_RESULT.AFFIRMATIVE) return;
+    await resetStoredCharacterNotebook(String(select.value || ''));
+}
+
 function setupExtensionButtonInSettings() {
     const settingsContainer = document.querySelector('#extensions_settings2') || document.querySelector('#extensions_settings');
     if (!settingsContainer || document.getElementById('mma-settings-block')) return;
@@ -7114,6 +7427,10 @@ function setupExtensionButtonInSettings() {
                         <span id="mma-font-scale-value">px</span>
                     </div>
                 </div>
+                <div class="mma-settings-field mma-settings-cleanup-field">
+                    <button id="mma-reset-character-notebook" type="button" class="menu_button">🧹 공용 지도 데이터 정리</button>
+                    <p class="mma-settings-note">선택한 캐릭터의 공용 수첩 데이터만 정리합니다. 채팅별 지도는 유지됩니다.</p>
+                </div>
                 <div class="mma-settings-field mma-settings-debug-field">
                     <button id="mma-open-debug" type="button" class="menu_button mma-debug-settings-button">🐞 <span>디버그 로그</span></button>
                 </div>
@@ -7154,6 +7471,7 @@ function setupExtensionButtonInSettings() {
     block.querySelector('#mma-open-debug')?.addEventListener('click', toggleMapSettingsDebugDump);
     block.querySelector('#mma-copy-debug')?.addEventListener('click', copyMapSettingsDebugDump);
     block.querySelector('#mma-clear-debug')?.addEventListener('click', clearMapSettingsDebugDump);
+    block.querySelector('#mma-reset-character-notebook')?.addEventListener('click', openStoredCharacterNotebookResetPopup);
     populateConnectionProfileSelect();
 }
 
