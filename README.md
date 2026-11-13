@@ -127,7 +127,8 @@ The area, time, and scene summary appear above the map. **S.H.I.E.L.D. Field Loc
 
 | Button | Function |
 |---|---|
-| `🔄` | Reads the recent roleplay again and rebuilds the full map. The pre-refresh map is saved as the previous map. |
+| `🔄` | Continues the existing map using recent roleplay. Matching locations, characters and quests retain their identities; new events are not automatically canon. The pre-refresh map is saved as the previous map. |
+| `🆕` | Starts a fresh map after confirmation. Notebook entries and previously applied context remain; the previous map can still be restored once. |
 | `↩️` | Restores the map from immediately before the full-map or single-location refresh. The restore can be used only once. |
 | `🔎` | Finds a character's location or searches for places suited to the current roleplay. |
 | `📓` | Opens the notebook for managing applied or collected information and tracked characters. |
@@ -189,6 +190,8 @@ When a footprint without current saved details is opened, the extension uses up 
 
 Select `👁 이후 동선 추적` (Track Later Movement) to add the character to the notebook's tracking list. **지금 어디 있지?** (Where are they now?) in the tracking list uses up to 5,000 tokens to update the latest location and activity.
 
+**👣 Show route on map** connects logged positions that match unique locations currently shown on the map. Solid lines connect high-confidence logged points, dashed lines indicate uncertain estimates. These are visual links between recorded nodes, not verified streets or actual travel paths. Unknown or unmapped stops are never connected.
+
 ---
 
 ## 🪄 Application Modes
@@ -200,7 +203,7 @@ Locations, quests, characters, discoveries, and searched places are managed thro
 | `🪄` | Applies the selected information as background context beginning with the next response. |
 | `👤` | Applies it so that the character notices the information first. |
 | `🧍` | Applies it so that the user notices the information first. |
-| `📓` | Saves it only to the notebook without applying it to the roleplay. |
+| `📓` | Saves it only to the notebook without applying it to the roleplay. For a location with linked quests, choose whether to include the quests or save the location alone. |
 | `🗑️` | Removes only the application setting. The original item remains visible on the map. |
 
 Only information with a selected application mode is provided to subsequent AI responses through SillyTavern's extension prompt. No sentence is automatically inserted into the input box.
@@ -208,6 +211,8 @@ Only information with a selected application mode is provided to subsequent AI r
 ---
 
 ## 🪄 Revelio / 📡 Nearby Scan / 🔑 Key Card
+
+Newly generated discoveries carry an **Observed in RP / Inferred / Rumor** evidence tag. The 'observed' tag is used only when the supplied recent roleplay has a matching anchor; previous AI maps alone cannot confirm facts. The tag and supporting anchors are AI assessments, not proof. Inferred information and rumors stay explicitly uncertain even when you apply them.
 
 The button in the upper-right corner of the map board uses a separate AI request to find specific people, objects, messages, location changes, or signs of events in progress that are not yet shown on the current map.
 
@@ -479,7 +484,8 @@ Bonbon Board에서는 네 면의 게임 경로 위에 장소를 나타내는 이
 
 | 버튼 | 기능 |
 |---|---|
-| `🔄` | 최근 RP를 다시 읽어 전체 지도를 새로 만듭니다. 새로고침 전 지도는 직전 지도에 보관됩니다. |
+| `🔄` | 최근 RP와 기존 지도를 함께 읽어 세계를 이어 갱신합니다. 이름이 일치하는 장소·인물·퀘스트의 식별 정보를 이어가며, 지도에 제안된 사건을 자동으로 확정하지 않습니다. 직전 지도도 보관됩니다. |
+| `🆕` | 확인 후 기존 지도와 별도로 새 지도를 생성합니다. 수첩과 이미 반영한 문맥은 유지하며, 직전 지도는 한 번 복원할 수 있습니다. |
 | `↩️` | 전체 지도 또는 장소 하나를 새로고침하기 직전의 지도로 되돌아갑니다. 복원은 한 번만 사용할 수 있습니다. |
 | `🔎` | 인물의 위치를 찾거나 현재 RP에 어울리는 장소를 검색합니다. |
 | `📓` | 반영·수집한 정보와 추적 중인 인물을 관리하는 수첩을 엽니다. |
@@ -541,6 +547,8 @@ Bonbon Board에서는 네 면의 게임 경로 위에 장소를 나타내는 이
 
 `👁 이후 동선 추적`을 누르면 수첩의 추적 목록에 추가됩니다. 추적 목록의 **지금 어디 있지?**는 최대 5,000토큰을 사용해 최근 위치와 행동을 갱신합니다.
 
+**👣 동선 지도 보기**는 현재 지도에 실제로 존재하는 장소 이름과 추적 기록을 대응해 위치를 연결합니다. 실선은 높은 신뢰도의 기록 지점을, 점선은 추정이 포함된 연결을 나타냅니다. 실제 도로·이동 경로가 확인됐다는 뜻은 아니며 지도에서 찾을 수 없는 장소는 이어 그리지 않습니다.
+
 ---
 
 ## 🪄 반영 방식
@@ -552,7 +560,7 @@ Bonbon Board에서는 네 면의 게임 경로 위에 장소를 나타내는 이
 | `🪄` | 선택한 정보를 다음 답변부터 배경 정보로 반영합니다. |
 | `👤` | 캐릭터가 해당 정보를 먼저 알아차리도록 반영합니다. |
 | `🧍` | 유저가 해당 정보를 먼저 알아차리도록 반영합니다. |
-| `📓` | RP에는 반영하지 않고 수첩에만 저장합니다. |
+| `📓` | RP에는 반영하지 않고 수첩에만 저장합니다. 장소에 연결 퀘스트가 있으면 **장소만 / 장소와 퀘스트 함께** 중 선택할 수 있습니다. |
 | `🗑️` | 반영 설정만 해제합니다. 지도에 표시된 원본 항목은 유지됩니다. |
 
 반영을 선택한 정보만 실리태번의 확장 프롬프트를 통해 다음 AI 답변에 참고됩니다. 입력창에 문장이 자동으로 붙지는 않습니다.
