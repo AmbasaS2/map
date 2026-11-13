@@ -22,7 +22,7 @@ const FOOTSTEP_REPAIR_MAX_TOKENS = 1600;
 const LOCATION_ICON_REVIEW_MAX_TOKENS = 600;
 const DEBUG_LOG_LIMIT = 40;
 const memoryDebugLogs = [];
-const EXTENSION_VERSION = '3.2.1';
+const EXTENSION_VERSION = '3.2.2';
 const SHARED_NOTEBOOK_KEYS = Object.freeze(['managedItems', 'footstepProfiles', 'trackedPeople', 'recommendations', 'searchResults']);
 const SHARED_NOTEBOOK_MIGRATION_VERSION = 1;
 const DISCOVERY_HISTORY_LIMIT = 30;
@@ -4152,6 +4152,7 @@ async function refreshTrackedPerson(key) {
             location: tracked.lastLocation,
             activity: tracked.lastActivity,
             reaction: tracked.trackerReaction,
+            confidence: tracked.confidence || '',
             at: tracked.updatedAt || nowStamp(),
         });
         tracked.lastLocation = String(parsed.currentLocation || tracked.lastLocation || '위치 신호 흐림');
@@ -4563,6 +4564,7 @@ function renderNotebookPanel() {
         button.addEventListener('click', () => handleManageAction(button.dataset.type, button.dataset.id, button.dataset.eventAction));
     });
     panel.querySelectorAll('[data-track-refresh]').forEach(button => button.addEventListener('click', () => refreshTrackedPerson(button.dataset.trackRefresh)));
+    panel.querySelectorAll('[data-track-route]').forEach(button => button.addEventListener('click', () => showTrackedRoute(button.dataset.trackRoute)));
     panel.querySelectorAll('[data-track-remove]').forEach(button => button.addEventListener('click', () => removeTrackedPerson(button.dataset.trackRemove)));
     panel.querySelectorAll('[data-search-open]').forEach(button => button.addEventListener('click', () => {
         const result = ensureMemory().searchResults?.find(entry => entry.id === button.dataset.searchOpen);
@@ -4570,6 +4572,80 @@ function renderNotebookPanel() {
     }));
     panel.querySelectorAll('[data-search-delete]').forEach(button => button.addEventListener('click', () => deletePersonSearchResult(button.dataset.searchDelete)));
     wireRecommendationButtons(panel);
+}
+
+
+let visibleTrackedRouteKey = '';
+
+function getTrackedRouteSegments(tracked, map, positions) {
+    if (!tracked || !isValidMapData(map)) return [];
+    const byName = new Map(map.locations.map((loc, i) => [normalizeDiscoveryText(loc.name), positions[i]]));
+    const history = Array.isArray(tracked.history) ? tracked.history.slice(0, 12).reverse() : [];
+    const points = [...history.map(h => ({ location: h.location, confidence: h.confidence || '' })),
+        { location: tracked.lastLocation, confidence: tracked.confidence || '' }]
+        .map(item => ({
+            point: byName.get(normalizeDiscoveryText(item.location)) || null,
+            high: /^(?:높음|high|confirmed)$/i.test(String(item.confidence || '').trim()),
+        }));
+    const result = [];
+    for (let i = 1; i < points.length; i++) {
+        const a = points[i - 1], b = points[i];
+        if (!a.point || !b.point) continue;
+        if (a.point.x === b.point.x && a.point.y === b.point.y) continue;
+        result.push({ from: a.point, to: b.point, estimated: !(a.high && b.high) });
+    }
+    return result;
+}
+
+function drawTrackedRoute(canvas, map, positions) {
+    const tracked = ensureMemory().trackedPeople?.[visibleTrackedRouteKey];
+    if (!tracked) return;
+    const segments = getTrackedRouteSegments(tracked, map, positions);
+    if (!segments.length) return;
+    const ns = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(ns, 'svg');
+    svg.classList.add('mma-tracked-route-layer');
+    svg.setAttribute('viewBox', '0 0 100 100');
+    svg.setAttribute('preserveAspectRatio', 'none');
+    svg.setAttribute('aria-hidden', 'true');
+    for (const segment of segments) {
+        const line = document.createElementNS(ns, 'line');
+        line.setAttribute('x1', String(segment.from.x));
+        line.setAttribute('y1', String(segment.from.y));
+        line.setAttribute('x2', String(segment.to.x));
+        line.setAttribute('y2', String(segment.to.y));
+        line.classList.add('mma-tracked-route-segment');
+        if (segment.estimated) line.classList.add('mma-route-estimated');
+        svg.appendChild(line);
+    }
+    canvas.appendChild(svg);
+    const legend = document.createElement('div');
+    legend.className = 'mma-tracked-route-legend';
+    legend.textContent = isKoreanMapLocale()
+        ? '👣 ' + tracked.name + ' · 실선: 기록된 위치 연결 / 점선: 추정 (실제 이동 경로 미확인)'
+        : '👣 ' + tracked.name + ' · Solid: logged points / Dashed: estimated (actual path unknown)';
+    canvas.appendChild(legend);
+}
+
+function showTrackedRoute(key) {
+    const memory = ensureMemory();
+    const map = memory.map;
+    const tracked = memory.trackedPeople?.[key];
+    if (!tracked || !isValidMapData(map)) return;
+    if (visibleTrackedRouteKey === key) {
+        visibleTrackedRouteKey = '';
+        renderMapView();
+        return;
+    }
+    const pos = isBonbonTheme() ? getBonbonJourneyPositions(map.locations.length) : getNodePositions(map.locations.length);
+    if (!getTrackedRouteSegments(tracked, map, pos).length) {
+        toast(isKoreanMapLocale()
+            ? '현재 지도에 이어질 위치 기록이 두 개 이상 필요해. 위치를 다시 추적하거나 장소가 지도에 있는지 확인해 줘.'
+            : 'Two linked recorded positions are needed on this map. Refresh tracking or check the locations.', 'info');
+        return;
+    }
+    visibleTrackedRouteKey = key;
+    renderMapView();
 }
 
 function renderTrackedCard(key, item) {
@@ -4585,6 +4661,7 @@ function renderTrackedCard(key, item) {
             ${Array.isArray(item.hooks) && item.hooks.length ? `<ul class="mma-possible-scenes">${item.hooks.slice(0, 4).map(hook => `<li>${escapeHtml(hook)}</li>`).join('')}</ul>` : ''}
             <div class="mma-event-actions">
                 <button data-track-refresh="${escapeHtml(key)}">지금 어디 있지?</button>
+                <button data-track-route="${escapeHtml(key)}">👣 동선 지도 보기</button>
                 ${renderActionButtons('tracked', key)}
                 <button data-track-remove="${escapeHtml(key)}">추적 해제</button>
             </div>
@@ -6461,6 +6538,7 @@ function renderMapView() {
                         <button title="${isModernTheme() ? '현재 작전 구역 위치 신호 다시 스캔' : '현재 지도를 이어서 갱신'}" data-action="refresh-all">🔄</button>
                         <button title="새 지도로 처음부터 다시 생성 (수첩은 유지)" data-action="refresh-fresh">🆕</button>
                         <button title="${isModernTheme() ? '직전 위치 신호 기록 복원' : '이전 지도 불러오기'}" data-action="restore-previous-map" ${hasPreviousMapSnapshot(memory) ? '' : 'disabled'}>↩️</button>
+                        ${visibleTrackedRouteKey ? '<button title="지도에서 동선 숨기기" data-action="clear-route">👣✕</button>' : ''}
                         <button title="검색" data-action="recommend">🔎</button>
                         <button title="수첩" data-action="notebook">📓</button>
                         <button title="지도 메모리 보기" data-action="memory">🧠</button>
@@ -6483,6 +6561,7 @@ function renderMapView() {
         if (accepted) generateMap(true, { freshStart: true });
     });
     content.querySelector('[data-action="restore-previous-map"]')?.addEventListener('click', () => restorePreviousMap());
+    content.querySelector('[data-action="clear-route"]')?.addEventListener('click', () => { visibleTrackedRouteKey = ''; renderMapView(); });
     content.querySelector('[data-action="recommend"]')?.addEventListener('click', () => renderRecommendationPanel());
     content.querySelector('[data-action="notebook"]')?.addEventListener('click', renderNotebookPanel);
     content.querySelector('[data-action="memory"]')?.addEventListener('click', renderMemoryPanel);
@@ -6539,6 +6618,7 @@ function renderCanvas() {
         ? getBonbonJourneyPositions(locations.length)
         : getNodePositions(locations.length);
     const bonbonRouteStops = new Map();
+    drawTrackedRoute(canvas, map, positions);
     locations.forEach((loc, index) => {
         const pos = positions[index] || { x: 50, y: 50 };
         const node = document.createElement('button');
@@ -8013,6 +8093,7 @@ function handleMapChatChanged() {
     // A real chat switch is different from merely closing the map.
     // Stop the old chat's request so it cannot save into the new one.
     cancelActiveMapGeneration('chat changed');
+    visibleTrackedRouteKey = '';
     closeMap('chat.changed');
     setTimeout(() => syncExtensionPrompt({ createMemory: false }), 0);
 }
@@ -8124,6 +8205,7 @@ export function onEnable() {
 
 export function onDisable() {
     lifecycleEnabled = false;
+    visibleTrackedRouteKey = '';
     stopMarauderSerifProtection();
     stopMapUiLocaleObservers();
     initialized = false;
