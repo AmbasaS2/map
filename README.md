@@ -16,6 +16,10 @@ Settings and map state are saved whenever they change. Simply viewing informatio
 
 The settings below follow the order shown in the Extensions panel.
 
+### 🌐 Language (Automatic)
+
+Map follows the language selected in SillyTavern User Settings without an extra setting. Korean keeps the original interface. English is available for international users; other UI locales currently fall back to English. New AI-generated descriptions use the selected SillyTavern language, while internal roleplay context remains in English as before. Already saved map descriptions are not translated retroactively; refresh the map to regenerate them in the selected language. UI localization does not call an AI or translation service.
+
 ### 🔌 Connection Profile
 
 Choose the API used to generate map content.
@@ -363,6 +367,10 @@ Refreshing the full map or a single location saves the immediately preceding sta
 ## ⚙️ 확장 설정
 
 아래 설명은 확장 관리에 표시되는 순서와 같습니다.
+
+### 🌐 언어 (자동)
+
+지도는 별도의 언어 설정 없이 실리태번 사용자 설정에서 선택한 언어를 따릅니다. 한국어 화면은 기존 표현을 유지하고, 해외 사용자는 영어 UI를 사용할 수 있습니다. 영어·한국어 이외의 UI 언어는 현재 영어로 표시됩니다. 새로 생성하는 지도 설명과 인물·장소 정보는 실리태번에서 선택한 언어로 요청하지만, 롤플레이 반영용 내부 문맥은 기존처럼 영어로 유지합니다. 이미 저장된 지도 내용은 자동 번역되지 않으므로 선택한 언어로 새로 만들려면 전체 새로고침을 해 주세요. 화면 번역은 별도 AI 호출이나 번역 서비스 비용을 사용하지 않습니다.
 
 ### 🔌 연결 프로필
 
