@@ -2529,7 +2529,6 @@ button.mma-footstep:focus-visible em {
   margin: 0 !important;
   font-size: 12px !important;
   line-height: 1.2 !important;
-  border-radius: 8px !important;
   white-space: nowrap !important;
   writing-mode: horizontal-tb !important;
   text-orientation: mixed !important;
@@ -2589,7 +2588,6 @@ button.mma-footstep:focus-visible em {
 #mma-settings-block .mma-debug-actions button,
 #mma-settings-block #mma-copy-debug,
 #mma-settings-block #mma-clear-debug {
-  border-radius: 0 !important;
   font-family: inherit !important;
   font-weight: inherit !important;
 }
