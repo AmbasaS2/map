@@ -22,7 +22,7 @@ const FOOTSTEP_REPAIR_MAX_TOKENS = 1600;
 const LOCATION_ICON_REVIEW_MAX_TOKENS = 600;
 const DEBUG_LOG_LIMIT = 40;
 const memoryDebugLogs = [];
-const EXTENSION_VERSION = '3.1.9';
+const EXTENSION_VERSION = '3.2.0';
 const SHARED_NOTEBOOK_KEYS = Object.freeze(['managedItems', 'footstepProfiles', 'trackedPeople', 'recommendations', 'searchResults']);
 const SHARED_NOTEBOOK_MIGRATION_VERSION = 1;
 const DISCOVERY_HISTORY_LIMIT = 30;
@@ -5067,7 +5067,26 @@ async function generateQuietWithSelectedProfile(quietPrompt, jsonSchema = null, 
         throw new Error(`선택한 확장 전용 프로필을 찾을 수 없습니다: ${target}`);
     }
 
-    const lore = await getActivatedWorldInfoForProfile(ctx);
+    let lore = '';
+    if (options.includeWorldInfo !== false) {
+        const job = options.job;
+        const signature = getStableChatSignature();
+        if (job && job.worldInfoSignature === signature && job.worldInfoPromise) {
+            lore = await job.worldInfoPromise;
+        } else {
+            const pending = getActivatedWorldInfoForProfile(ctx);
+            if (job) {
+                job.worldInfoSignature = signature;
+                job.worldInfoPromise = pending;
+            }
+            try {
+                lore = await pending;
+            } catch (error) {
+                if (job) job.worldInfoPromise = null;
+                throw error;
+            }
+        }
+    }
     if (externalSignal?.aborted) throw createMapGenerationCancelledError('request was cancelled during lorebook scan');
     const finalPrompt = [lore, prompt].filter(Boolean).join('\n\n') + getSchemaAwareJsonInstruction(jsonSchema);
     const timeoutMs = 240000;
@@ -5173,6 +5192,7 @@ async function reviewLocationIconsWithAi(map, options = {}) {
                 // This is one optional review. If structured output itself
                 // fails, keep the already valid map instead of retrying.
                 allowStructuredFallback: false,
+                includeWorldInfo: false,
             },
         );
         if (job) assertCurrentMapGeneration(job);
@@ -5253,6 +5273,7 @@ async function generateMap(force = false) {
                 maxTokens: modeConfig.mapMaxTokens,
                 signal: job.controller.signal,
                 connectionProfile: job.connectionProfile,
+                job,
             });
             assertCurrentMapGeneration(job);
             pushDebugLog('response.received', `지도 생성 응답 수신: ${String(rawText || '').length}자`, {
@@ -6963,7 +6984,7 @@ function renderActionPanel(locationFilterId = null, globalView = false) {
                 <button title="위치 카드로 돌아가기" data-action="back">↩️</button>
             </header>
             <p class="mma-panel-note">장소와 퀘스트는 각각 따로 수집하거나 반영할 수 있습니다.</p>
-            ${selectedLocation ? `<h4 class="mma-section-title">장소와 퀘스트를 반영할까요?</h4>${renderLocationManageCard(selectedLocation)}` : ''}
+            ${selectedLocation ? `<h4 class="mma-section-title">장소 정보를 선택하고 연결 퀘스트는 따로 결정할 수 있어요.</h4>${renderLocationManageCard(selectedLocation)}` : ''}
             ${events.length ? `<h4 class="mma-section-title">퀘스트만 반영할까요?</h4>${events.map(event => renderEventCard(event)).join('')}` : ''}
             ${!selectedLocation && !events.length ? '<p class="mma-empty">반영할 위치나 사건이 없습니다.</p>' : ''}
         </div>
@@ -7109,21 +7130,21 @@ function confirmManageAction(type, id, action) {
     const injectQuestion = info.kind === '발견'
         ? '이 발견을 반영할까요?'
         : info.kind === '장소'
-        ? '장소와 퀘스트를 반영할까요?'
+        ? '장소 정보를 반영할까요? 연결된 퀘스트는 다음 단계에서 따로 선택합니다.'
         : info.kind === '사건'
             ? '퀘스트만 반영할까요?'
             : '이 정보를 반영할까요?';
     const charQuestion = info.kind === '발견'
         ? `이 발견을 ${charName}이(가) 먼저 눈치채도록 반영할까요?`
         : info.kind === '장소'
-        ? `장소와 퀘스트를 ${charName}이(가) 먼저 눈치채도록 반영할까요?`
+        ? `장소 정보를 ${charName}이(가) 먼저 눈치채도록 반영할까요? 연결된 퀘스트는 따로 선택합니다.`
         : info.kind === '사건'
             ? `퀘스트만 ${charName}이(가) 먼저 눈치채도록 반영할까요?`
             : `이 정보를 ${charName}이(가) 먼저 눈치채도록 반영할까요?`;
     const userQuestion = info.kind === '발견'
         ? `이 발견을 ${userName}이(가) 먼저 눈치챌 수 있도록 반영할까요?`
         : info.kind === '장소'
-        ? `장소와 퀘스트를 ${userName}이(가) 먼저 눈치챌 수 있도록 반영할까요?`
+        ? `장소 정보를 ${userName}이(가) 먼저 눈치챌 수 있도록 반영할까요? 연결된 퀘스트는 따로 선택합니다.`
         : info.kind === '사건'
             ? `퀘스트만 ${userName}이(가) 먼저 눈치챌 수 있도록 반영할까요?`
             : `이 정보를 ${userName}이(가) 먼저 눈치챌 수 있도록 반영할까요?`;
@@ -7151,6 +7172,14 @@ async function handleManageAction(type, id, action) {
     if (!map) return;
     if (!confirmManageAction(type, id, action)) return;
     const shouldReturnToNotebook = Boolean(document.querySelector('.mma-notebook-panel'));
+    const linkedQuests = type === 'location'
+        ? (map.events || []).filter(event => event.locationId === id && event.status !== 'ignored')
+        : [];
+    // Cancel here means "location only"; the preceding confirmation can cancel
+    // the action entirely. We never bundle a quest into a location silently.
+    const includeLinkedQuests = linkedQuests.length > 0 && window.confirm(isKoreanMapLocale()
+        ? `이 장소의 퀘스트 ${linkedQuests.length}개도 함께 ${action === 'hold' ? '수집' : '반영'}할까?\n\n확인: 장소 + 퀘스트\n취소: 장소만`
+        : `Include ${linkedQuests.length} linked quest(s) with this location?\n\nOK: location + quests\nCancel: location only`);
 
     if (type === 'managed') {
         const item = memory.managedItems.find(x => x.id === id);
@@ -7164,7 +7193,7 @@ async function handleManageAction(type, id, action) {
             markMapEventStatus(item.sourceId || '', item.status);
         }
     } else {
-        const item = snapshotManagedItem(type, id, actionToStatus(action));
+        const item = snapshotManagedItem(type, id, actionToStatus(action), { includeLinkedQuests });
         if (!item) return;
         if (action === 'remove') {
             removeManagedBySource(item.sourceId);
@@ -7210,14 +7239,16 @@ function actionToStatus(action) {
     }[action] || 'held';
 }
 
-function snapshotManagedItem(type, id, status) {
+function snapshotManagedItem(type, id, status, options = {}) {
     const memory = ensureMemory();
     const map = memory.map;
     if (!map) return null;
     if (type === 'location') {
         const loc = map.locations.find(l => l.id === id);
         if (!loc) return null;
-        const events = (map.events || []).filter(e => e.locationId === loc.id && e.status !== 'ignored');
+        const events = options.includeLinkedQuests === true
+            ? (map.events || []).filter(e => e.locationId === loc.id && e.status !== 'ignored')
+            : [];
         return {
             id: `location:${loc.id}`,
             sourceId: `location:${loc.id}`,
@@ -7231,7 +7262,8 @@ function snapshotManagedItem(type, id, status) {
             present: [...loc.present],
             clues: [...loc.clues],
             eventSnapshots: events.map(e => ({ title: e.title, summary: e.summary, details: e.details, reward: e.reward, injectionText: e.injectionText })),
-            englishContext: loc.injectionText || buildLocationContextFallback(loc, events),
+            includeLinkedQuests: events.length > 0,
+            englishContext: events.length ? (loc.injectionText || buildLocationContextFallback(loc, events)) : buildLocationOnlyContextFallback(loc),
             createdAt: nowStamp(),
             updatedAt: nowStamp(),
         };
@@ -7391,6 +7423,12 @@ function markMapEventStatus(sourceId, status) {
     const eventId = sourceId.slice('event:'.length);
     const event = memory.map?.events.find(e => e.id === eventId);
     if (event) event.status = status;
+}
+
+function buildLocationOnlyContextFallback(loc) {
+    const people = (loc.present || []).join(', ');
+    const clues = (loc.clues || []).join('; ');
+    return `Selected map location: ${loc.name}. Current atmosphere and situation: ${loc.situation} Additional observation: ${loc.details || ''} People present or nearby: ${people || 'not clearly identified'}. Notable clues: ${clues || 'none specified'}. This selection includes the place only; it does not select or activate any linked quest. Use the setting as background when the roleplay naturally reaches this location. Do not force the user's actions or mention the map UI.`;
 }
 
 function buildLocationContextFallback(loc, events = []) {
