@@ -22,7 +22,7 @@ const FOOTSTEP_REPAIR_MAX_TOKENS = 1600;
 const LOCATION_ICON_REVIEW_MAX_TOKENS = 600;
 const DEBUG_LOG_LIMIT = 40;
 const memoryDebugLogs = [];
-const EXTENSION_VERSION = '3.1.6';
+const EXTENSION_VERSION = '3.1.7';
 const SHARED_NOTEBOOK_KEYS = Object.freeze(['managedItems', 'footstepProfiles', 'trackedPeople', 'recommendations', 'searchResults']);
 const SHARED_NOTEBOOK_MIGRATION_VERSION = 1;
 const DISCOVERY_HISTORY_LIMIT = 30;
@@ -733,7 +733,7 @@ let marauderSerifObserver = null;
 function restoreMarauderSerifFonts() {
     for (const [element, original] of marauderOriginalFonts) {
         if (element.isConnected
-            && element.style.getPropertyValue('font-family') === MARAUDER_SERIF_FONT
+            && sameProtectedFontFamily(element.style.getPropertyValue('font-family'), MARAUDER_SERIF_FONT)
             && element.style.getPropertyPriority('font-family') === 'important') {
             if (original.value) element.style.setProperty('font-family', original.value, original.priority);
             else element.style.removeProperty('font-family');
@@ -756,7 +756,7 @@ function syncMarauderSerifFonts() {
     for (const element of windowEl.querySelectorAll(MARAUDER_SERIF_TARGETS)) {
         const value = element.style.getPropertyValue('font-family');
         const priority = element.style.getPropertyPriority('font-family');
-        if (value === MARAUDER_SERIF_FONT && priority === 'important') continue;
+        if (sameProtectedFontFamily(value, MARAUDER_SERIF_FONT) && priority === 'important') continue;
         if (!marauderOriginalFonts.has(element)) {
             marauderOriginalFonts.set(element, { value, priority });
         }
@@ -768,20 +768,75 @@ function startMarauderSerifProtection() {
     if (marauderSerifObserver) return;
     const windowEl = document.getElementById('mma-window');
     if (!windowEl) return;
-    marauderSerifObserver = new MutationObserver(syncMarauderSerifFonts);
+    marauderSerifObserver = new MutationObserver(syncProtectedThemeFonts);
     marauderSerifObserver.observe(windowEl, {
         subtree: true,
         childList: true,
         attributes: true,
         attributeFilter: ['class', 'style'],
     });
-    syncMarauderSerifFonts();
+    syncProtectedThemeFonts();
 }
 
 function stopMarauderSerifProtection() {
     marauderSerifObserver?.disconnect();
     marauderSerifObserver = null;
     restoreMarauderSerifFonts();
+    restoreShieldSansFonts();
+}
+
+
+// Match S.H.I.E.L.D.'s existing sans-serif family while leaving Bonbon's
+// SillyTavern font inheritance untouched.
+const SHIELD_SANS_FONT = "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Pretendard', 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif";
+// Protect text and controls without overriding icon fonts.
+const SHIELD_SANS_TARGETS = 'div, span, section, article, header, footer, main, aside, nav, p, ul, ol, li, h1, h2, h3, h4, h5, h6, b, strong, small, em, label, summary, button, input, select, option, textarea';
+const shieldOriginalFonts = new Map();
+
+function sameProtectedFontFamily(a, b) {
+    const normalize = value => String(value || '').replace(/['"]/g, '').replace(/\s+/g, '').toLowerCase();
+    return normalize(a) === normalize(b);
+}
+
+function restoreShieldSansFonts() {
+    for (const [element, original] of shieldOriginalFonts) {
+        if (element.isConnected
+            && sameProtectedFontFamily(element.style.getPropertyValue('font-family'), SHIELD_SANS_FONT)
+            && element.style.getPropertyPriority('font-family') === 'important') {
+            if (original.value) element.style.setProperty('font-family', original.value, original.priority);
+            else element.style.removeProperty('font-family');
+        }
+        shieldOriginalFonts.delete(element);
+    }
+}
+
+function syncShieldSansFonts() {
+    const windowEl = document.getElementById('mma-window');
+    if (!windowEl?.classList.contains('mma-theme-modern')) {
+        restoreShieldSansFonts();
+        return;
+    }
+    for (const element of shieldOriginalFonts.keys()) {
+        if (element !== windowEl && !windowEl.contains(element)) shieldOriginalFonts.delete(element);
+    }
+    for (const element of [windowEl, ...windowEl.querySelectorAll(SHIELD_SANS_TARGETS)]) {
+        if (element !== windowEl && element.closest('i, svg, .fa, .fas, .far, .fab, .fa-solid, .fa-regular, .fa-brands')) continue;
+        const value = element.style.getPropertyValue('font-family');
+        const priority = element.style.getPropertyPriority('font-family');
+        if (sameProtectedFontFamily(value, SHIELD_SANS_FONT) && priority === 'important') continue;
+        if (!shieldOriginalFonts.has(element)) shieldOriginalFonts.set(element, { value, priority });
+        element.style.setProperty('font-family', SHIELD_SANS_FONT, 'important');
+    }
+}
+
+function syncProtectedThemeFonts() {
+    if (document.getElementById('mma-window')?.classList.contains('mma-theme-modern')) {
+        restoreMarauderSerifFonts();
+        syncShieldSansFonts();
+    } else {
+        restoreShieldSansFonts();
+        syncMarauderSerifFonts();
+    }
 }
 
 function applyThemeClass() {
@@ -794,7 +849,7 @@ function applyThemeClass() {
         }
         el.dataset.mmaTheme = theme;
     });
-    syncMarauderSerifFonts();
+    syncProtectedThemeFonts();
 }
 
 function setTheme(value, rerender = false) {
