@@ -10795,3 +10795,14 @@ button.mma-footstep:focus-visible em {
 #mma-window.mma-theme-marauder .mma-managed-button {
   font-family: Georgia, 'Times New Roman', serif !important;
 }
+
+
+/* Recorded map locations; these lines are not verified streets or paths. */
+#mma-window .mma-tracked-route-layer { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; z-index: 2; }
+#mma-window .mma-tracked-route-segment { stroke: rgba(89, 50, 26, .75); stroke-width: 2px; vector-effect: non-scaling-stroke; fill: none; stroke-linecap: round; }
+#mma-window .mma-tracked-route-segment.mma-route-estimated { stroke-dasharray: 3px 5px; opacity: .72; }
+#mma-window.mma-theme-modern .mma-tracked-route-segment { stroke: rgba(94, 220, 244, .85); }
+#mma-window.mma-theme-bonbon .mma-tracked-route-segment { stroke: rgba(111, 69, 103, .72); }
+#mma-window .mma-tracked-route-legend { position: absolute; z-index: 4; left: 8px; bottom: 8px; max-width: calc(100% - 16px); padding: 3px 6px; border-radius: 6px; background: rgba(245, 232, 194, .92); color: #3a2415; font-size: 10px; line-height: 1.25; pointer-events: none; }
+#mma-window.mma-theme-modern .mma-tracked-route-legend { background: rgba(10, 22, 34, .9); color: #dceaf5; }
+#mma-window.mma-theme-bonbon .mma-tracked-route-legend { background: rgba(255, 250, 240, .92); color: #6b4b3e; }

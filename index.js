@@ -22,7 +22,7 @@ const FOOTSTEP_REPAIR_MAX_TOKENS = 1600;
 const LOCATION_ICON_REVIEW_MAX_TOKENS = 600;
 const DEBUG_LOG_LIMIT = 40;
 const memoryDebugLogs = [];
-const EXTENSION_VERSION = '3.1.9';
+const EXTENSION_VERSION = '3.2.3';
 const SHARED_NOTEBOOK_KEYS = Object.freeze(['managedItems', 'footstepProfiles', 'trackedPeople', 'recommendations', 'searchResults']);
 const SHARED_NOTEBOOK_MIGRATION_VERSION = 1;
 const DISCOVERY_HISTORY_LIMIT = 30;
@@ -2293,6 +2293,7 @@ const DISCOVERY_ITEM_SCHEMA = {
         locationName: { type: 'string' },
         focus: { type: 'string' },
         focusContext: { type: 'string' },
+        evidenceLevel: { type: 'string', enum: ['confirmed', 'inferred', 'rumor'] },
         observation: { type: 'string' },
         stakes: { type: 'string' },
         interactions: { type: 'array', minItems: 2, maxItems: 3, items: { type: 'string' } },
@@ -2301,7 +2302,7 @@ const DISCOVERY_ITEM_SCHEMA = {
         motifKey: { type: 'string' },
         continuationOf: { type: 'string' },
     },
-    required: ['category', 'emoji', 'title', 'locationName', 'focus', 'focusContext', 'observation', 'stakes', 'interactions', 'participants', 'sourceAnchors', 'motifKey', 'continuationOf'],
+    required: ['category', 'emoji', 'title', 'locationName', 'focus', 'focusContext', 'evidenceLevel', 'observation', 'stakes', 'interactions', 'participants', 'sourceAnchors', 'motifKey', 'continuationOf'],
 };
 
 function getDiscoverySchema(outputMode = getOutputModeKey()) {
@@ -2361,6 +2362,24 @@ function findUnambiguousLocationNameMatch(locations = [], searchedName = '') {
         return searchedIsQualified !== locationIsQualified;
     });
     return candidates.length === 1 ? candidates[0] : null;
+}
+
+
+function normalizeDiscoveryEvidence(value) {
+    const level = String(value || '').trim().toLowerCase();
+    return ['confirmed', 'inferred', 'rumor'].includes(level) ? level : 'inferred';
+}
+
+function discoveryHasDirectRoleplayAnchor(anchors = []) {
+    const recent = getChatSnapshot(10).split(/\n\s*\n/).filter(Boolean);
+    // A generated map's own text never counts as direct confirmation.
+    return anchors.some(anchor => recent.some(message => discoverySimilarity(anchor, message) >= 0.35));
+}
+
+function getDiscoveryEvidenceLabel(value) {
+    const level = normalizeDiscoveryEvidence(value);
+    if (!isKoreanMapLocale()) return { confirmed: '✅ Observed in RP', inferred: '🧩 Inferred', rumor: '🗣️ Rumor' }[level];
+    return { confirmed: '✅ RP에서 확인', inferred: '🧩 추정', rumor: '🗣️ 소문' }[level];
 }
 
 function normalizeDiscoveryCategory(value) {
@@ -2552,6 +2571,7 @@ function discoveryFingerprintParts(item = {}) {
         focalParticipants: (item.participants || []).slice(0, 4),
         locationName: String(item.locationName || ''),
         motifKey: String(item.motifKey || item.title || ''),
+        evidenceLevel: normalizeDiscoveryEvidence(item.evidenceLevel),
         titleKey: normalizeDiscoveryText(item.title),
         observation: stripLong(item.observation || item.body || '', 320),
         stakes: stripLong(item.stakes || '', 160),
@@ -2591,6 +2611,8 @@ function normalizeDiscoveries(raw, map, history = [], outputMode = getOutputMode
         const participants = uniqueStrings(rawParticipants, 8);
         const sourceAnchors = uniqueStrings(rawAnchors, 4);
         const category = normalizeDiscoveryCategory(item.category);
+        const claimedEvidence = normalizeDiscoveryEvidence(item.evidenceLevel);
+        const evidenceLevel = claimedEvidence === 'confirmed' && !discoveryHasDirectRoleplayAnchor(sourceAnchors) ? 'inferred' : claimedEvidence;
         if (!category) {
             rejected.push({ index, reason: 'unsupported or abstract category' });
             continue;
@@ -2619,6 +2641,7 @@ function normalizeDiscoveries(raw, map, history = [], outputMode = getOutputMode
             locationName: location.name,
             focus,
             focusContext,
+            evidenceLevel,
             observation,
             stakes,
             interactions,
@@ -2765,11 +2788,12 @@ Create ${config.discoveryRange} distinct discoveries that become newly visible a
 
 A discovery is one concrete person, creature, object, message, changed place, or sign of an incident that is not yet represented by the returned locations, footsteps, or quests. Treat the map, recent roleplay, character card, and persona as continuity evidence. Every result adds one new external state that follows from that evidence.
 
-Every discovery must answer four practical questions:
+Every discovery must answer five practical questions:
 1. focus and focusContext: exactly what was found, who or what it is, and why it belongs at this location;
-2. observation: what is visibly or audibly happening now, in 2 to 4 natural ${getMapNarrativeLanguage()} sentences with concrete sensory and behavioral details;
-3. stakes: the concrete near-future change that will occur at this place if nobody intervenes;
-4. interactions: 2 to 3 materially different things a character could attempt, inspect, ask, move, help, stop, open, follow, repair, deliver, or otherwise engage with.
+2. evidenceLevel: choose "confirmed" only for details explicitly seen, said, or established in the supplied recent roleplay. Use "rumor" for second-hand claims and "inferred" for AI conjecture or plausible off-screen states. A previous AI-generated map alone cannot confirm a new discovery.
+3. observation: what is visibly or audibly happening now, in 2 to 4 natural ${getMapNarrativeLanguage()} sentences with concrete sensory and behavioral details;
+4. stakes: the concrete near-future change that will occur at this place if nobody intervenes;
+5. interactions: 2 to 3 materially different things a character could attempt, inspect, ask, move, help, stop, open, follow, repair, deliver, or otherwise engage with.
 
 Use sourceAnchors for 1 to 4 confirmed continuity facts that support the discovery. These are internal grounding data, so keep them concise and factual. Give every item one relevant, intuitive emoji for its actual focus, such as 🐈 or 🐾 for an animal, 💌 or ✉️ for a letter, 👤 or a fitting person emoji for a person, 🚪 for a door, or 📦 for a parcel. The emoji is a miniature label for the literal focus: a reader should be able to guess what was found without a category legend.
 
@@ -2786,7 +2810,7 @@ Set allocation:
 
 Use continuationOf only when this is a changed continuation of one exact discovery id supplied in Recent discovery history. Otherwise return an empty string. A continuation must advance that earlier state rather than repeat it.
 
-Return category, emoji, title, locationName, focus, focusContext, observation, stakes, interactions, participants, sourceAnchors, motifKey, and continuationOf for every item. Internal IDs, marker placement, and roleplay reflection text are added locally.
+Return category, emoji, title, locationName, focus, focusContext, evidenceLevel, observation, stakes, interactions, participants, sourceAnchors, motifKey, and continuationOf for every item. Internal IDs, marker placement, and roleplay reflection text are added locally.
 
 Current user: ${getCurrentUserName()}
 Current character: ${getCurrentCharacterName()}
@@ -3136,6 +3160,7 @@ async function repairFootstepRosterIfNeeded(map, outputMode, job) {
                 maxTokens: FOOTSTEP_REPAIR_MAX_TOKENS,
                 signal: job?.controller?.signal,
                 connectionProfile: job?.connectionProfile,
+                job,
             },
         );
         if (job) assertCurrentMapGeneration(job);
@@ -4151,6 +4176,7 @@ async function refreshTrackedPerson(key) {
             location: tracked.lastLocation,
             activity: tracked.lastActivity,
             reaction: tracked.trackerReaction,
+            confidence: tracked.confidence || '',
             at: tracked.updatedAt || nowStamp(),
         });
         tracked.lastLocation = String(parsed.currentLocation || tracked.lastLocation || '위치 신호 흐림');
@@ -4562,6 +4588,7 @@ function renderNotebookPanel() {
         button.addEventListener('click', () => handleManageAction(button.dataset.type, button.dataset.id, button.dataset.eventAction));
     });
     panel.querySelectorAll('[data-track-refresh]').forEach(button => button.addEventListener('click', () => refreshTrackedPerson(button.dataset.trackRefresh)));
+    panel.querySelectorAll('[data-track-route]').forEach(button => button.addEventListener('click', () => showTrackedRoute(button.dataset.trackRoute)));
     panel.querySelectorAll('[data-track-remove]').forEach(button => button.addEventListener('click', () => removeTrackedPerson(button.dataset.trackRemove)));
     panel.querySelectorAll('[data-search-open]').forEach(button => button.addEventListener('click', () => {
         const result = ensureMemory().searchResults?.find(entry => entry.id === button.dataset.searchOpen);
@@ -4569,6 +4596,80 @@ function renderNotebookPanel() {
     }));
     panel.querySelectorAll('[data-search-delete]').forEach(button => button.addEventListener('click', () => deletePersonSearchResult(button.dataset.searchDelete)));
     wireRecommendationButtons(panel);
+}
+
+
+let visibleTrackedRouteKey = '';
+
+function getTrackedRouteSegments(tracked, map, positions) {
+    if (!tracked || !isValidMapData(map)) return [];
+    const byName = new Map(map.locations.map((loc, i) => [String(loc.id), positions[i]]));
+    const history = Array.isArray(tracked.history) ? tracked.history.slice(0, 12).reverse() : [];
+    const points = [...history.map(h => ({ location: h.location, confidence: h.confidence || '' })),
+        { location: tracked.lastLocation, confidence: tracked.confidence || '' }]
+        .map(item => ({
+            point: byName.get(String(findUnambiguousLocationNameMatch(map.locations, item.location)?.id || '')) || null,
+            high: /^(?:높음|high|confirmed)$/i.test(String(item.confidence || '').trim()),
+        }));
+    const result = [];
+    for (let i = 1; i < points.length; i++) {
+        const a = points[i - 1], b = points[i];
+        if (!a.point || !b.point) continue;
+        if (a.point.x === b.point.x && a.point.y === b.point.y) continue;
+        result.push({ from: a.point, to: b.point, estimated: !(a.high && b.high) });
+    }
+    return result;
+}
+
+function drawTrackedRoute(canvas, map, positions) {
+    const tracked = ensureMemory().trackedPeople?.[visibleTrackedRouteKey];
+    if (!tracked) return;
+    const segments = getTrackedRouteSegments(tracked, map, positions);
+    if (!segments.length) return;
+    const ns = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(ns, 'svg');
+    svg.classList.add('mma-tracked-route-layer');
+    svg.setAttribute('viewBox', '0 0 100 100');
+    svg.setAttribute('preserveAspectRatio', 'none');
+    svg.setAttribute('aria-hidden', 'true');
+    for (const segment of segments) {
+        const line = document.createElementNS(ns, 'line');
+        line.setAttribute('x1', String(segment.from.x));
+        line.setAttribute('y1', String(segment.from.y));
+        line.setAttribute('x2', String(segment.to.x));
+        line.setAttribute('y2', String(segment.to.y));
+        line.classList.add('mma-tracked-route-segment');
+        if (segment.estimated) line.classList.add('mma-route-estimated');
+        svg.appendChild(line);
+    }
+    canvas.appendChild(svg);
+    const legend = document.createElement('div');
+    legend.className = 'mma-tracked-route-legend';
+    legend.textContent = isKoreanMapLocale()
+        ? '👣 ' + tracked.name + ' · 실선: 기록된 위치 연결 / 점선: 추정 (실제 이동 경로 미확인)'
+        : '👣 ' + tracked.name + ' · Solid: logged points / Dashed: estimated (actual path unknown)';
+    canvas.appendChild(legend);
+}
+
+function showTrackedRoute(key) {
+    const memory = ensureMemory();
+    const map = memory.map;
+    const tracked = memory.trackedPeople?.[key];
+    if (!tracked || !isValidMapData(map)) return;
+    if (visibleTrackedRouteKey === key) {
+        visibleTrackedRouteKey = '';
+        renderMapView();
+        return;
+    }
+    const pos = isBonbonTheme() ? getBonbonJourneyPositions(map.locations.length) : getNodePositions(map.locations.length);
+    if (!getTrackedRouteSegments(tracked, map, pos).length) {
+        toast(isKoreanMapLocale()
+            ? '현재 지도에 이어질 위치 기록이 두 개 이상 필요해. 위치를 다시 추적하거나 장소가 지도에 있는지 확인해 줘.'
+            : 'Two linked recorded positions are needed on this map. Refresh tracking or check the locations.', 'info');
+        return;
+    }
+    visibleTrackedRouteKey = key;
+    renderMapView();
 }
 
 function renderTrackedCard(key, item) {
@@ -4584,6 +4685,7 @@ function renderTrackedCard(key, item) {
             ${Array.isArray(item.hooks) && item.hooks.length ? `<ul class="mma-possible-scenes">${item.hooks.slice(0, 4).map(hook => `<li>${escapeHtml(hook)}</li>`).join('')}</ul>` : ''}
             <div class="mma-event-actions">
                 <button data-track-refresh="${escapeHtml(key)}">지금 어디 있지?</button>
+                <button data-track-route="${escapeHtml(key)}">👣 동선 지도 보기</button>
                 ${renderActionButtons('tracked', key)}
                 <button data-track-remove="${escapeHtml(key)}">추적 해제</button>
             </div>
@@ -4792,7 +4894,7 @@ The JSON must include category and items. Put at least 3 recommendation items in
         return `${getJsonOnlyInstruction(jsonSchema)}
 
 Never return only an empty object {}.
-The JSON must include items. Each item includes category, emoji, title, locationName, focus, focusContext, observation, stakes, interactions, participants, sourceAnchors, motifKey, and continuationOf.`;
+The JSON must include items. Each item includes category, emoji, title, locationName, focus, focusContext, evidenceLevel, observation, stakes, interactions, participants, sourceAnchors, motifKey, and continuationOf.`;
     }
     return `${getJsonOnlyInstruction(jsonSchema)}
 
@@ -4884,7 +4986,7 @@ function refreshVisibleMapAfterBackgroundUpdate({ locationId = '', forceMapView 
 
 function refreshMapGenerationControls() {
     const busy = Boolean(activeMapGeneration);
-    document.querySelectorAll('[data-action="refresh-all"], [data-action="refresh-location"], [data-action="restore-previous-map"], [data-action="discover"]').forEach(button => {
+    document.querySelectorAll('#mma-window [data-action="refresh-all"], #mma-window [data-action="refresh-fresh"], #mma-window [data-action="refresh-location"], #mma-window [data-action="restore-previous-map"], #mma-window [data-action="discover"]').forEach(button => {
         button.disabled = busy;
         button.setAttribute('aria-busy', busy ? 'true' : 'false');
     });
@@ -5067,7 +5169,26 @@ async function generateQuietWithSelectedProfile(quietPrompt, jsonSchema = null, 
         throw new Error(`선택한 확장 전용 프로필을 찾을 수 없습니다: ${target}`);
     }
 
-    const lore = await getActivatedWorldInfoForProfile(ctx);
+    let lore = '';
+    if (options.includeWorldInfo !== false) {
+        const job = options.job;
+        const signature = getStableChatSignature();
+        if (job && job.worldInfoSignature === signature && job.worldInfoPromise) {
+            lore = await job.worldInfoPromise;
+        } else {
+            const pending = getActivatedWorldInfoForProfile(ctx);
+            if (job) {
+                job.worldInfoSignature = signature;
+                job.worldInfoPromise = pending;
+            }
+            try {
+                lore = await pending;
+            } catch (error) {
+                if (job) job.worldInfoPromise = null;
+                throw error;
+            }
+        }
+    }
     if (externalSignal?.aborted) throw createMapGenerationCancelledError('request was cancelled during lorebook scan');
     const finalPrompt = [lore, prompt].filter(Boolean).join('\n\n') + getSchemaAwareJsonInstruction(jsonSchema);
     const timeoutMs = 240000;
@@ -5173,6 +5294,7 @@ async function reviewLocationIconsWithAi(map, options = {}) {
                 // This is one optional review. If structured output itself
                 // fails, keep the already valid map instead of retrying.
                 allowStructuredFallback: false,
+                includeWorldInfo: false,
             },
         );
         if (job) assertCurrentMapGeneration(job);
@@ -5206,7 +5328,103 @@ async function withConnectionProfile(fn) {
 }
 
 
-async function generateMap(force = false) {
+
+// Prior map observations are context, not automatically established roleplay facts.
+function buildMapContinuationMemory(previousMap, memory) {
+    if (!isValidMapData(previousMap)) return '';
+    const locations = (previousMap.locations || []).map(location => ({
+        name: location.name,
+        situation: stripLong(location.situation, 220),
+        details: stripLong(location.details, 120),
+        people: (location.present || []).slice(0, 6),
+        clues: (location.clues || []).slice(0, 5),
+    }));
+    const events = (previousMap.events || []).map(event => {
+        const place = previousMap.locations.find(location => location.id === event.locationId);
+        return {
+            title: event.title,
+            location: place?.name || '',
+            proposedState: String(event.status || 'available'),
+            summary: stripLong(event.summary, 230),
+            details: stripLong(event.details, 120),
+        };
+    });
+    const footsteps = (previousMap.footsteps || []).map(footstep => ({
+        name: footstep.label,
+        location: previousMap.locations.find(location => location.id === footstep.locationId)?.name || '',
+        activity: stripLong(footstep.status, 130),
+    }));
+    const discoveries = (memory?.discoveries || []).slice(0, 12).map(item => ({
+        name: item.title,
+        location: item.locationName,
+        observation: stripLong(item.observation, 130),
+        evidence: item.evidenceLevel || 'inferred',
+    }));
+    return '\n\n[Previous map: continuity reference, not unquestionable canon]\n'
+        + JSON.stringify({
+            area: previousMap.regionName,
+            time: previousMap.timeHint,
+            overview: stripLong(previousMap.worldSummary, 250),
+            locations, footsteps, events, discoveries,
+        })
+        + '\nKeep established names and confirmed geography consistent when still in the same mapped area. Update current activities, positions, and conditions only when the more recent roleplay supplies a reason. Previous map quests and discoveries are proposed observations, not automatically completed events or user-accepted canon. Do not silently resolve them, invent off-screen outcomes, force a quest, or retell old events as newly discovered facts. If the scene moves to a different region, map that new region instead. Recent roleplay and explicitly confirmed facts take priority over old map guesses.\n';
+}
+
+// Identity alignment only for exact names; never join lookalike NPCs or places.
+function sameContinuedMapArea(previousMap, nextMap) {
+    const a = normalizeDiscoveryText(previousMap?.regionName);
+    const b = normalizeDiscoveryText(nextMap?.regionName);
+    if (!a || !b) return false; // An unknown area is not safe to merge by name.
+    return a === b || (a.length >= 6 && b.includes(a)) || (b.length >= 6 && a.includes(b));
+}
+
+function preserveContinuedMapIdentities(previousMap, nextMap) {
+    if (!isValidMapData(previousMap) || !isValidMapData(nextMap) || !sameContinuedMapArea(previousMap, nextMap)) return nextMap;
+    const key = value => normalizeDiscoveryText(value);
+    const oldLocations = new Map(previousMap.locations.map(location => [key(location.name), location]));
+    const idChanges = new Map();
+    const usedIds = new Set();
+    for (const location of nextMap.locations) {
+        const prev = oldLocations.get(key(location.name));
+        const oldId = String(prev?.id || '');
+        const newId = String(location.id || '');
+        if (oldId && !usedIds.has(oldId)) {
+            location.id = oldId;
+            idChanges.set(newId, oldId);
+        }
+        usedIds.add(String(location.id));
+    }
+    const relinkId = id => idChanges.get(String(id || '')) || id;
+    nextMap.currentLocationId = relinkId(nextMap.currentLocationId);
+    for (const person of nextMap.footsteps || []) person.locationId = relinkId(person.locationId);
+    for (const event of nextMap.events || []) event.locationId = relinkId(event.locationId);
+    const prevEvents = new Map((previousMap.events || []).map(event => {
+        const loc = previousMap.locations.find(l => l.id === event.locationId);
+        return [key(event.title) + '|' + key(loc?.name), event];
+    }));
+    for (const event of nextMap.events || []) {
+        const loc = nextMap.locations.find(l => l.id === event.locationId);
+        const prior = prevEvents.get(key(event.title) + '|' + key(loc?.name));
+        if (prior) {
+            event.id = prior.id;
+            event.status = prior.status || 'available';
+        }
+    }
+    const oldPeople = new Map((previousMap.footsteps || [])
+        .filter(fp => fp.visibleName !== false)
+        .map(fp => [key(fp.label), fp]));
+    for (const fp of nextMap.footsteps || []) {
+        if (fp.visibleName === false) continue;
+        const prior = oldPeople.get(key(fp.label));
+        if (prior) fp.id = prior.id;
+    }
+    for (const loc of nextMap.locations) {
+        loc.eventIds = (nextMap.events || []).filter(event => event.locationId === loc.id).map(event => event.id);
+    }
+    return nextMap;
+}
+
+async function generateMap(force = false, options = {}) {
     const memory = ensureMemory();
     const hadMapBefore = isValidMapData(memory.map);
     if (memory.map && !force) {
@@ -5218,7 +5436,8 @@ async function generateMap(force = false) {
     const outputMode = getOutputModeKey();
     const modeConfig = OUTPUT_MODE_CONFIGS[outputMode];
     const mapSchema = getMapSchema(outputMode);
-    const job = beginMapGeneration(force ? 'refresh-all' : 'generate-map');
+    const continuePrevious = hadMapBefore && force && options.freshStart !== true;
+    const job = beginMapGeneration(force ? (continuePrevious ? 'refresh-continue' : 'refresh-all') : 'generate-map');
     if (!job) return;
     const startMap = memory.map;
     const startMapRevision = memory.mapRevision;
@@ -5239,7 +5458,7 @@ async function generateMap(force = false) {
 
     try {
         await withLoader(getThemeConfig().castingText, async () => {
-            const prompt = buildMapPrompt(outputMode);
+            const prompt = buildMapPrompt(outputMode) + (continuePrevious ? buildMapContinuationMemory(startMap, memory) : '');
             pushDebugLog('request.start', '지도 생성 요청 시작', {
                 jobId: job.id,
                 promptLength: prompt.length,
@@ -5253,6 +5472,7 @@ async function generateMap(force = false) {
                 maxTokens: modeConfig.mapMaxTokens,
                 signal: job.controller.signal,
                 connectionProfile: job.connectionProfile,
+                job,
             });
             assertCurrentMapGeneration(job);
             pushDebugLog('response.received', `지도 생성 응답 수신: ${String(rawText || '').length}자`, {
@@ -5269,6 +5489,7 @@ async function generateMap(force = false) {
             }
             assertCurrentMapGeneration(job);
             const normalizedMap = normalizeMap(parsed, { source: 'full-generation', outputMode });
+            if (continuePrevious) preserveContinuedMapIdentities(startMap, normalizedMap);
             await repairFootstepRosterIfNeeded(normalizedMap, outputMode, job);
             await reviewLocationIconsWithAi(normalizedMap, {
                 job,
@@ -5287,10 +5508,11 @@ async function generateMap(force = false) {
             if (rollbackSnapshot) commitPreviousMapSnapshot(freshMemory, rollbackSnapshot);
             freshMemory.map = normalizedMap;
             freshMemory.mapRevision = createMapRevisionToken();
-            freshMemory.discoveries = [];
+            if (continuePrevious && sameContinuedMapArea(startMap, normalizedMap)) reconcileTransientDiscoveries(freshMemory, normalizedMap);
+            else freshMemory.discoveries = [];
             freshMemory.selectedLocationId = normalizedMap.currentLocationId;
             freshMemory.generatedAt = nowStamp();
-            freshMemory.lastAction = 'refresh-all';
+            freshMemory.lastAction = continuePrevious ? 'refresh-continue' : 'refresh-all';
             const questCounts = normalizedMap.events.reduce((counts, event) => {
                 const scope = event?.questScope;
                 if (scope === 'world') counts.worldEvents += 1;
@@ -6344,8 +6566,10 @@ function renderMapView() {
                 <div class="mma-top-right">
                     <button class="mma-managed-button mma-close-button" data-action="close" aria-label="${isBonbonTheme() ? '게임 상자 닫기' : '닫기'}" title="${isBonbonTheme() ? '게임 상자 닫기' : '닫기'}">${escapeHtml(theme.closeText)}</button>
                     <nav class="mma-toolbar-actions" aria-label="지도 버튼">
-                        <button title="${isModernTheme() ? '현재 작전 구역 위치 신호 다시 스캔' : '현재 상황으로 전체 지도 새로고침'}" data-action="refresh-all">🔄</button>
+                        <button title="${isModernTheme() ? '현재 작전 구역 위치 신호 다시 스캔' : '현재 지도를 이어서 갱신'}" data-action="refresh-all">🔄</button>
+                        <button title="새 지도로 처음부터 다시 생성 (수첩은 유지)" data-action="refresh-fresh">🆕</button>
                         <button title="${isModernTheme() ? '직전 위치 신호 기록 복원' : '이전 지도 불러오기'}" data-action="restore-previous-map" ${hasPreviousMapSnapshot(memory) ? '' : 'disabled'}>↩️</button>
+                        ${visibleTrackedRouteKey ? '<button title="지도에서 동선 숨기기" data-action="clear-route">👣✕</button>' : ''}
                         <button title="검색" data-action="recommend">🔎</button>
                         <button title="수첩" data-action="notebook">📓</button>
                         <button title="지도 메모리 보기" data-action="memory">🧠</button>
@@ -6361,7 +6585,14 @@ function renderMapView() {
     `;
     content.querySelector('[data-action="close"]')?.addEventListener('click', () => closeMap('close-button'));
     content.querySelector('[data-action="refresh-all"]')?.addEventListener('click', () => generateMap(true));
+    content.querySelector('[data-action="refresh-fresh"]')?.addEventListener('click', () => {
+        const accepted = window.confirm(isKoreanMapLocale()
+            ? '현재 지도 대신 완전히 새 지도를 그릴까?\\n기존 수첩과 반영 데이터는 유지되고, 직전 지도는 ↩️로 한 번 복원할 수 있어.'
+            : 'Generate a fresh map instead of continuing the current one?\\nNotebook and applied items are kept. The previous map can be restored once with ↩️.');
+        if (accepted) generateMap(true, { freshStart: true });
+    });
     content.querySelector('[data-action="restore-previous-map"]')?.addEventListener('click', () => restorePreviousMap());
+    content.querySelector('[data-action="clear-route"]')?.addEventListener('click', () => { visibleTrackedRouteKey = ''; renderMapView(); });
     content.querySelector('[data-action="recommend"]')?.addEventListener('click', () => renderRecommendationPanel());
     content.querySelector('[data-action="notebook"]')?.addEventListener('click', renderNotebookPanel);
     content.querySelector('[data-action="memory"]')?.addEventListener('click', renderMemoryPanel);
@@ -6418,6 +6649,7 @@ function renderCanvas() {
         ? getBonbonJourneyPositions(locations.length)
         : getNodePositions(locations.length);
     const bonbonRouteStops = new Map();
+    drawTrackedRoute(canvas, map, positions);
     locations.forEach((loc, index) => {
         const pos = positions[index] || { x: 50, y: 50 };
         const node = document.createElement('button');
@@ -6573,7 +6805,7 @@ function renderDiscoveryListPanel() {
                     return `
                     <button type="button" class="mma-discovery-list-card" data-discovery-open="${escapeHtml(item.id)}">
                         <span class="mma-discovery-card-icon">${escapeHtml(emoji)}</span>
-                        <span><b>${escapeHtml(item.title)}</b><small>📍 ${escapeHtml(item.locationName)}</small><em>${escapeHtml(stripLong(observation, 150))}</em></span>
+                        <span><b>${escapeHtml(item.title)}</b><small>📍 ${escapeHtml(item.locationName)} · ${escapeHtml(getDiscoveryEvidenceLabel(item.evidenceLevel))}</small><em>${escapeHtml(stripLong(observation, 150))}</em></span>
                     </button>`;
                 }).join('') || '<p class="mma-empty">표시할 발견이 없습니다.</p>'}
             </div>
@@ -6600,21 +6832,24 @@ function renderDiscoveryPanel(discoveryId) {
     const observation = item.observation || item.body || item.summary || '';
     const stakes = item.stakes || '';
     const interactions = uniqueStrings(item.interactions || [], 3);
+    const sourceAnchors = uniqueStrings(item.sourceAnchors || [], 4);
     panel.innerHTML = `
         <div class="mma-place-card mma-discovery-panel">
             <header class="mma-place-header">
                 <div><span class="mma-place-icon">${escapeHtml(emoji)}</span><strong>${escapeHtml(item.title)}</strong></div>
                 <button title="${escapeHtml(ui.panelTitle)} 목록으로 돌아가기" data-action="back">↩️</button>
             </header>
-            <div class="mma-event-location">📍 ${escapeHtml(item.locationName)}</div>
+            <div class="mma-event-location">📍 ${escapeHtml(item.locationName)} · ${escapeHtml(getDiscoveryEvidenceLabel(item.evidenceLevel))}</div>
             <section class="mma-info-block mma-discovery-body">
                 <h4>🔎 지금 발견한 것</h4>
                 <p><b>${escapeHtml(focus)}</b>${focusContext ? ` — ${escapeHtml(focusContext)}` : ''}</p>
                 <p>${escapeHtml(observation)}</p>
+                <p class="mma-evidence-note">${isKoreanMapLocale() ? '표시는 지도 AI의 근거 분류이며 사실 보증은 아니야.' : 'Evidence tags reflect the map AI assessment, not proof.'}</p>
             </section>
             ${stakes ? `<section class="mma-info-block"><h4>⏳ 이대로 두면</h4><p>${escapeHtml(stakes)}</p></section>` : ''}
             ${interactions.length ? `<section class="mma-info-block"><h4>↗️ 해볼 수 있는 일</h4><ul>${interactions.map(action => `<li>${escapeHtml(action)}</li>`).join('')}</ul></section>` : ''}
             ${item.participants?.length ? `<section class="mma-info-block"><h4>👥 관련 인물</h4><ul>${item.participants.map(person => `<li>${escapeHtml(person)}</li>`).join('')}</ul></section>` : ''}
+            ${sourceAnchors.length ? `<details class="mma-evidence-anchors"><summary>${isKoreanMapLocale() ? '📎 판단 근거' : '📎 Evidence basis'}</summary><ul>${sourceAnchors.map(anchor => `<li>${escapeHtml(anchor)}</li>`).join('')}</ul></details>` : ''}
             <footer class="mma-place-actions mma-discovery-actions">
                 <div class="mma-event-actions">${renderActionButtons('discovery', item.id)}</div>
                 <button type="button" class="mma-discovery-dismiss" data-discovery-dismiss="${escapeHtml(item.id)}">현재 지도에서 숨기기</button>
@@ -6963,7 +7198,7 @@ function renderActionPanel(locationFilterId = null, globalView = false) {
                 <button title="위치 카드로 돌아가기" data-action="back">↩️</button>
             </header>
             <p class="mma-panel-note">장소와 퀘스트는 각각 따로 수집하거나 반영할 수 있습니다.</p>
-            ${selectedLocation ? `<h4 class="mma-section-title">장소와 퀘스트를 반영할까요?</h4>${renderLocationManageCard(selectedLocation)}` : ''}
+            ${selectedLocation ? `<h4 class="mma-section-title">장소 정보를 선택하고 연결 퀘스트는 따로 결정할 수 있어요.</h4>${renderLocationManageCard(selectedLocation)}` : ''}
             ${events.length ? `<h4 class="mma-section-title">퀘스트만 반영할까요?</h4>${events.map(event => renderEventCard(event)).join('')}` : ''}
             ${!selectedLocation && !events.length ? '<p class="mma-empty">반영할 위치나 사건이 없습니다.</p>' : ''}
         </div>
@@ -7109,21 +7344,21 @@ function confirmManageAction(type, id, action) {
     const injectQuestion = info.kind === '발견'
         ? '이 발견을 반영할까요?'
         : info.kind === '장소'
-        ? '장소와 퀘스트를 반영할까요?'
+        ? '장소 정보를 반영할까요? 연결된 퀘스트는 다음 단계에서 따로 선택합니다.'
         : info.kind === '사건'
             ? '퀘스트만 반영할까요?'
             : '이 정보를 반영할까요?';
     const charQuestion = info.kind === '발견'
         ? `이 발견을 ${charName}이(가) 먼저 눈치채도록 반영할까요?`
         : info.kind === '장소'
-        ? `장소와 퀘스트를 ${charName}이(가) 먼저 눈치채도록 반영할까요?`
+        ? `장소 정보를 ${charName}이(가) 먼저 눈치채도록 반영할까요? 연결된 퀘스트는 따로 선택합니다.`
         : info.kind === '사건'
             ? `퀘스트만 ${charName}이(가) 먼저 눈치채도록 반영할까요?`
             : `이 정보를 ${charName}이(가) 먼저 눈치채도록 반영할까요?`;
     const userQuestion = info.kind === '발견'
         ? `이 발견을 ${userName}이(가) 먼저 눈치챌 수 있도록 반영할까요?`
         : info.kind === '장소'
-        ? `장소와 퀘스트를 ${userName}이(가) 먼저 눈치챌 수 있도록 반영할까요?`
+        ? `장소 정보를 ${userName}이(가) 먼저 눈치챌 수 있도록 반영할까요? 연결된 퀘스트는 따로 선택합니다.`
         : info.kind === '사건'
             ? `퀘스트만 ${userName}이(가) 먼저 눈치챌 수 있도록 반영할까요?`
             : `이 정보를 ${userName}이(가) 먼저 눈치챌 수 있도록 반영할까요?`;
@@ -7151,6 +7386,19 @@ async function handleManageAction(type, id, action) {
     if (!map) return;
     if (!confirmManageAction(type, id, action)) return;
     const shouldReturnToNotebook = Boolean(document.querySelector('.mma-notebook-panel'));
+    const existingManagedLocation = type === 'managed'
+        ? memory.managedItems.find(item => item.id === id && item.type === 'location')
+        : null;
+    const chosenLocationId = type === 'location' ? id : existingManagedLocation?.locationId;
+    const linkedQuests = chosenLocationId
+        ? (map.events || []).filter(event => event.locationId === chosenLocationId && event.status !== 'ignored')
+        : [];
+    const availableQuestCount = linkedQuests.length || (existingManagedLocation?.eventSnapshots || []).length;
+    // The first confirm cancels the whole action. This second choice uses
+    // Cancel specifically for place-only (never silently bundle quests).
+    const includeLinkedQuests = action !== 'remove' && availableQuestCount > 0 && window.confirm(isKoreanMapLocale()
+        ? `이 장소의 퀘스트 ${availableQuestCount}개도 함께 ${action === 'hold' ? '수집' : '반영'}할까?\n\n확인: 장소 + 퀘스트\n취소: 장소만`
+        : `Include ${availableQuestCount} linked quest(s) with this location?\n\nOK: location + quests\nCancel: location only`);
 
     if (type === 'managed') {
         const item = memory.managedItems.find(x => x.id === id);
@@ -7159,12 +7407,36 @@ async function handleManageAction(type, id, action) {
             memory.managedItems = memory.managedItems.filter(x => x.id !== id);
             markMapEventStatus(item.sourceId || '', 'available');
         } else {
+            if (item.type === 'location') {
+                const live = map.locations.find(location => location.id === item.locationId);
+                const stored = (item.eventSnapshots || []);
+                const events = linkedQuests.length ? linkedQuests : stored;
+                const visibleQuestSnapshots = includeLinkedQuests ? events.map(event => ({
+                    title: event.title,
+                    summary: event.summary,
+                    details: event.details,
+                    reward: event.reward,
+                    injectionText: event.injectionText,
+                })) : [];
+                item.eventSnapshots = visibleQuestSnapshots;
+                item.includeLinkedQuests = visibleQuestSnapshots.length > 0;
+                const locationData = live || {
+                    name: item.locationName,
+                    situation: item.summary,
+                    details: item.details,
+                    present: item.present || [],
+                    clues: item.clues || [],
+                };
+                item.englishContext = item.includeLinkedQuests
+                    ? (live?.injectionText || buildLocationContextFallback(locationData, visibleQuestSnapshots))
+                    : buildLocationOnlyContextFallback(locationData);
+            }
             item.status = actionToStatus(action);
             item.updatedAt = nowStamp();
             markMapEventStatus(item.sourceId || '', item.status);
         }
     } else {
-        const item = snapshotManagedItem(type, id, actionToStatus(action));
+        const item = snapshotManagedItem(type, id, actionToStatus(action), { includeLinkedQuests });
         if (!item) return;
         if (action === 'remove') {
             removeManagedBySource(item.sourceId);
@@ -7210,14 +7482,16 @@ function actionToStatus(action) {
     }[action] || 'held';
 }
 
-function snapshotManagedItem(type, id, status) {
+function snapshotManagedItem(type, id, status, options = {}) {
     const memory = ensureMemory();
     const map = memory.map;
     if (!map) return null;
     if (type === 'location') {
         const loc = map.locations.find(l => l.id === id);
         if (!loc) return null;
-        const events = (map.events || []).filter(e => e.locationId === loc.id && e.status !== 'ignored');
+        const events = options.includeLinkedQuests === true
+            ? (map.events || []).filter(e => e.locationId === loc.id && e.status !== 'ignored')
+            : [];
         return {
             id: `location:${loc.id}`,
             sourceId: `location:${loc.id}`,
@@ -7231,7 +7505,8 @@ function snapshotManagedItem(type, id, status) {
             present: [...loc.present],
             clues: [...loc.clues],
             eventSnapshots: events.map(e => ({ title: e.title, summary: e.summary, details: e.details, reward: e.reward, injectionText: e.injectionText })),
-            englishContext: loc.injectionText || buildLocationContextFallback(loc, events),
+            includeLinkedQuests: events.length > 0,
+            englishContext: events.length ? (loc.injectionText || buildLocationContextFallback(loc, events)) : buildLocationOnlyContextFallback(loc),
             createdAt: nowStamp(),
             updatedAt: nowStamp(),
         };
@@ -7291,6 +7566,7 @@ function snapshotManagedItem(type, id, status) {
             stakes: item.stakes || '',
             interactions: [...(item.interactions || [])],
             sourceAnchors: [...(item.sourceAnchors || item.anchors || [])],
+            evidenceLevel: normalizeDiscoveryEvidence(item.evidenceLevel),
             createdAt: nowStamp(),
             updatedAt: nowStamp(),
         };
@@ -7393,6 +7669,12 @@ function markMapEventStatus(sourceId, status) {
     if (event) event.status = status;
 }
 
+function buildLocationOnlyContextFallback(loc) {
+    const people = (loc.present || []).join(', ');
+    const clues = (loc.clues || []).join('; ');
+    return `Selected map location: ${loc.name}. Current atmosphere and situation: ${loc.situation} Additional observation: ${loc.details || ''} People present or nearby: ${people || 'not clearly identified'}. Notable clues: ${clues || 'none specified'}. This selection includes the place only; it does not select or activate any linked quest. Use the setting as background when the roleplay naturally reaches this location. Do not force the user's actions or mention the map UI.`;
+}
+
 function buildLocationContextFallback(loc, events = []) {
     const people = (loc.present || []).join(', ');
     const clues = (loc.clues || []).join('; ');
@@ -7424,6 +7706,7 @@ What is currently observable: ${observation}
 If nobody intervenes, what changes next: ${stakes}
 Possible ways characters may engage: ${interactions.join(' / ')}
 Continuity basis: ${sourceAnchors.join(' / ')}
+Evidence status: ${normalizeDiscoveryEvidence(item.evidenceLevel)}. Treat inferred facts as provisional, and rumors as second-hand claims rather than settled truth.
 
 Maintain this as a current world state at the stated location. When the roleplay reaches this location or naturally connects to its focus, make the observable state available through concrete action, sound, dialogue, movement, or physical detail. Let the state develop from the characters' actual responses, using the listed interactions as possibilities.`;
 }
@@ -7875,6 +8158,7 @@ function handleMapChatChanged() {
     // A real chat switch is different from merely closing the map.
     // Stop the old chat's request so it cannot save into the new one.
     cancelActiveMapGeneration('chat changed');
+    visibleTrackedRouteKey = '';
     closeMap('chat.changed');
     setTimeout(() => syncExtensionPrompt({ createMemory: false }), 0);
 }
@@ -7986,6 +8270,7 @@ export function onEnable() {
 
 export function onDisable() {
     lifecycleEnabled = false;
+    visibleTrackedRouteKey = '';
     stopMarauderSerifProtection();
     stopMapUiLocaleObservers();
     initialized = false;
