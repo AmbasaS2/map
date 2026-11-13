@@ -22,7 +22,7 @@ const FOOTSTEP_REPAIR_MAX_TOKENS = 1600;
 const LOCATION_ICON_REVIEW_MAX_TOKENS = 600;
 const DEBUG_LOG_LIMIT = 40;
 const memoryDebugLogs = [];
-const EXTENSION_VERSION = '3.2.0';
+const EXTENSION_VERSION = '3.2.1';
 const SHARED_NOTEBOOK_KEYS = Object.freeze(['managedItems', 'footstepProfiles', 'trackedPeople', 'recommendations', 'searchResults']);
 const SHARED_NOTEBOOK_MIGRATION_VERSION = 1;
 const DISCOVERY_HISTORY_LIMIT = 30;
@@ -5227,7 +5227,96 @@ async function withConnectionProfile(fn) {
 }
 
 
-async function generateMap(force = false) {
+
+// Prior map observations are context, not automatically established roleplay facts.
+function buildMapContinuationMemory(previousMap, memory) {
+    if (!isValidMapData(previousMap)) return '';
+    const locations = (previousMap.locations || []).map(location => ({
+        name: location.name,
+        situation: stripLong(location.situation, 220),
+        details: stripLong(location.details, 120),
+        people: (location.present || []).slice(0, 6),
+        clues: (location.clues || []).slice(0, 5),
+    }));
+    const events = (previousMap.events || []).map(event => {
+        const place = previousMap.locations.find(location => location.id === event.locationId);
+        return {
+            title: event.title,
+            location: place?.name || '',
+            proposedState: String(event.status || 'available'),
+            summary: stripLong(event.summary, 230),
+            details: stripLong(event.details, 120),
+        };
+    });
+    const footsteps = (previousMap.footsteps || []).map(footstep => ({
+        name: footstep.label,
+        location: previousMap.locations.find(location => location.id === footstep.locationId)?.name || '',
+        activity: stripLong(footstep.status, 130),
+    }));
+    const discoveries = (memory?.discoveries || []).slice(0, 12).map(item => ({
+        name: item.title,
+        location: item.locationName,
+        observation: stripLong(item.observation, 130),
+        evidence: item.evidenceLevel || 'inferred',
+    }));
+    return '\n\n[Previous map: continuity reference, not unquestionable canon]\n'
+        + JSON.stringify({
+            area: previousMap.regionName,
+            time: previousMap.timeHint,
+            overview: stripLong(previousMap.worldSummary, 250),
+            locations, footsteps, events, discoveries,
+        })
+        + '\nKeep established names and confirmed geography consistent when still in the same mapped area. Update current activities, positions, and conditions only when the more recent roleplay supplies a reason. Previous map quests and discoveries are proposed observations, not automatically completed events or user-accepted canon. Do not silently resolve them, invent off-screen outcomes, force a quest, or retell old events as newly discovered facts. If the scene moves to a different region, map that new region instead. Recent roleplay and explicitly confirmed facts take priority over old map guesses.\n';
+}
+
+// Identity alignment only for exact names; never join lookalike NPCs or places.
+function preserveContinuedMapIdentities(previousMap, nextMap) {
+    if (!isValidMapData(previousMap) || !isValidMapData(nextMap)) return nextMap;
+    const key = value => normalizeDiscoveryText(value);
+    const oldLocations = new Map(previousMap.locations.map(location => [key(location.name), location]));
+    const idChanges = new Map();
+    const usedIds = new Set();
+    for (const location of nextMap.locations) {
+        const prev = oldLocations.get(key(location.name));
+        const oldId = String(prev?.id || '');
+        const newId = String(location.id || '');
+        if (oldId && !usedIds.has(oldId)) {
+            location.id = oldId;
+            idChanges.set(newId, oldId);
+        }
+        usedIds.add(String(location.id));
+    }
+    const relinkId = id => idChanges.get(String(id || '')) || id;
+    nextMap.currentLocationId = relinkId(nextMap.currentLocationId);
+    for (const person of nextMap.footsteps || []) person.locationId = relinkId(person.locationId);
+    for (const event of nextMap.events || []) event.locationId = relinkId(event.locationId);
+    const prevEvents = new Map((previousMap.events || []).map(event => {
+        const loc = previousMap.locations.find(l => l.id === event.locationId);
+        return [key(event.title) + '|' + key(loc?.name), event];
+    }));
+    for (const event of nextMap.events || []) {
+        const loc = nextMap.locations.find(l => l.id === event.locationId);
+        const prior = prevEvents.get(key(event.title) + '|' + key(loc?.name));
+        if (prior) {
+            event.id = prior.id;
+            event.status = prior.status || 'available';
+        }
+    }
+    const oldPeople = new Map((previousMap.footsteps || [])
+        .filter(fp => fp.visibleName !== false)
+        .map(fp => [key(fp.label), fp]));
+    for (const fp of nextMap.footsteps || []) {
+        if (fp.visibleName === false) continue;
+        const prior = oldPeople.get(key(fp.label));
+        if (prior) fp.id = prior.id;
+    }
+    for (const loc of nextMap.locations) {
+        loc.eventIds = (nextMap.events || []).filter(event => event.locationId === loc.id).map(event => event.id);
+    }
+    return nextMap;
+}
+
+async function generateMap(force = false, options = {}) {
     const memory = ensureMemory();
     const hadMapBefore = isValidMapData(memory.map);
     if (memory.map && !force) {
@@ -5239,7 +5328,8 @@ async function generateMap(force = false) {
     const outputMode = getOutputModeKey();
     const modeConfig = OUTPUT_MODE_CONFIGS[outputMode];
     const mapSchema = getMapSchema(outputMode);
-    const job = beginMapGeneration(force ? 'refresh-all' : 'generate-map');
+    const continuePrevious = hadMapBefore && force && options.freshStart !== true;
+    const job = beginMapGeneration(force ? (continuePrevious ? 'refresh-continue' : 'refresh-all') : 'generate-map');
     if (!job) return;
     const startMap = memory.map;
     const startMapRevision = memory.mapRevision;
@@ -5260,7 +5350,7 @@ async function generateMap(force = false) {
 
     try {
         await withLoader(getThemeConfig().castingText, async () => {
-            const prompt = buildMapPrompt(outputMode);
+            const prompt = buildMapPrompt(outputMode) + (continuePrevious ? buildMapContinuationMemory(startMap, memory) : '');
             pushDebugLog('request.start', '지도 생성 요청 시작', {
                 jobId: job.id,
                 promptLength: prompt.length,
@@ -5291,6 +5381,7 @@ async function generateMap(force = false) {
             }
             assertCurrentMapGeneration(job);
             const normalizedMap = normalizeMap(parsed, { source: 'full-generation', outputMode });
+            if (continuePrevious) preserveContinuedMapIdentities(startMap, normalizedMap);
             await repairFootstepRosterIfNeeded(normalizedMap, outputMode, job);
             await reviewLocationIconsWithAi(normalizedMap, {
                 job,
@@ -5309,10 +5400,11 @@ async function generateMap(force = false) {
             if (rollbackSnapshot) commitPreviousMapSnapshot(freshMemory, rollbackSnapshot);
             freshMemory.map = normalizedMap;
             freshMemory.mapRevision = createMapRevisionToken();
-            freshMemory.discoveries = [];
+            if (continuePrevious) reconcileTransientDiscoveries(freshMemory, normalizedMap);
+            else freshMemory.discoveries = [];
             freshMemory.selectedLocationId = normalizedMap.currentLocationId;
             freshMemory.generatedAt = nowStamp();
-            freshMemory.lastAction = 'refresh-all';
+            freshMemory.lastAction = continuePrevious ? 'refresh-continue' : 'refresh-all';
             const questCounts = normalizedMap.events.reduce((counts, event) => {
                 const scope = event?.questScope;
                 if (scope === 'world') counts.worldEvents += 1;
@@ -6366,7 +6458,8 @@ function renderMapView() {
                 <div class="mma-top-right">
                     <button class="mma-managed-button mma-close-button" data-action="close" aria-label="${isBonbonTheme() ? '게임 상자 닫기' : '닫기'}" title="${isBonbonTheme() ? '게임 상자 닫기' : '닫기'}">${escapeHtml(theme.closeText)}</button>
                     <nav class="mma-toolbar-actions" aria-label="지도 버튼">
-                        <button title="${isModernTheme() ? '현재 작전 구역 위치 신호 다시 스캔' : '현재 상황으로 전체 지도 새로고침'}" data-action="refresh-all">🔄</button>
+                        <button title="${isModernTheme() ? '현재 작전 구역 위치 신호 다시 스캔' : '현재 지도를 이어서 갱신'}" data-action="refresh-all">🔄</button>
+                        <button title="새 지도로 처음부터 다시 생성 (수첩은 유지)" data-action="refresh-fresh">🆕</button>
                         <button title="${isModernTheme() ? '직전 위치 신호 기록 복원' : '이전 지도 불러오기'}" data-action="restore-previous-map" ${hasPreviousMapSnapshot(memory) ? '' : 'disabled'}>↩️</button>
                         <button title="검색" data-action="recommend">🔎</button>
                         <button title="수첩" data-action="notebook">📓</button>
@@ -6383,6 +6476,12 @@ function renderMapView() {
     `;
     content.querySelector('[data-action="close"]')?.addEventListener('click', () => closeMap('close-button'));
     content.querySelector('[data-action="refresh-all"]')?.addEventListener('click', () => generateMap(true));
+    content.querySelector('[data-action="refresh-fresh"]')?.addEventListener('click', () => {
+        const accepted = window.confirm(isKoreanMapLocale()
+            ? '현재 지도 대신 완전히 새 지도를 그릴까?\\n기존 수첩과 반영 데이터는 유지되고, 직전 지도는 ↩️로 한 번 복원할 수 있어.'
+            : 'Generate a fresh map instead of continuing the current one?\\nNotebook and applied items are kept. The previous map can be restored once with ↩️.');
+        if (accepted) generateMap(true, { freshStart: true });
+    });
     content.querySelector('[data-action="restore-previous-map"]')?.addEventListener('click', () => restorePreviousMap());
     content.querySelector('[data-action="recommend"]')?.addEventListener('click', () => renderRecommendationPanel());
     content.querySelector('[data-action="notebook"]')?.addEventListener('click', renderNotebookPanel);
