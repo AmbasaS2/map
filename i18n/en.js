@@ -298,5 +298,17 @@ export const ENGLISH_UI = Object.freeze({
     "기록된 발견 없음": "No discoveries recorded",
     "이 정보는 다음 응답부터 반영됩니다.": "This information will affect responses from the next turn onward.",
     "확인": "Confirm",
-    "저장": "Save"
+    "저장": "Save",
+    "맛집": "Restaurants",
+    "데이트 명소": "Date spots",
+    "요즘 핫플레이스": "Trending places",
+    "산책 코스": "Walking routes",
+    "검색 장소": "Searched place",
+    "인물 위치": "Character location",
+    "위치 신호": "Location signal",
+    "이후 동선": "Later movements",
+    "관계 및 친밀도": "Relationship and closeness",
+    "현재 지도": "Current map",
+    "지도의 퀘스트": "Map quests",
+    "미확인": "Unknown"
 });
