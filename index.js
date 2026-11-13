@@ -487,6 +487,8 @@ function isKoreanMapLocale() {
 function getMapNarrativeLanguage() {
     const locale = String(getCurrentLocale() || 'en').toLowerCase();
     const languageCode = locale.split(/[-_]/)[0] || 'en';
+    if (/^zh[-_]tw/.test(locale)) return 'Traditional Chinese';
+    if (/^zh[-_]cn/.test(locale)) return 'Simplified Chinese';
     try {
         return new Intl.DisplayNames(['en'], { type: 'language' }).of(languageCode) || 'English';
     } catch {
