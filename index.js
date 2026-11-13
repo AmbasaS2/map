@@ -4603,12 +4603,12 @@ let visibleTrackedRouteKey = '';
 
 function getTrackedRouteSegments(tracked, map, positions) {
     if (!tracked || !isValidMapData(map)) return [];
-    const byName = new Map(map.locations.map((loc, i) => [normalizeDiscoveryText(loc.name), positions[i]]));
+    const byName = new Map(map.locations.map((loc, i) => [String(loc.id), positions[i]]));
     const history = Array.isArray(tracked.history) ? tracked.history.slice(0, 12).reverse() : [];
     const points = [...history.map(h => ({ location: h.location, confidence: h.confidence || '' })),
         { location: tracked.lastLocation, confidence: tracked.confidence || '' }]
         .map(item => ({
-            point: byName.get(normalizeDiscoveryText(item.location)) || null,
+            point: byName.get(String(findUnambiguousLocationNameMatch(map.locations, item.location)?.id || '')) || null,
             high: /^(?:높음|high|confirmed)$/i.test(String(item.confidence || '').trim()),
         }));
     const result = [];
@@ -5371,8 +5371,15 @@ function buildMapContinuationMemory(previousMap, memory) {
 }
 
 // Identity alignment only for exact names; never join lookalike NPCs or places.
+function sameContinuedMapArea(previousMap, nextMap) {
+    const a = normalizeDiscoveryText(previousMap?.regionName);
+    const b = normalizeDiscoveryText(nextMap?.regionName);
+    if (!a || !b) return false; // An unknown area is not safe to merge by name.
+    return a === b || (a.length >= 6 && b.includes(a)) || (b.length >= 6 && a.includes(b));
+}
+
 function preserveContinuedMapIdentities(previousMap, nextMap) {
-    if (!isValidMapData(previousMap) || !isValidMapData(nextMap)) return nextMap;
+    if (!isValidMapData(previousMap) || !isValidMapData(nextMap) || !sameContinuedMapArea(previousMap, nextMap)) return nextMap;
     const key = value => normalizeDiscoveryText(value);
     const oldLocations = new Map(previousMap.locations.map(location => [key(location.name), location]));
     const idChanges = new Map();
@@ -5501,7 +5508,7 @@ async function generateMap(force = false, options = {}) {
             if (rollbackSnapshot) commitPreviousMapSnapshot(freshMemory, rollbackSnapshot);
             freshMemory.map = normalizedMap;
             freshMemory.mapRevision = createMapRevisionToken();
-            if (continuePrevious) reconcileTransientDiscoveries(freshMemory, normalizedMap);
+            if (continuePrevious && sameContinuedMapArea(startMap, normalizedMap)) reconcileTransientDiscoveries(freshMemory, normalizedMap);
             else freshMemory.discoveries = [];
             freshMemory.selectedLocationId = normalizedMap.currentLocationId;
             freshMemory.generatedAt = nowStamp();
@@ -6825,6 +6832,7 @@ function renderDiscoveryPanel(discoveryId) {
     const observation = item.observation || item.body || item.summary || '';
     const stakes = item.stakes || '';
     const interactions = uniqueStrings(item.interactions || [], 3);
+    const sourceAnchors = uniqueStrings(item.sourceAnchors || [], 4);
     panel.innerHTML = `
         <div class="mma-place-card mma-discovery-panel">
             <header class="mma-place-header">
@@ -6841,6 +6849,7 @@ function renderDiscoveryPanel(discoveryId) {
             ${stakes ? `<section class="mma-info-block"><h4>⏳ 이대로 두면</h4><p>${escapeHtml(stakes)}</p></section>` : ''}
             ${interactions.length ? `<section class="mma-info-block"><h4>↗️ 해볼 수 있는 일</h4><ul>${interactions.map(action => `<li>${escapeHtml(action)}</li>`).join('')}</ul></section>` : ''}
             ${item.participants?.length ? `<section class="mma-info-block"><h4>👥 관련 인물</h4><ul>${item.participants.map(person => `<li>${escapeHtml(person)}</li>`).join('')}</ul></section>` : ''}
+            ${sourceAnchors.length ? `<details class="mma-evidence-anchors"><summary>${isKoreanMapLocale() ? '📎 판단 근거' : '📎 Evidence basis'}</summary><ul>${sourceAnchors.map(anchor => `<li>${escapeHtml(anchor)}</li>`).join('')}</ul></details>` : ''}
             <footer class="mma-place-actions mma-discovery-actions">
                 <div class="mma-event-actions">${renderActionButtons('discovery', item.id)}</div>
                 <button type="button" class="mma-discovery-dismiss" data-discovery-dismiss="${escapeHtml(item.id)}">현재 지도에서 숨기기</button>
