@@ -7377,14 +7377,19 @@ async function handleManageAction(type, id, action) {
     if (!map) return;
     if (!confirmManageAction(type, id, action)) return;
     const shouldReturnToNotebook = Boolean(document.querySelector('.mma-notebook-panel'));
-    const linkedQuests = type === 'location'
-        ? (map.events || []).filter(event => event.locationId === id && event.status !== 'ignored')
+    const existingManagedLocation = type === 'managed'
+        ? memory.managedItems.find(item => item.id === id && item.type === 'location')
+        : null;
+    const chosenLocationId = type === 'location' ? id : existingManagedLocation?.locationId;
+    const linkedQuests = chosenLocationId
+        ? (map.events || []).filter(event => event.locationId === chosenLocationId && event.status !== 'ignored')
         : [];
-    // Cancel here means "location only"; the preceding confirmation can cancel
-    // the action entirely. We never bundle a quest into a location silently.
-    const includeLinkedQuests = linkedQuests.length > 0 && window.confirm(isKoreanMapLocale()
-        ? `이 장소의 퀘스트 ${linkedQuests.length}개도 함께 ${action === 'hold' ? '수집' : '반영'}할까?\n\n확인: 장소 + 퀘스트\n취소: 장소만`
-        : `Include ${linkedQuests.length} linked quest(s) with this location?\n\nOK: location + quests\nCancel: location only`);
+    const availableQuestCount = linkedQuests.length || (existingManagedLocation?.eventSnapshots || []).length;
+    // The first confirm cancels the whole action. This second choice uses
+    // Cancel specifically for place-only (never silently bundle quests).
+    const includeLinkedQuests = action !== 'remove' && availableQuestCount > 0 && window.confirm(isKoreanMapLocale()
+        ? `이 장소의 퀘스트 ${availableQuestCount}개도 함께 ${action === 'hold' ? '수집' : '반영'}할까?\n\n확인: 장소 + 퀘스트\n취소: 장소만`
+        : `Include ${availableQuestCount} linked quest(s) with this location?\n\nOK: location + quests\nCancel: location only`);
 
     if (type === 'managed') {
         const item = memory.managedItems.find(x => x.id === id);
@@ -7393,6 +7398,30 @@ async function handleManageAction(type, id, action) {
             memory.managedItems = memory.managedItems.filter(x => x.id !== id);
             markMapEventStatus(item.sourceId || '', 'available');
         } else {
+            if (item.type === 'location') {
+                const live = map.locations.find(location => location.id === item.locationId);
+                const stored = (item.eventSnapshots || []);
+                const events = linkedQuests.length ? linkedQuests : stored;
+                const visibleQuestSnapshots = includeLinkedQuests ? events.map(event => ({
+                    title: event.title,
+                    summary: event.summary,
+                    details: event.details,
+                    reward: event.reward,
+                    injectionText: event.injectionText,
+                })) : [];
+                item.eventSnapshots = visibleQuestSnapshots;
+                item.includeLinkedQuests = visibleQuestSnapshots.length > 0;
+                const locationData = live || {
+                    name: item.locationName,
+                    situation: item.summary,
+                    details: item.details,
+                    present: item.present || [],
+                    clues: item.clues || [],
+                };
+                item.englishContext = item.includeLinkedQuests
+                    ? (live?.injectionText || buildLocationContextFallback(locationData, visibleQuestSnapshots))
+                    : buildLocationOnlyContextFallback(locationData);
+            }
             item.status = actionToStatus(action);
             item.updatedAt = nowStamp();
             markMapEventStatus(item.sourceId || '', item.status);
