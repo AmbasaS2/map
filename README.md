@@ -56,6 +56,8 @@ If the generated roster is too small or not distributed across enough locations,
 
 If a structured-output call through the Main API fails, the extension may retry it once with explicit JSON instructions under the same per-request limit.
 
+For a separate connection profile, one full-map generation shares its activated-lorebook scan with any roster-completion call. The optional emoji-only review skips a redundant lorebook scan. World Info budget settings still apply and can still produce an ordinary budget warning.
+
 ### 🔤 Font Size
 
 Adjust map text from 10 to 24 px. The default is 13 px, and all three themes use the same font-size scale.
@@ -568,6 +570,8 @@ Bonbon Board에서는 네 면의 게임 경로 위에 장소를 나타내는 이
 ---
 
 ## 🪄 Revelio / 📡 주변 상황 탐색 / 🔑 열쇠 카드
+
+새로 생성된 발견에는 **RP에서 확인 / 추정 / 소문** 근거 표시를 붙입니다. 최근 RP의 실제 내용과 근거가 연결되는 경우에만 '확인'으로 분류하고, AI가 이전에 생성한 지도 설명만으로 사실을 확정하지 않습니다. 표시와 근거 설명은 AI의 분류 결과이며 사실 보증이 아닙니다. 추정이나 소문을 RP에 반영하더라도 확정 사실로 취급하지 않도록 지시합니다.
 
 지도판 오른쪽 위의 버튼을 누르면 현재 지도에 아직 표시되지 않은 구체적인 존재·물건·메시지·장소의 변화·진행 중인 사건의 징후를 별도의 AI 요청으로 확인합니다.
 
