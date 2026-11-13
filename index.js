@@ -511,6 +511,10 @@ function localizeMapUiText(input) {
         if (match) translated = '👣 Current status: ' + match[1];
         match = plain.match(/^(\d+)개$/u);
         if (match) translated = match[1] + ' items';
+        match = plain.match(/^📍\s*(.+)\s+전체$/u);
+        if (match) translated = '📍 Entire location: ' + match[1];
+        match = plain.match(/^(\d+)개\s*·$/u);
+        if (match) translated = match[1] + ' items ·';
     }
     if (!translated) {
         // Dynamic toast messages are assembled from smaller, user-facing labels.
@@ -2757,7 +2761,7 @@ Location writing:
 - Treat all locations as one simultaneous snapshot of the supplied roleplay.
 - Keep each recurring person in one location and preserve the display spelling used in the roleplay.
 - present contains only people or groups physically visible at that exact place and moment, from 0 to 6 entries.
-- A visible group is one complete Korean phrase stating what kind of group is there, what they are doing or where they gather, and a plausible rough count.
+- A visible group is one complete ${getMapNarrativeLanguage()} phrase stating what kind of group is there, what they are doing or where they gather, and a plausible rough count.
 - situation establishes the recognizable physical place: layout, entrances, surfaces, furniture or structures, light, air, sound, material, movement, and the activity already occurring there.
 - details is a second view of the same place and moment. Add a distinct local beat, object, exchange, trace, risk, expectation, or change without repeating situation.
 - Place named people through visible posture, movement, work, dialogue, objects, attention, avoidance, or interaction. When the same individual appears in more than one field, align that person's actions across situation, present, footsteps, and quests.
@@ -4270,7 +4274,9 @@ async function deleteRecommendation(id) {
         toast('이미 삭제되었거나 찾을 수 없는 검색 결과입니다.', 'warning');
         return false;
     }
-    if (!window.confirm(`${item.title || '이 검색 장소'}을(를) 삭제할까요?\n수집/반영해 둔 동일 항목도 함께 해제됩니다.`)) return false;
+    if (!window.confirm(isKoreanMapLocale()
+        ? `${item.title || '이 검색 장소'}을(를) 삭제할까요?\n수집/반영해 둔 동일 항목도 함께 해제됩니다.`
+        : `Delete "${item.title || 'this searched place'}"?\nAny collected or applied state for this item will also be removed.`)) return false;
 
     const before = {
         placeResults: memory.recommendations?.length || 0,
@@ -4489,7 +4495,9 @@ async function deletePersonSearchResult(id) {
         toast('이미 삭제되었거나 찾을 수 없는 검색 기록입니다.', 'warning');
         return false;
     }
-    if (!window.confirm('이 인물 검색 기록을 삭제할까요?\n추적 중인 인물이나 이미 반영한 데이터는 삭제되지 않습니다.')) return false;
+    if (!window.confirm(isKoreanMapLocale()
+        ? '이 인물 검색 기록을 삭제할까요?\n추적 중인 인물이나 이미 반영한 데이터는 삭제되지 않습니다.'
+        : 'Delete this person search record?\nTracked people and already-applied items will remain.')) return false;
 
     const before = memory.searchResults?.length || 0;
     memory.searchResults = (memory.searchResults || []).filter(result => result.id !== id);
@@ -5537,7 +5545,10 @@ async function handleFootstepClick(footstepId) {
     const message = hint
         ? `'${label}'의 현재 상태를 확인할까요?\n\n현재 신호: ${hint}`
         : `'${label}'의 현재 상태를 확인할까요?`;
-    if (!window.confirm(message)) return;
+    const confirmMessage = isKoreanMapLocale()
+        ? message
+        : `Check "${label}"'s current status?${hint ? '\n\nCurrent signal: ' + hint : ''}`;
+    if (!window.confirm(confirmMessage)) return;
     const profile = await getOrGenerateFootstepProfile(footstepId);
     if (profile) renderFootstepPanel(footstepId);
 }
@@ -7000,7 +7011,15 @@ function confirmManageAction(type, id, action) {
         user: `${infoText}\n\n${userQuestion}`,
         remove: `${info.title}의 주입 설정만 삭제합니다.\n지도에 표시된 장소, 인물, 퀘스트, 발견 자체는 사라지지 않습니다.\n\n삭제할까요?`,
     };
-    return window.confirm(messages[action] || `${info.title} 항목을 처리할까요?`);
+    if (isKoreanMapLocale()) return window.confirm(messages[action] || `${info.title} 항목을 처리할까요?`);
+    const englishMessages = {
+        hold: `Save "${subject}" to the notebook? It won't affect roleplay unless applied later.\n\nContinue?`,
+        inject: `Apply "${info.title}" as background context in future responses?`,
+        char: `Apply "${info.title}" so ${charName} notices it first?`,
+        user: `Apply "${info.title}" so ${userName} notices it first?`,
+        remove: `Remove only the application setting for "${info.title}"?\nThe map item itself will remain.`,
+    };
+    return window.confirm(englishMessages[action] || `Manage "${info.title}"?`);
 }
 
 async function handleManageAction(type, id, action) {
