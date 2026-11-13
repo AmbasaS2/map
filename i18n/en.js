@@ -142,7 +142,7 @@ export const ENGLISH_UI = Object.freeze({
     "캐릭터 인지": "Character notices",
     "유저 인지": "User notices",
     "선택한 항목": "Selected item",
-    "추정": "Estimated",
+    "추정": "Inferred",
     "위치 추정": "Estimated location",
     "지도 확인": "Confirmed on map",
     "지도에서 확인": "Confirmed on map",
@@ -311,8 +311,12 @@ export const ENGLISH_UI = Object.freeze({
     "현재 지도": "Current map",
     "지도의 퀘스트": "Map quests",
     "미확인": "Unknown",
-    "👣 동선 지도 보기": "👣 Show route on map",
+    "👣 동선 지도 보기": "👣 Show tracked locations on map",
     "지도에서 동선 숨기기": "Hide tracked route",
     "새 지도로 처음부터 다시 생성 (수첩은 유지)": "Generate a fresh map (keep notebook)",
-    "현재 지도를 이어서 갱신": "Continue existing map"
+    "현재 지도를 이어서 갱신": "Continue the existing map",
+    "장소 정보를 선택하고 연결 퀘스트는 따로 결정할 수 있어요.": "Choose the location first; linked quests are optional.",
+    "📎 판단 근거": "📎 Evidence basis",
+    "RP에서 확인": "Observed in RP",
+    "소문": "Rumor"
 });
