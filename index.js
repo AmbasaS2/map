@@ -20,7 +20,7 @@ const FOOTSTEP_REPAIR_MAX_TOKENS = 1600;
 const LOCATION_ICON_REVIEW_MAX_TOKENS = 600;
 const DEBUG_LOG_LIMIT = 40;
 const memoryDebugLogs = [];
-const EXTENSION_VERSION = '3.1.2';
+const EXTENSION_VERSION = '3.1.3';
 const SHARED_NOTEBOOK_KEYS = Object.freeze(['managedItems', 'footstepProfiles', 'trackedPeople', 'recommendations', 'searchResults']);
 const SHARED_NOTEBOOK_MIGRATION_VERSION = 1;
 const DISCOVERY_HISTORY_LIMIT = 30;
@@ -4708,6 +4708,69 @@ function finishMapGeneration(job) {
     if (job) pushDebugLog('map.generate.job.end', '지도 생성 작업을 종료했습니다.', { id: job.id, kind: job.kind, cancelled: Boolean(job.cancelled) });
 }
 
+
+// Evaluate lorebooks using SillyTavern's own activation rules for separate-profile requests.
+async function getActivatedWorldInfoForProfile(ctx) {
+    if (typeof ctx.getWorldInfoPrompt !== 'function') {
+        throw new Error('SillyTavern 로어북 활성화 기능을 사용할 수 없어 별도 프로필 요청을 중단했습니다.');
+    }
+
+    const { world_info_include_names } = await import('/scripts/world-info.js');
+    const chatForWorldInfo = (Array.isArray(ctx.chat) ? ctx.chat : [])
+        .filter(message => message && !message.is_system)
+        .map(message => {
+            const content = String(message.mes || message.message || '');
+            const name = String(message.name || (message.is_user ? getCurrentUserName() : getCurrentCharacterName()));
+            return world_info_include_names ? name + ': ' + content : content;
+        })
+        .reverse();
+
+    const fields = typeof ctx.getCharacterCardFields === 'function'
+        ? (ctx.getCharacterCardFields() || {})
+        : {};
+    const maxContext = Number(ctx.maxContext);
+    const activated = await ctx.getWorldInfoPrompt(
+        chatForWorldInfo,
+        Number.isFinite(maxContext) && maxContext > 0 ? maxContext : 8192,
+        true,
+        {
+            personaDescription: String(fields.persona || ctx.powerUserSettings?.persona_description || ''),
+            characterDescription: String(fields.description || ''),
+            characterPersonality: String(fields.personality || ''),
+            characterDepthPrompt: String(fields.charDepthPrompt || ''),
+            scenario: String(fields.scenario || ''),
+            creatorNotes: String(fields.creatorNotes || ''),
+            trigger: 'normal',
+        },
+    );
+
+    const sections = [];
+    const appendSection = (label, contents) => {
+        const values = Array.isArray(contents) ? contents : [contents];
+        const text = values.filter(value => typeof value === 'string' && value.trim()).join('\n');
+        if (text) sections.push(label + '\n' + text);
+    };
+    appendSection('Before character', activated?.worldInfoBefore);
+    appendSection('After character', activated?.worldInfoAfter);
+    appendSection("Author's note (top)", activated?.anBefore);
+    appendSection("Author's note (bottom)", activated?.anAfter);
+    for (const depthEntry of activated?.worldInfoDepth || []) {
+        appendSection('In-chat lore (depth ' + (depthEntry.depth ?? 0) + ', role ' + (depthEntry.role ?? 0) + ')', depthEntry.entries);
+    }
+    for (const example of activated?.worldInfoExamples || []) {
+        appendSection('Example conversation', example.content);
+    }
+    // Named outlets remain excluded unless referenced explicitly, as in standard roleplay.
+    if (!sections.length) return '';
+
+    const lore = '[Activated World Info]\n' + sections.join('\n\n') + '\n[/Activated World Info]';
+    pushDebugLog('request.profile.world_info', '별도 연결 프로필 요청에 활성 로어북을 포함합니다.', {
+        sections: sections.length,
+        characters: lore.length,
+    });
+    return lore;
+}
+
 async function generateQuietWithSelectedProfile(quietPrompt, jsonSchema = null, options = {}) {
     const settings = getSettings();
     const prompt = String(quietPrompt || '');
@@ -4771,7 +4834,9 @@ async function generateQuietWithSelectedProfile(quietPrompt, jsonSchema = null, 
         throw new Error(`선택한 확장 전용 프로필을 찾을 수 없습니다: ${target}`);
     }
 
-    const finalPrompt = jsonSchema ? `${prompt}${getSchemaAwareJsonInstruction(jsonSchema)}` : prompt;
+    const lore = await getActivatedWorldInfoForProfile(ctx);
+    if (externalSignal?.aborted) throw createMapGenerationCancelledError('request was cancelled during lorebook scan');
+    const finalPrompt = [lore, prompt].filter(Boolean).join('\n\n') + getSchemaAwareJsonInstruction(jsonSchema);
     const timeoutMs = 240000;
     const controller = new AbortController();
     const forwardExternalAbort = () => controller.abort(externalSignal?.reason || createMapGenerationCancelledError('request was cancelled'));
