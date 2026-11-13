@@ -2463,8 +2463,6 @@ button.mma-footstep:focus-visible em {
   margin: 5px 0 8px !important;
 }
 
-#mma-settings-block select,
-#mma-settings-block input,
 #mma-settings-block textarea,
 #mma-settings-block button {
   font-size: 12px !important;
@@ -2556,10 +2554,6 @@ button.mma-footstep:focus-visible em {
 #mma-settings-block input[type="number"] {
   width: min(100%, 420px) !important;
   max-width: 420px !important;
-  height: 28px !important;
-  min-height: 28px !important;
-  padding: 3px 6px !important;
-  border-radius: 0 !important;
   box-sizing: border-box !important;
 }
 
@@ -2874,13 +2868,7 @@ button.mma-footstep:focus-visible em {
 #mma-settings-block .mma-font-scale-input {
   width: 92px !important;
   max-width: 120px !important;
-  min-height: 28px !important;
-  height: 28px !important;
   margin: 0 !important;
-  padding: 0 8px !important;
-  font-size: 12px !important;
-  line-height: 1.25 !important;
-  box-shadow: none !important;
 }
 
 /* v2.6.4: keep ST's animated drawer untouched; style the inner settings shell instead. */
