@@ -10800,3 +10800,12 @@ button.mma-footstep:focus-visible em {
     font-weight: 700 !important;
   }
 }
+
+/* Marauder's Map: protect its original serif lettering from global font extensions.
+   Scoped to this theme's own heading and controls; S.H.I.E.L.D. and Bonbon keep their fonts. */
+#mma-window.mma-theme-marauder .mma-brand,
+#mma-window.mma-theme-marauder .mma-spell-button,
+#mma-window.mma-theme-marauder .mma-spell-button span,
+#mma-window.mma-theme-marauder .mma-managed-button {
+  font-family: Georgia, 'Times New Roman', serif !important;
+}
