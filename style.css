@@ -10862,3 +10862,11 @@ button.mma-footstep:focus-visible em {
 #mma-window .mma-map-screen > .mma-world-summary {
   overflow-wrap: anywhere;
 }
+
+/* v3.2.7: compact one-line location names across all three map themes.
+   Keep the normal text size setting for panels, and leave map badges, icons,
+   positions, pill geometry, and Bonbon's icon-only mobile track unchanged. */
+#mma-window .mma-map-canvas .mma-node:not(.mma-bonbon-location-card) > .mma-node-label,
+#mma-window.mma-theme-bonbon .mma-bonbon-route-stop > .mma-node.mma-bonbon-location-card .mma-node-label {
+  font-size: calc(var(--mma-body-font-size) * 0.846154) !important;
+}
