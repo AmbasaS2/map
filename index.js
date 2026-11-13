@@ -2788,12 +2788,12 @@ Create ${config.discoveryRange} distinct discoveries that become newly visible a
 
 A discovery is one concrete person, creature, object, message, changed place, or sign of an incident that is not yet represented by the returned locations, footsteps, or quests. Treat the map, recent roleplay, character card, and persona as continuity evidence. Every result adds one new external state that follows from that evidence.
 
-Every discovery must answer four practical questions:
+Every discovery must answer five practical questions:
 1. focus and focusContext: exactly what was found, who or what it is, and why it belongs at this location;
 2. evidenceLevel: choose "confirmed" only for details explicitly seen, said, or established in the supplied recent roleplay. Use "rumor" for second-hand claims and "inferred" for AI conjecture or plausible off-screen states. A previous AI-generated map alone cannot confirm a new discovery.
 3. observation: what is visibly or audibly happening now, in 2 to 4 natural ${getMapNarrativeLanguage()} sentences with concrete sensory and behavioral details;
-3. stakes: the concrete near-future change that will occur at this place if nobody intervenes;
-4. interactions: 2 to 3 materially different things a character could attempt, inspect, ask, move, help, stop, open, follow, repair, deliver, or otherwise engage with.
+4. stakes: the concrete near-future change that will occur at this place if nobody intervenes;
+5. interactions: 2 to 3 materially different things a character could attempt, inspect, ask, move, help, stop, open, follow, repair, deliver, or otherwise engage with.
 
 Use sourceAnchors for 1 to 4 confirmed continuity facts that support the discovery. These are internal grounding data, so keep them concise and factual. Give every item one relevant, intuitive emoji for its actual focus, such as 🐈 or 🐾 for an animal, 💌 or ✉️ for a letter, 👤 or a fitting person emoji for a person, 🚪 for a door, or 📦 for a parcel. The emoji is a miniature label for the literal focus: a reader should be able to guess what was found without a category legend.
 
