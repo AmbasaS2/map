@@ -22,7 +22,7 @@ const FOOTSTEP_REPAIR_MAX_TOKENS = 1600;
 const LOCATION_ICON_REVIEW_MAX_TOKENS = 600;
 const DEBUG_LOG_LIMIT = 40;
 const memoryDebugLogs = [];
-const EXTENSION_VERSION = '3.1.5';
+const EXTENSION_VERSION = '3.1.6';
 const SHARED_NOTEBOOK_KEYS = Object.freeze(['managedItems', 'footstepProfiles', 'trackedPeople', 'recommendations', 'searchResults']);
 const SHARED_NOTEBOOK_MIGRATION_VERSION = 1;
 const DISCOVERY_HISTORY_LIMIT = 30;
@@ -722,6 +722,68 @@ function refreshExtensionsMenuButton() {
     button.innerHTML = `<span class="mma-menu-icon extensionsMenuExtensionButton">${getExtensionMenuIcon()}</span><span class="mma-menu-label">지도</span>`;
 }
 
+
+// Protect only Marauder's deliberately serif-styled controls from font extensions
+// that use more specific CSS or write inline styles after the map is rendered.
+const MARAUDER_SERIF_FONT = "Georgia, 'Times New Roman', serif";
+const MARAUDER_SERIF_TARGETS = '.mma-brand, .mma-managed-button, .mma-spell-button, .mma-spell-button span';
+const marauderOriginalFonts = new Map();
+let marauderSerifObserver = null;
+
+function restoreMarauderSerifFonts() {
+    for (const [element, original] of marauderOriginalFonts) {
+        if (element.isConnected
+            && element.style.getPropertyValue('font-family') === MARAUDER_SERIF_FONT
+            && element.style.getPropertyPriority('font-family') === 'important') {
+            if (original.value) element.style.setProperty('font-family', original.value, original.priority);
+            else element.style.removeProperty('font-family');
+        }
+        marauderOriginalFonts.delete(element);
+    }
+}
+
+function syncMarauderSerifFonts() {
+    const windowEl = document.getElementById('mma-window');
+    if (!windowEl?.classList.contains('mma-theme-marauder')) {
+        restoreMarauderSerifFonts();
+        return;
+    }
+
+    // Drop detached elements after a panel rerender without altering any other theme.
+    for (const element of marauderOriginalFonts.keys()) {
+        if (!windowEl.contains(element)) marauderOriginalFonts.delete(element);
+    }
+    for (const element of windowEl.querySelectorAll(MARAUDER_SERIF_TARGETS)) {
+        const value = element.style.getPropertyValue('font-family');
+        const priority = element.style.getPropertyPriority('font-family');
+        if (value === MARAUDER_SERIF_FONT && priority === 'important') continue;
+        if (!marauderOriginalFonts.has(element)) {
+            marauderOriginalFonts.set(element, { value, priority });
+        }
+        element.style.setProperty('font-family', MARAUDER_SERIF_FONT, 'important');
+    }
+}
+
+function startMarauderSerifProtection() {
+    if (marauderSerifObserver) return;
+    const windowEl = document.getElementById('mma-window');
+    if (!windowEl) return;
+    marauderSerifObserver = new MutationObserver(syncMarauderSerifFonts);
+    marauderSerifObserver.observe(windowEl, {
+        subtree: true,
+        childList: true,
+        attributes: true,
+        attributeFilter: ['class', 'style'],
+    });
+    syncMarauderSerifFonts();
+}
+
+function stopMarauderSerifProtection() {
+    marauderSerifObserver?.disconnect();
+    marauderSerifObserver = null;
+    restoreMarauderSerifFonts();
+}
+
 function applyThemeClass() {
     const theme = getThemeKey();
     const root = document.getElementById(EXTENSION_ROOT_ID);
@@ -732,6 +794,7 @@ function applyThemeClass() {
         }
         el.dataset.mmaTheme = theme;
     });
+    syncMarauderSerifFonts();
 }
 
 function setTheme(value, rerender = false) {
@@ -5993,6 +6056,7 @@ function createRoot() {
         <div id="mma-map-toast-layer" class="mma-map-toast-layer" aria-live="polite" aria-atomic="false"></div>
     `;
     document.body.appendChild(root);
+    startMarauderSerifProtection();
     setupOverlayDebugObserver();
     pushDebugLog('root.created', '확장 루트를 생성했습니다.');
     applyFontScale();
@@ -7867,6 +7931,7 @@ export function onEnable() {
 
 export function onDisable() {
     lifecycleEnabled = false;
+    stopMarauderSerifProtection();
     stopMapUiLocaleObservers();
     initialized = false;
     if (activeDiscoveryConfirm) activeDiscoveryConfirm(false);
