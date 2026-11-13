@@ -128,7 +128,7 @@
 }
 .mma-blank-note {
   color: rgba(55, 32, 15, .62);
-  font-size: 15px;
+  font-size: calc(var(--mma-body-font-size) * 1.153846);
 }
 .mma-spell-button {
   position: relative;
@@ -162,13 +162,13 @@
 .mma-spell-hint {
   margin: 0;
   color: rgba(50,29,13,.72);
-  font-size: 14px;
+  font-size: calc(var(--mma-body-font-size) * 1.076923);
 }
 
 .mma-toolbar { margin-bottom: 12px; }
 .mma-region {
   margin-top: 4px;
-  font-size: 15px;
+  font-size: calc(var(--mma-body-font-size) * 1.153846);
   font-weight: 700;
   color: rgba(50,29,13,.78);
 }
@@ -204,7 +204,7 @@
   border-radius: 16px;
   padding: 10px 14px;
   margin-bottom: 14px;
-  font-size: 13px;
+  font-size: var(--mma-body-font-size);
   color: rgba(54,31,15,.75);
 }
 
@@ -254,7 +254,7 @@
   padding: 7px 10px;
   background: rgba(250, 231, 180, .7);
   color: var(--mma-ink);
-  font-size: 13px;
+  font-size: var(--mma-body-font-size);
   font-weight: 700;
   box-shadow: 0 7px 18px rgba(67,35,12,.14), inset 0 0 10px rgba(255,255,255,.28);
   cursor: pointer;
@@ -275,7 +275,7 @@
   border-radius: 999px;
   background: #5f2f18;
   color: #ffe8a8;
-  font-size: 11px;
+  font-size: calc(var(--mma-body-font-size) * 0.846154);
   font-style: normal;
 }
 .mma-footstep {
@@ -373,16 +373,16 @@
   display: inline-block;
   border-radius: 999px;
   padding: 2px 7px;
-  font-size: 11px;
+  font-size: calc(var(--mma-body-font-size) * 0.846154);
   background: rgba(70,40,16,.12);
 }
 .mma-status.injected { background: rgba(68, 128, 68, .18); }
 .mma-status.held { background: rgba(160, 105, 24, .18); }
 .mma-status.observed { background: rgba(77, 101, 160, .18); }
 .mma-status.ignored { background: rgba(80, 80, 80, .18); }
-.mma-event-location { font-size: 12px; opacity: .72; }
-.mma-event-card p { margin: 0; line-height: 1.45; font-size: 13px; }
-.mma-event-card details { font-size: 12px; }
+.mma-event-location { font-size: calc(var(--mma-body-font-size) * 0.923077); opacity: .72; }
+.mma-event-card p { margin: 0; line-height: 1.45; font-size: var(--mma-body-font-size); }
+.mma-event-card details { font-size: calc(var(--mma-body-font-size) * 0.923077); }
 .mma-event-actions button { min-width: 38px; }
 .mma-panel-note,
 .mma-empty {
@@ -390,7 +390,7 @@
   padding: 10px 12px;
   border-radius: 14px;
   background: rgba(255,245,216,.30);
-  font-size: 12px;
+  font-size: calc(var(--mma-body-font-size) * 0.923077);
   line-height: 1.5;
 }
 
@@ -489,7 +489,7 @@
 }
 .mma-event-detail {
   opacity: .82;
-  font-size: 12.5px !important;
+  font-size: calc(var(--mma-body-font-size) * 0.961538) !important;
   line-height: 1.58 !important;
   border-top: 1px solid rgba(70, 40, 16, .12);
   padding-top: 7px;
@@ -542,7 +542,9 @@ button.mma-footstep:focus-visible em {
   --mma-font-scale: 1;
 }
 #mma-window {
-  font-size: calc(14px * var(--mma-font-scale, 1));
+  /* Body text keeps the saved font size regardless of viewport width. */
+  --mma-body-font-size: calc(13px * var(--mma-font-scale, 1));
+  font-size: var(--mma-body-font-size);
 }
 .mma-settings-content .mma-font-scale-row {
   display: grid;
@@ -562,7 +564,7 @@ button.mma-footstep:focus-visible em {
   font-size: 12px;
 }
 .mma-footstep {
-  font-size: calc(10.5px * var(--mma-font-scale, 1));
+  font-size: calc(var(--mma-body-font-size) * 0.807692);
   line-height: 1.16;
 }
 .mma-footstep em {
@@ -580,7 +582,7 @@ button.mma-footstep:focus-visible em {
 .mma-place-actions button,
 .mma-event-actions button,
 .mma-managed-button {
-  font-size: calc(13px * var(--mma-font-scale, 1));
+  font-size: var(--mma-body-font-size);
 }
 .mma-world-summary,
 .mma-info-block p,
@@ -589,16 +591,16 @@ button.mma-footstep:focus-visible em {
 .mma-memory-panel,
 .mma-action-panel,
 .mma-place-card {
-  font-size: calc(13px * var(--mma-font-scale, 1));
+  font-size: var(--mma-body-font-size);
 }
 .mma-place-header strong {
-  font-size: calc(17px * var(--mma-font-scale, 1));
+  font-size: calc(var(--mma-body-font-size) * 1.307692);
 }
 .mma-node b {
-  font-size: calc(15px * var(--mma-font-scale, 1));
+  font-size: calc(var(--mma-body-font-size) * 1.153846);
 }
 .mma-node span {
-  font-size: calc(12px * var(--mma-font-scale, 1));
+  font-size: calc(var(--mma-body-font-size) * 0.923077);
 }
 
 @media (max-width: 700px) {
@@ -611,7 +613,7 @@ button.mma-footstep:focus-visible em {
     height: calc(100dvh - 8px);
     max-height: calc(100dvh - 8px);
     border-radius: 18px 12px 20px 10px;
-    font-size: calc(12px * var(--mma-font-scale, 1));
+
   }
   .mma-spell-screen,
   .mma-map-screen {
@@ -629,7 +631,7 @@ button.mma-footstep:focus-visible em {
     font-size: calc(16px * var(--mma-font-scale, 1));
   }
   .mma-region {
-    font-size: calc(11px * var(--mma-font-scale, 1));
+    font-size: calc(var(--mma-body-font-size) * 1.153846);
     line-height: 1.35;
   }
   .mma-toolbar-actions {
@@ -643,13 +645,13 @@ button.mma-footstep:focus-visible em {
     min-height: 26px;
     padding: 3px 6px;
     border-radius: 9px;
-    font-size: calc(11px * var(--mma-font-scale, 1));
+    font-size: var(--mma-body-font-size);
   }
   .mma-managed-button {
     min-height: 26px;
     padding: 4px 8px;
     border-radius: 999px;
-    font-size: calc(11px * var(--mma-font-scale, 1));
+    font-size: var(--mma-body-font-size);
     white-space: nowrap;
   }
   .mma-top-right {
@@ -658,7 +660,7 @@ button.mma-footstep:focus-visible em {
   .mma-world-summary {
     margin-bottom: 8px;
     padding: 7px 9px;
-    font-size: calc(11px * var(--mma-font-scale, 1));
+    font-size: var(--mma-body-font-size);
   }
   .mma-map-layout {
     grid-template-columns: 1fr;
@@ -683,18 +685,18 @@ button.mma-footstep:focus-visible em {
     gap: 3px;
   }
   .mma-node b {
-    font-size: calc(12px * var(--mma-font-scale, 1));
+    font-size: calc(var(--mma-body-font-size) * 1.153846);
   }
   .mma-node span {
-    font-size: calc(9.8px * var(--mma-font-scale, 1));
+    font-size: calc(var(--mma-body-font-size) * 0.923077);
   }
   .mma-event-badge {
     min-width: 15px;
     height: 15px;
-    font-size: 9px;
+    font-size: calc(var(--mma-body-font-size) * 0.846154);
   }
   .mma-footstep {
-    font-size: calc(8.4px * var(--mma-font-scale, 1));
+    font-size: calc(var(--mma-body-font-size) * 0.807692);
     gap: 1px;
   }
   .mma-footstep em {
@@ -707,7 +709,7 @@ button.mma-footstep:focus-visible em {
     padding-bottom: 7px;
   }
   .mma-place-header strong {
-    font-size: calc(14px * var(--mma-font-scale, 1));
+    font-size: calc(var(--mma-body-font-size) * 1.307692);
   }
   .mma-place-card,
   .mma-action-panel,
@@ -716,7 +718,7 @@ button.mma-footstep:focus-visible em {
   }
   .mma-info-block p,
   .mma-info-block ul {
-    font-size: calc(11.3px * var(--mma-font-scale, 1));
+    font-size: var(--mma-body-font-size);
     line-height: 1.58;
   }
   .mma-info-block p {
@@ -729,12 +731,12 @@ button.mma-footstep:focus-visible em {
     gap: 4px;
   }
   .mma-event-title b {
-    font-size: calc(12px * var(--mma-font-scale, 1));
+    font-size: var(--mma-body-font-size);
   }
-  .mma-event-location,
-  .mma-event-detail {
-    font-size: calc(10.5px * var(--mma-font-scale, 1)) !important;
+  .mma-event-location {
+    font-size: calc(var(--mma-body-font-size) * 0.923077) !important;
   }
+  .mma-event-detail { font-size: calc(var(--mma-body-font-size) * 0.961538) !important; }
   .mma-parchment-center {
     height: calc(100% - 52px);
     gap: 14px;
@@ -743,10 +745,10 @@ button.mma-footstep:focus-visible em {
     padding: 18px 18px;
     font-size: clamp(20px, 7vw, 30px);
   }
-  .mma-spell-hint,
-  .mma-blank-note {
-    font-size: calc(11.5px * var(--mma-font-scale, 1));
+  .mma-spell-hint {
+    font-size: calc(var(--mma-body-font-size) * 1.076923);
   }
+  .mma-blank-note { font-size: calc(var(--mma-body-font-size) * 1.153846); }
 }
 
 /* v1 mobile readability patch: full-window scrolling, smaller footstep profile headings, safer viewport height */
@@ -781,7 +783,7 @@ button.mma-footstep:focus-visible em {
 }
 .mma-footstep-card .mma-info-block p,
 .mma-footstep-card .mma-info-block ul {
-  font-size: calc(12.5px * var(--mma-font-scale, 1)) !important;
+  font-size: calc(var(--mma-body-font-size) * 0.961538) !important;
 }
 
 @media (max-width: 700px) {
@@ -821,19 +823,19 @@ button.mma-footstep:focus-visible em {
     overflow: visible !important;
   }
   .mma-footstep-card .mma-place-header strong {
-    font-size: calc(13px * var(--mma-font-scale, 1)) !important;
+    font-size: calc(var(--mma-body-font-size) * 1.307692) !important;
   }
   .mma-footstep-card .mma-info-block {
     padding: 7px 8px !important;
   }
   .mma-footstep-card .mma-info-block h4 {
-    font-size: calc(11.2px * var(--mma-font-scale, 1)) !important;
+    font-size: calc(var(--mma-body-font-size) * 0.961538) !important;
     line-height: 1.22 !important;
     margin-bottom: 4px !important;
   }
   .mma-footstep-card .mma-info-block p,
   .mma-footstep-card .mma-info-block ul {
-    font-size: calc(10.5px * var(--mma-font-scale, 1)) !important;
+    font-size: calc(var(--mma-body-font-size) * 0.961538) !important;
     line-height: 1.52 !important;
   }
 }
@@ -893,7 +895,7 @@ button.mma-footstep:focus-visible em {
   pointer-events: none !important;
 }
 .mma-footstep-card .mma-info-block h4 {
-  font-size: calc(12.5px * var(--mma-font-scale, 1)) !important;
+  font-size: calc(var(--mma-body-font-size) * 0.961538) !important;
 }
 
 @media (max-width: 700px) {
@@ -919,7 +921,7 @@ button.mma-footstep:focus-visible em {
     max-height: 295px !important;
   }
   .mma-footstep-card .mma-info-block h4 {
-    font-size: calc(10.8px * var(--mma-font-scale, 1)) !important;
+    font-size: calc(var(--mma-body-font-size) * 0.961538) !important;
   }
 }
 
@@ -957,7 +959,7 @@ button.mma-footstep:focus-visible em {
     max-height: 285px !important;
   }
   .mma-footstep {
-    font-size: calc(8px * var(--mma-font-scale, 1)) !important;
+    font-size: calc(var(--mma-body-font-size) * 0.807692) !important;
   }
   .mma-footstep em {
     max-width: min(84px, 24vw) !important;
@@ -1584,7 +1586,7 @@ button.mma-footstep:focus-visible em {
   gap: 8px;
 }
 .mma-warning-title {
-  font-size: 14px;
+  font-size: calc(var(--mma-body-font-size) * 1.076923);
   font-weight: 900;
   letter-spacing: .28em;
   color: #1e3a8a;
@@ -1592,14 +1594,14 @@ button.mma-footstep:focus-visible em {
 .mma-warning-copy {
   margin: 0;
   color: #1f2937;
-  font-size: 12.5px;
+  font-size: calc(var(--mma-body-font-size) * 0.961538);
   line-height: 1.6;
 }
 .mma-warning-question {
   margin-top: 4px;
   color: #111827;
   font-weight: 800;
-  font-size: 13px;
+  font-size: var(--mma-body-font-size);
   text-align: center;
 }
 .mma-recommend-buttons button,
@@ -2184,17 +2186,17 @@ button.mma-footstep:focus-visible em {
   }
 
   #mma-window.mma-theme-modern .mma-warning-title {
-    font-size: 12.5px;
+    font-size: calc(var(--mma-body-font-size) * 0.923077);
     letter-spacing: .22em;
   }
 
   #mma-window.mma-theme-modern .mma-warning-copy {
-    font-size: 11.5px;
+    font-size: calc(var(--mma-body-font-size) * 0.961538);
     line-height: 1.56;
   }
 
   #mma-window.mma-theme-modern .mma-warning-question {
-    font-size: 12.5px;
+    font-size: var(--mma-body-font-size);
     line-height: 1.35;
   }
 
@@ -3361,7 +3363,7 @@ button.mma-footstep:focus-visible em {
     min-width: 0;
     min-height: 28px;
     padding: 2px;
-    font-size: calc(12px * var(--mma-font-scale, 1));
+    font-size: var(--mma-body-font-size);
   }
 
   #mma-window .mma-top-right > .mma-close-button {
@@ -4110,7 +4112,7 @@ button.mma-footstep:focus-visible em {
 
 #mma-window.mma-theme-modern .mma-warning-title {
   color: var(--mma-modern-coral) !important;
-  font-size: 12px;
+  font-size: calc(var(--mma-body-font-size) * 0.923077);
   font-weight: 760;
   letter-spacing: normal;
 }
@@ -6305,7 +6307,7 @@ button.mma-footstep:focus-visible em {
   max-width: 470px;
   margin: 0 !important;
   color: var(--mma-bb-chocolate) !important;
-  font-size: calc(13px * var(--mma-font-scale, 1)) !important;
+  font-size: var(--mma-body-font-size) !important;
   font-weight: 600 !important;
   line-height: 1.45;
 }
@@ -7272,13 +7274,13 @@ button.mma-footstep:focus-visible em {
   }
 
   #mma-window.mma-theme-bonbon .mma-bonbon-cover-copy {
-    font-size: calc(11.5px * var(--mma-font-scale, 1)) !important;
+    font-size: var(--mma-body-font-size) !important;
   }
 
   #mma-window.mma-theme-bonbon .mma-bonbon-cover-meta {
     gap: 4px;
     padding: 5px 7px !important;
-    font-size: calc(9px * var(--mma-font-scale, 1)) !important;
+    font-size: calc(var(--mma-body-font-size) * 0.769231) !important;
   }
 
   #mma-window.mma-theme-bonbon .mma-bonbon-cover-piece:nth-child(1),
@@ -9703,13 +9705,13 @@ button.mma-footstep:focus-visible em {
     min-width: 28px !important;
     height: 28px !important;
     min-height: 28px !important;
-    font-size: calc(12px * var(--mma-font-scale, 1)) !important;
+    font-size: var(--mma-body-font-size) !important;
   }
 
   #mma-window .mma-top-right > .mma-close-button {
     height: 28px !important;
     min-height: 28px !important;
-    font-size: calc(12px * var(--mma-font-scale, 1)) !important;
+    font-size: var(--mma-body-font-size) !important;
   }
 
   #mma-window.mma-theme-modern .mma-top-right > .mma-close-button,
@@ -10148,7 +10150,7 @@ button.mma-footstep:focus-visible em {
 }
 
 #mma-window.mma-theme-bonbon .mma-region {
-  font-size: calc(15px * var(--mma-font-scale, 1)) !important;
+  font-size: calc(var(--mma-body-font-size) * 1.153846) !important;
 }
 
 #mma-window.mma-theme-bonbon .mma-info-block,
@@ -10197,7 +10199,7 @@ button.mma-footstep:focus-visible em {
   }
 
   #mma-window.mma-theme-bonbon .mma-bonbon-cover-copy {
-    font-size: calc(11px * var(--mma-font-scale, 1)) !important;
+    font-size: var(--mma-body-font-size) !important;
   }
 
   #mma-window.mma-theme-bonbon .mma-bonbon-cover-meta {
@@ -10220,7 +10222,7 @@ button.mma-footstep:focus-visible em {
   }
 
   #mma-window.mma-theme-bonbon .mma-region {
-    font-size: calc(11px * var(--mma-font-scale, 1)) !important;
+    font-size: calc(var(--mma-body-font-size) * 1.153846) !important;
   }
 
   #mma-window.mma-theme-bonbon .mma-bonbon-route-stop > .mma-node.mma-bonbon-location-card {
