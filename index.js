@@ -3136,6 +3136,7 @@ async function repairFootstepRosterIfNeeded(map, outputMode, job) {
                 maxTokens: FOOTSTEP_REPAIR_MAX_TOKENS,
                 signal: job?.controller?.signal,
                 connectionProfile: job?.connectionProfile,
+                job,
             },
         );
         if (job) assertCurrentMapGeneration(job);
