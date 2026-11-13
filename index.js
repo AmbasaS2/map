@@ -4129,7 +4129,9 @@ function renderRecommendationPanel(activeTab = 'place') {
     const panel = document.getElementById('mma-side-panel');
     if (!panel) return;
     const selectedTab = activeTab === 'person' ? 'person' : 'place';
-    const categories = ['맛집', '데이트 명소', '요즘 핫플레이스', '산책 코스'];
+    const categories = isKoreanMapLocale()
+        ? ['맛집', '데이트 명소', '요즘 핫플레이스', '산책 코스']
+        : ['Restaurants', 'Date spots', 'Trending places', 'Walking routes'];
     const personPanel = `
         <p class="mma-panel-note">현재 지도에 표시된 인물을 먼저 확인합니다. 지도에 없으면 현재 RP를 바탕으로 위치를 별도로 찾습니다.</p>
         <div class="mma-custom-search mma-person-search-form">
@@ -4377,7 +4379,7 @@ async function generateRecommendations(category) {
     pushDebugLog('search.place.generate.start', '장소 검색을 시작했습니다.', {
         placeResults: memory.recommendations?.length || 0,
     });
-    await withLoader(`${category} 추천을 찾는 중...`, async () => {
+    await withLoader(isKoreanMapLocale() ? `${category} 추천을 찾는 중...` : `Searching for ${category} recommendations...`, async () => {
         let rawText = '';
         rawText = await generateQuietWithSelectedProfile(buildRecommendationPrompt(category), RECOMMENDATION_SCHEMA, { maxTokens: 5000 });
         const parsed = parseJson(rawText);
