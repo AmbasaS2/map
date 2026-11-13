@@ -600,7 +600,7 @@ button.mma-footstep:focus-visible em {
   font-size: calc(var(--mma-body-font-size) * 1.153846);
 }
 .mma-node span {
-  font-size: calc(var(--mma-body-font-size) * 0.923077);
+  font-size: inherit;
 }
 
 @media (max-width: 700px) {
@@ -688,7 +688,7 @@ button.mma-footstep:focus-visible em {
     font-size: calc(var(--mma-body-font-size) * 1.153846);
   }
   .mma-node span {
-    font-size: calc(var(--mma-body-font-size) * 0.923077);
+    font-size: inherit;
   }
   .mma-event-badge {
     min-width: 15px;
@@ -10809,7 +10809,7 @@ button.mma-footstep:focus-visible em {
 #mma-window.mma-theme-modern .mma-tracked-route-legend { background: rgba(10, 22, 34, .9); color: #dceaf5; }
 #mma-window.mma-theme-bonbon .mma-tracked-route-legend { background: rgba(255, 250, 240, .92); color: #6b4b3e; }
 
-/* v3.2.5: map chrome stays visually stable; content follows the saved text size.
+/* v3.2.5–v3.2.6: stable map chrome and ordinary place labels; content follows the saved text size.
    This changes typography only, not theme font families or gameplay graphics. */
 #mma-window .mma-toolbar .mma-brand.small {
   font-size: 16px !important;
@@ -10830,42 +10830,26 @@ button.mma-footstep:focus-visible em {
 }
 #mma-window .mma-map-canvas .mma-node:not(.mma-bonbon-location-card) > b,
 #mma-window .mma-side-panel .mma-place-header .mma-place-icon {
-  font-size: 15px !important;
+  font-size: 14px !important;
 }
 /* Bonbon location tiles use smaller graphic spaces than other map markers. */
 #mma-window.mma-theme-bonbon .mma-map-canvas .mma-node.mma-bonbon-location-card > b {
-  font-size: 16px !important;
+  font-size: 14px !important;
 }
 #mma-window .mma-toolbar .mma-bonbon-title-die {
   font-size: 13px !important;
 }
-/* Content typography: 13px body -> 12px people, 15px panel titles, 13px subheads. */
+/* Content typography: 13px body -> 12px people, 13px panel titles, 13px subheads. */
 #mma-window .mma-map-canvas .mma-footstep,
 #mma-window .mma-map-canvas .mma-footstep em,
 #mma-window.mma-theme-bonbon .mma-bonbon-stop-people-list > .mma-footstep.mma-bonbon-piece em {
   font-size: calc(var(--mma-body-font-size) * 0.923077) !important;
 }
 #mma-window .mma-side-panel .mma-place-header strong {
-  font-size: calc(var(--mma-body-font-size) * 1.153846) !important;
+  font-size: var(--mma-body-font-size) !important;
 }
 #mma-window .mma-side-panel .mma-info-block h4 {
   font-size: var(--mma-body-font-size) !important;
-}
-/* Map pins may wrap their names instead of silently truncating them to one line.
-   Keep original pin widths/positions; Bonbon's special route tile layout is exempt. */
-#mma-window .mma-map-canvas .mma-node:not(.mma-bonbon-location-card) {
-  white-space: normal;
-}
-#mma-window .mma-map-canvas .mma-node:not(.mma-bonbon-location-card) .mma-node-label {
-  flex: 1 1 auto;
-  min-width: 0;
-  max-width: 100%;
-  white-space: normal !important;
-  word-break: keep-all;
-  overflow-wrap: anywhere;
-  overflow: visible !important;
-  text-overflow: clip !important;
-  line-height: 1.2;
 }
 /* Long location descriptions scroll with the existing panel rather than clipping
    inside an additional paragraph-height limit. */
