@@ -1,11 +1,13 @@
 import { POPUP_RESULT, POPUP_TYPE, Popup } from '../../../popup.js';
+import { getCurrentLocale } from '../../../i18n.js';
+import { ENGLISH_UI } from './i18n/en.js';
 
 /*
  * 지도 — SillyTavern UI Extension
  * Universal enchanted parchment map for roleplay scenes.
  *
  * - Spell flavor remains English.
- * - Map contents and controls are Korean.
+ * - UI follows SillyTavern locale; Korean remains the original UI and other locales fall back to English.
  * - Map state is stored per chat and backed up to a character-shared notebook for cross-device continuity.
  * - RP reflection uses SillyTavern extension prompt injection, not the input box.
  */
@@ -20,7 +22,7 @@ const FOOTSTEP_REPAIR_MAX_TOKENS = 1600;
 const LOCATION_ICON_REVIEW_MAX_TOKENS = 600;
 const DEBUG_LOG_LIMIT = 40;
 const memoryDebugLogs = [];
-const EXTENSION_VERSION = '3.1.3';
+const EXTENSION_VERSION = '3.1.4';
 const SHARED_NOTEBOOK_KEYS = Object.freeze(['managedItems', 'footstepProfiles', 'trackedPeople', 'recommendations', 'searchResults']);
 const SHARED_NOTEBOOK_MIGRATION_VERSION = 1;
 const DISCOVERY_HISTORY_LIMIT = 30;
@@ -472,6 +474,110 @@ function setupDebugHooks() {
 function setupOverlayDebugObserver() {
     // Quiet runtime: no DOM-wide debug observer. The map works without this observer.
     return;
+}
+
+
+// SillyTavern's UI language is the source of truth; no separate map-language setting.
+const mapLocaleObservers = new Map();
+
+function isKoreanMapLocale() {
+    return /^ko(?:[-_]|$)/i.test(String(getCurrentLocale() || 'ko-kr'));
+}
+
+function getMapNarrativeLanguage() {
+    const locale = String(getCurrentLocale() || 'en').toLowerCase();
+    const languageCode = locale.split(/[-_]/)[0] || 'en';
+    if (/^zh[-_]tw/.test(locale)) return 'Traditional Chinese';
+    if (/^zh[-_]cn/.test(locale)) return 'Simplified Chinese';
+    try {
+        return new Intl.DisplayNames(['en'], { type: 'language' }).of(languageCode) || 'English';
+    } catch {
+        return ({ ko: 'Korean', en: 'English', ja: 'Japanese', zh: 'Chinese', fr: 'French', es: 'Spanish', de: 'German', ru: 'Russian' })[languageCode] || 'English';
+    }
+}
+
+function localizeMapUiText(input) {
+    if (isKoreanMapLocale() || typeof input !== 'string' || !/[가-힣]/u.test(input)) return input;
+    const plain = input.trim();
+    let translated = ENGLISH_UI[plain];
+    if (!translated) {
+        let match = plain.match(/^신뢰도\s+(.+)$/u);
+        if (match) translated = 'Confidence: ' + localizeMapUiText(match[1]);
+        match = plain.match(/^마지막 확인\s+(.+)$/u);
+        if (match) translated = 'Last checked ' + match[1];
+        match = plain.match(/^(\d+)개의 발견이 현재 지도에 표시됩니다\.$/u);
+        if (match) translated = match[1] + ' discoveries are shown on the map.';
+        match = plain.match(/^(.+)\s+목록으로 돌아가기$/u);
+        if (match) translated = 'Back to ' + localizeMapUiText(match[1]) + ' list';
+        match = plain.match(/^👣\s*(.+)의 현재 상태$/u);
+        if (match) translated = '👣 Current status: ' + match[1];
+        match = plain.match(/^(\d+)개$/u);
+        if (match) translated = match[1] + ' items';
+        match = plain.match(/^📍\s*(.+)\s+전체$/u);
+        if (match) translated = '📍 Entire location: ' + match[1];
+        match = plain.match(/^(\d+)개\s*·$/u);
+        if (match) translated = match[1] + ' items ·';
+    }
+    if (!translated) {
+        // Dynamic toast messages are assembled from smaller, user-facing labels.
+        const pieces = input.split(/(\n)/);
+        if (pieces.length > 1) {
+            const out = pieces.map(piece => piece === '\n' ? piece : localizeMapUiText(piece)).join('');
+            if (out !== input) return out;
+        }
+        const failure = plain.match(/^지도 생성 실패:\s*(.*)$/u);
+        if (failure) translated = 'Map generation failed: ' + localizeMapUiText(failure[1]);
+    }
+    return translated ? input.replace(plain, translated) : input;
+}
+
+function localizeMapUiTree(root) {
+    if (!root || isKoreanMapLocale()) return;
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    while (walker.nextNode()) {
+        const node = walker.currentNode;
+        const parent = node.parentElement;
+        if (!parent || parent.closest('script, style, pre, code, [data-mma-no-translate], .mma-place-card .mma-place-header strong, .mma-world-summary, .mma-region, .mma-person-signal-summary')) continue;
+        const previous = node.nodeValue;
+        const next = localizeMapUiText(previous);
+        if (next !== previous) node.nodeValue = next;
+    }
+    const elements = [root, ...root.querySelectorAll('[title], [aria-label], [placeholder]')];
+    for (const element of elements) {
+        for (const attr of ['title', 'aria-label', 'placeholder']) {
+            if (!element.hasAttribute?.(attr)) continue;
+            const previous = element.getAttribute(attr);
+            const next = localizeMapUiText(previous);
+            if (next !== previous) element.setAttribute(attr, next);
+        }
+    }
+}
+
+function observeMapUiLocale(root) {
+    if (isKoreanMapLocale() || !root || mapLocaleObservers.has(root)) return;
+    localizeMapUiTree(root);
+    let queued = false;
+    const observer = new MutationObserver(() => {
+        if (queued) return;
+        queued = true;
+        queueMicrotask(() => {
+            queued = false;
+            if (root.isConnected) localizeMapUiTree(root);
+        });
+    });
+    observer.observe(root, {
+        subtree: true,
+        childList: true,
+        characterData: true,
+        attributes: true,
+        attributeFilter: ['title', 'aria-label', 'placeholder'],
+    });
+    mapLocaleObservers.set(root, observer);
+}
+
+function stopMapUiLocaleObservers() {
+    for (const observer of mapLocaleObservers.values()) observer.disconnect();
+    mapLocaleObservers.clear();
 }
 
 function stContext() {
@@ -1920,7 +2026,7 @@ const QUEST_SCHEMA_ITEM = {
 
 const MAP_SCHEMA = {
     name: 'RoleplayAreaModel',
-    description: 'Structured Korean location and scene data for the supplied roleplay.',
+    description: 'Structured localized location and scene data for the supplied roleplay.',
     strict: true,
     value: {
         '$schema': 'http://json-schema.org/draft-04/schema#',
@@ -2543,7 +2649,7 @@ A discovery is one concrete person, creature, object, message, changed place, or
 
 Every discovery must answer four practical questions:
 1. focus and focusContext: exactly what was found, who or what it is, and why it belongs at this location;
-2. observation: what is visibly or audibly happening now, in 2 to 4 natural Korean sentences with concrete sensory and behavioral details;
+2. observation: what is visibly or audibly happening now, in 2 to 4 natural ${getMapNarrativeLanguage()} sentences with concrete sensory and behavioral details;
 3. stakes: the concrete near-future change that will occur at this place if nobody intervenes;
 4. interactions: 2 to 3 materially different things a character could attempt, inspect, ask, move, help, stop, open, follow, repair, deliver, or otherwise engage with.
 
@@ -2595,7 +2701,7 @@ Return JSON only.`;
 
 const FOOTSTEP_PROFILE_SCHEMA = {
     name: 'RoleplayPersonStatusModel',
-    description: 'A Korean character status card grounded in the supplied roleplay.',
+    description: 'A localized character status card grounded in the supplied roleplay.',
     strict: true,
     value: {
         '$schema': 'http://json-schema.org/draft-04/schema#',
@@ -2626,8 +2732,8 @@ function buildMapPrompt(outputMode = getOutputModeKey()) {
     const mode = normalizeOutputMode(outputMode);
     const config = OUTPUT_MODE_CONFIGS[mode];
     const densityRules = mode === 'saver'
-        ? `Choose 4 to 7 locations, then use the matching density:\n- 4 locations: situation 8 to 10 Korean sentences; details 4 sentences.\n- 5 locations: situation 7 to 8 Korean sentences; details 3 to 4 sentences.\n- 6 locations: situation 5 to 7 Korean sentences; details 3 sentences.\n- 7 locations: situation 4 to 5 Korean sentences; details 3 sentences.`
-        : `Create 6 to 9 locations. Each situation has 8 to 12 Korean sentences and each details field adds 4 to 6 Korean sentences. Balance the set so location count, prose density, footsteps, and quests do not all reach their maximum at once.`;
+        ? `Choose 4 to 7 locations, then use the matching density:\n- 4 locations: situation 8 to 10 ${getMapNarrativeLanguage()} sentences; details 4 sentences.\n- 5 locations: situation 7 to 8 ${getMapNarrativeLanguage()} sentences; details 3 to 4 sentences.\n- 6 locations: situation 5 to 7 ${getMapNarrativeLanguage()} sentences; details 3 sentences.\n- 7 locations: situation 4 to 5 ${getMapNarrativeLanguage()} sentences; details 3 sentences.`
+        : `Create 6 to 9 locations. Each situation has 8 to 12 ${getMapNarrativeLanguage()} sentences and each details field adds 4 to 6 ${getMapNarrativeLanguage()} sentences. Balance the set so location count, prose density, footsteps, and quests do not all reach their maximum at once.`;
     const questAllocation = mode === 'saver'
         ? '- worldEvents: exactly 2 independent parallel-world quests.\n- personalEvents: 0 or 1 protagonist-linked quest.\n- Total: 2 to 3 quests.'
         : '- worldEvents: 3 to 4 independent parallel-world quests.\n- personalEvents: 0 or 1 protagonist-linked quest.\n- Total: 3 to 5 quests.';
@@ -2637,17 +2743,17 @@ Read the supplied roleplay context and return structured location data for the s
 Output density:
 - Mode: ${config.label}
 - Locations: ${config.locationRange}
-- Location situation length: ${config.situationRange} Korean sentences; details: ${config.detailsRange} Korean sentences
+- Location situation length: ${config.situationRange} ${getMapNarrativeLanguage()} sentences; details: ${config.detailsRange} ${getMapNarrativeLanguage()} sentences
 - Footsteps: 6 to 10 named individual signals across the whole map
 - Quest allocation:
 ${questAllocation}
-- Every quest summary and details field: 3 to 5 complete Korean sentences each
+- Every quest summary and details field: 3 to 5 complete ${getMapNarrativeLanguage()} sentences each
 ${densityRules}
 
 Map structure:
 - Derive regionName and timeHint from the protagonists' current scene. All returned locations belong to one geographically coherent mapped area observed at the same current time; do not widen the area merely to accommodate familiar supporting characters.
 - timeHint states the current time, scene phase, or immediate timing.
-- worldSummary describes the active area in 1 to 2 Korean sentences.
+- worldSummary describes the active area in 1 to 2 ${getMapNarrativeLanguage()} sentences.
 - currentLocationName exactly matches one returned location name.
 - Every location has a specific in-world name, one literal emoji icon, a situation, details, present, and clues. Choose icons only after comparing all returned places. Each icon directly depicts the place's defining function, characteristic object, or physical identity. Semantic accuracy comes first; use a distinct icon only when an equally direct alternative exists.
 - Every footstep has a person's proper name or a proper name plus an established short title, the exact returned locationName, and a concrete visible activity in status.
@@ -2657,7 +2763,7 @@ Location writing:
 - Treat all locations as one simultaneous snapshot of the supplied roleplay.
 - Keep each recurring person in one location and preserve the display spelling used in the roleplay.
 - present contains only people or groups physically visible at that exact place and moment, from 0 to 6 entries.
-- A visible group is one complete Korean phrase stating what kind of group is there, what they are doing or where they gather, and a plausible rough count.
+- A visible group is one complete ${getMapNarrativeLanguage()} phrase stating what kind of group is there, what they are doing or where they gather, and a plausible rough count.
 - situation establishes the recognizable physical place: layout, entrances, surfaces, furniture or structures, light, air, sound, material, movement, and the activity already occurring there.
 - details is a second view of the same place and moment. Add a distinct local beat, object, exchange, trace, risk, expectation, or change without repeating situation.
 - Place named people through visible posture, movement, work, dialogue, objects, attention, avoidance, or interaction. When the same individual appears in more than one field, align that person's actions across situation, present, footsteps, and quests.
@@ -2689,7 +2795,7 @@ Quest writing:
 - State any meaningful limit, target, or permitted use in the reward itself.
 
 Names and continuity:
-- Write descriptive content in natural Korean while preserving established character and place names in their current display form.
+- Write descriptive content in natural ${getMapNarrativeLanguage()} while preserving established character and place names in their current display form.
 - Use confirmed roleplay facts as the primary source, followed by the character card and persona.
 - For every established named character used in location prose, present, footsteps, or quests, require both: the person appears in the supplied recent roleplay, character card, or persona; and those sources establish a concrete current-time reason for that person to be physically inside the returned mapped region. Current presence may be supported by being observed there; confirmed arrival or movement within that region now; a duty currently being performed there; a meeting or event underway there now; or an established routine that places the person there at that current time.
 - A relationship, shared history, or known existence in the setting establishes identity only, not current presence. When regional presence is not established, omit that person and use a local named minor NPC if the map needs another actor.
@@ -2818,7 +2924,7 @@ Rules:
 - A new minor NPC has an ordinary proper name suited to this world, one modest local role, one observable current action, and one exact returned location. Do not invent prior intimacy, shared history, promises, conflicts, or secrets with the protagonists.
 - Use exact returned location names. Distribute additions across the map instead of placing all of them in the protagonists' current location.
 - Prefer returned locations that do not yet have an accepted person signal.
-- status is one concise, concrete Korean sentence describing what that person is visibly doing now.
+- status is one concise, concrete ${getMapNarrativeLanguage()} sentence describing what that person is visibly doing now.
 - Write labels and status in the display language used by the current roleplay.
 
 [Returned map scope]
@@ -2956,16 +3062,16 @@ Location to preserve: ${location.name}
 
 Writing requirements:
 - location.name remains exactly ${location.name}.
-- Write natural Korean while preserving established character and place names in their current display form.
-- location.situation is 8 to 12 complete Korean sentences. Establish the recognizable physical space, its atmosphere, people, current activity, and immediate tension through concrete observable details.
-- location.details adds 4 to 6 complete Korean sentences from a distinct second angle in the same place and moment.
+- Write natural ${getMapNarrativeLanguage()} while preserving established character and place names in their current display form.
+- location.situation is 8 to 12 complete ${getMapNarrativeLanguage()} sentences. Establish the recognizable physical space, its atmosphere, people, current activity, and immediate tension through concrete observable details.
+- location.details adds 4 to 6 complete ${getMapNarrativeLanguage()} sentences from a distinct second angle in the same place and moment.
 - location.present contains 0 to 6 people or complete group descriptions physically visible here.
 - location.clues contains short locally observable anchors.
 - Each footstep uses one individual person's proper name, or a proper name plus one short established title; locationName remains ${location.name}, and status gives that individual's concrete visible activity.
 - Footsteps are a selected subset of the individuals at this location. Crowd, group, counted-person, animal-group, and plural role descriptions remain in location.present, and location.present is not copied wholesale into footsteps.
 - Do not use ???, a count, an activity phrase, or a generic role as a footstep label. Return fewer footsteps when this one location supports only a small number of named individuals.
 - Keep the protagonists' activity already under way in location.situation and location.details.
-- Return zero or one quest. Include one only when a separate named person or group at this location has a specific aim, obstacle, consequence, and unresolved entry point through which the protagonists could become involved. Its summary and details each contain 3 to 5 complete Korean sentences.
+- Return zero or one quest. Include one only when a separate named person or group at this location has a specific aim, obstacle, consequence, and unresolved entry point through which the protagonists could become involved. Its summary and details each contain 3 to 5 complete ${getMapNarrativeLanguage()} sentences.
 - A quest reward is a concrete result the people or situation can plausibly provide: a named item, key, equipment, access or use right, specific invitation or appointment, defined role or authority, one favor from a named NPC, or evidence or information with a clear subject and source.
 - Return only schema fields. Internal IDs, status, links, and roleplay reflection text are added locally.
 
@@ -2997,7 +3103,7 @@ You are a roleplay map extension. The user clicked one footstep / location signa
 Generate this character status card only now; do not pre-generate it during map generation.
 
 Rules:
-- Write ordinary descriptive text in Korean. Preserve recurring character and place names in the display form used by the current roleplay.
+- Write ordinary descriptive text in ${getMapNarrativeLanguage()}. Preserve recurring character and place names in the display form used by the current roleplay.
 - Write injectionText only in English.
 - Footstep name/title: ${displayName}
 - Footstep location: ${location?.name || footstep.locationId || 'unknown location'}
@@ -3049,7 +3155,7 @@ Return JSON only.`;
 
 const PERSON_SEARCH_SCHEMA = {
     name: 'RoleplayPersonSearchModel',
-    description: 'A Korean person search result grounded in the supplied roleplay.',
+    description: 'A localized person search result grounded in the supplied roleplay.',
     strict: true,
     value: {
         '$schema': 'http://json-schema.org/draft-04/schema#',
@@ -3097,7 +3203,7 @@ const AGE_EVIDENCE_SCHEMA = {
 
 const TRACK_REFRESH_SCHEMA = {
     name: 'RoleplayTrackingRefreshModel',
-    description: 'A Korean refreshed tracked person location/status card.',
+    description: 'A localized refreshed tracked person location/status card.',
     strict: true,
     value: {
         '$schema': 'http://json-schema.org/draft-04/schema#',
@@ -3119,7 +3225,7 @@ const TRACK_REFRESH_SCHEMA = {
 
 const RECOMMENDATION_SCHEMA = {
     name: 'RoleplayPlaceRecommendationModel',
-    description: 'A Korean list of place recommendations grounded in the supplied roleplay.',
+    description: 'A localized list of place recommendations grounded in the supplied roleplay.',
     strict: true,
     value: {
         '$schema': 'http://json-schema.org/draft-04/schema#',
@@ -3164,13 +3270,13 @@ Use the supplied roleplay continuity to locate the person the user searched for 
 Search query: ${query}
 
 Rules:
-- Write ordinary descriptive text in Korean. Preserve recurring character and place names in the display form used by the current roleplay.
+- Write ordinary descriptive text in ${getMapNarrativeLanguage()}. Preserve recurring character and place names in the display form used by the current roleplay.
 - Write injectionText only in English.
 - ${knownMapRule}
 - Use confirmed recent movement first. Otherwise infer the most plausible current location from the current time, established routine, role, obligations, unresolved events, last known place, and setting continuity. Do not move the person into the protagonists' current scene merely to make the result convenient.
 - currentLocation must be a concrete place in the current world. confidence states how firm the location estimate is, and reason identifies the supplied facts that support it.
 - summary and characterInfo together identify who this person is, why this location makes sense now, and what makes the signal worth opening. Do not merely say that a location was found.
-- currentActivity is 4 to 6 concrete Korean sentences. Show where the person is positioned, what they are holding or handling, the specific person/object/problem receiving their attention, what they are trying to accomplish, and the next movement that is already becoming likely.
+- currentActivity is 4 to 6 concrete ${getMapNarrativeLanguage()} sentences. Show where the person is positioned, what they are holding or handling, the specific person/object/problem receiving their attention, what they are trying to accomplish, and the next movement that is already becoming likely.
 - currentTask names the immediate thing they are trying to finish, find, deliver, prevent, hide, decide, or avoid.
 - currentMood and thoughts are evidence-bounded inferences from observable behavior. Do not write omniscient secrets or a deep inner confession.
 - relationshipWithUser and lastEncounterWithUser use only confirmed continuity. Shared membership in a school, workplace, family, village, or social group does not prove a direct encounter.
@@ -3286,11 +3392,11 @@ Last known location: ${tracked.lastLocation || 'unknown'}
 Last known status: ${tracked.lastActivity || tracked.summary || 'unknown'}
 
 Rules:
-- Write ordinary descriptive text in Korean. Preserve recurring character and place names in the display form used by the current roleplay.
+- Write ordinary descriptive text in ${getMapNarrativeLanguage()}. Preserve recurring character and place names in the display form used by the current roleplay.
 - Write injectionText only in English.
 - If recent roleplay reveals the target's movement, follow it first.
 - If no movement is shown, infer a plausible location from personality, time, current scene, and last known location; lower confidence when uncertain.
-- If hiding, disappearing, or failed tracking fits the story, set status to a Korean equivalent of "tracking unavailable" and explain why.
+- If hiding, disappearing, or failed tracking fits the story, set status to a ${getMapNarrativeLanguage()} equivalent of "tracking unavailable" and explain why.
 - trackerReaction should describe how the target reacts to being watched/tracked. Do not write a deep inner confession.
 
 [Current map memory]
@@ -3312,7 +3418,7 @@ Use the supplied roleplay continuity to recommend fitting places.
 Search or recommendation request: ${category}
 
 Rules:
-- Write ordinary descriptive text in Korean. Preserve recurring character and place names in the display form used by the current roleplay.
+- Write ordinary descriptive text in ${getMapNarrativeLanguage()}. Preserve recurring character and place names in the display form used by the current roleplay.
 - Write injectionText only in English.
 - category must be exactly the user's selected/input request.
 - title must be only the place name. Do not put the category, theme, or the word "recommendation" in the title.
@@ -3322,8 +3428,8 @@ Rules:
 - If the request is for hot places, landmarks, or date spots, recommend famous places, scenic points, walking spots, shops, festivals, exhibits, or secret spots that people in this world would actually visit.
 - Use existing map locations when they fit the category. If not, create new places that naturally exist in the current world. Do not force an unrelated map location to fit.
 - Do not invent regular-customer history, dates, gifts, confessions, or private memories with a specific person unless recent chat explicitly supports it.
-- Write results like Korean place-search cards. shortReview should feel like "rating 4.x · one-line summary".
-- miniReviews must be 2 plain Korean strings with fake handles, for example "@ink_frog · 조용해서 공부하기 좋음". Do not return review objects, JSON strings, handle/review fields, or raw source data.
+- Write results like ${getMapNarrativeLanguage()} place-search cards. shortReview should feel like "rating 4.x · one-line summary".
+- miniReviews must be 2 plain ${getMapNarrativeLanguage()} strings with fake handles, for example "@ink_frog · 조용해서 공부하기 좋음". Do not return review objects, JSON strings, handle/review fields, or raw source data.
 - details should be 5 to 7 sentences describing structure, seats, light, smell, sound, busy hours, visitors, and atmosphere.
 - famousFor explains why the place is known.
 - signature is a signature menu for food places, or the main viewpoint/attraction for landmarks.
@@ -4023,7 +4129,9 @@ function renderRecommendationPanel(activeTab = 'place') {
     const panel = document.getElementById('mma-side-panel');
     if (!panel) return;
     const selectedTab = activeTab === 'person' ? 'person' : 'place';
-    const categories = ['맛집', '데이트 명소', '요즘 핫플레이스', '산책 코스'];
+    const categories = isKoreanMapLocale()
+        ? ['맛집', '데이트 명소', '요즘 핫플레이스', '산책 코스']
+        : ['Restaurants', 'Date spots', 'Trending places', 'Walking routes'];
     const personPanel = `
         <p class="mma-panel-note">현재 지도에 표시된 인물을 먼저 확인합니다. 지도에 없으면 현재 RP를 바탕으로 위치를 별도로 찾습니다.</p>
         <div class="mma-custom-search mma-person-search-form">
@@ -4170,7 +4278,9 @@ async function deleteRecommendation(id) {
         toast('이미 삭제되었거나 찾을 수 없는 검색 결과입니다.', 'warning');
         return false;
     }
-    if (!window.confirm(`${item.title || '이 검색 장소'}을(를) 삭제할까요?\n수집/반영해 둔 동일 항목도 함께 해제됩니다.`)) return false;
+    if (!window.confirm(isKoreanMapLocale()
+        ? `${item.title || '이 검색 장소'}을(를) 삭제할까요?\n수집/반영해 둔 동일 항목도 함께 해제됩니다.`
+        : `Delete "${item.title || 'this searched place'}"?\nAny collected or applied state for this item will also be removed.`)) return false;
 
     const before = {
         placeResults: memory.recommendations?.length || 0,
@@ -4269,7 +4379,7 @@ async function generateRecommendations(category) {
     pushDebugLog('search.place.generate.start', '장소 검색을 시작했습니다.', {
         placeResults: memory.recommendations?.length || 0,
     });
-    await withLoader(`${category} 추천을 찾는 중...`, async () => {
+    await withLoader(isKoreanMapLocale() ? `${category} 추천을 찾는 중...` : `Searching for ${category} recommendations...`, async () => {
         let rawText = '';
         rawText = await generateQuietWithSelectedProfile(buildRecommendationPrompt(category), RECOMMENDATION_SCHEMA, { maxTokens: 5000 });
         const parsed = parseJson(rawText);
@@ -4389,7 +4499,9 @@ async function deletePersonSearchResult(id) {
         toast('이미 삭제되었거나 찾을 수 없는 검색 기록입니다.', 'warning');
         return false;
     }
-    if (!window.confirm('이 인물 검색 기록을 삭제할까요?\n추적 중인 인물이나 이미 반영한 데이터는 삭제되지 않습니다.')) return false;
+    if (!window.confirm(isKoreanMapLocale()
+        ? '이 인물 검색 기록을 삭제할까요?\n추적 중인 인물이나 이미 반영한 데이터는 삭제되지 않습니다.'
+        : 'Delete this person search record?\nTracked people and already-applied items will remain.')) return false;
 
     const before = memory.searchResults?.length || 0;
     memory.searchResults = (memory.searchResults || []).filter(result => result.id !== id);
@@ -4773,7 +4885,10 @@ async function getActivatedWorldInfoForProfile(ctx) {
 
 async function generateQuietWithSelectedProfile(quietPrompt, jsonSchema = null, options = {}) {
     const settings = getSettings();
-    const prompt = String(quietPrompt || '');
+    const basePrompt = String(quietPrompt || '');
+    const prompt = isKoreanMapLocale()
+        ? basePrompt
+        : basePrompt + '\n\n[Output language]\nUse ' + getMapNarrativeLanguage() + ' for all user-visible prose, headings, descriptions, reviews, statuses, and fallback values. Preserve JSON field names, IDs, proper names, quoted source facts, and the English-only injectionText field. Translate Korean examples or default phrases into the selected output language rather than copying them literally.';
     const maxTokens = Number(options.maxTokens || 5000);
     const externalSignal = options.signal || null;
     const allowStructuredFallback = options.allowStructuredFallback !== false;
@@ -5434,7 +5549,10 @@ async function handleFootstepClick(footstepId) {
     const message = hint
         ? `'${label}'의 현재 상태를 확인할까요?\n\n현재 신호: ${hint}`
         : `'${label}'의 현재 상태를 확인할까요?`;
-    if (!window.confirm(message)) return;
+    const confirmMessage = isKoreanMapLocale()
+        ? message
+        : `Check "${label}"'s current status?${hint ? '\n\nCurrent signal: ' + hint : ''}`;
+    if (!window.confirm(confirmMessage)) return;
     const profile = await getOrGenerateFootstepProfile(footstepId);
     if (profile) renderFootstepPanel(footstepId);
 }
@@ -5680,7 +5798,7 @@ async function withLoader(message, fn, options = {}) {
     try {
         const ctx = stContext();
         if (ctx.loader?.show) {
-            handle = ctx.loader.show({ message, title: getThemeConfig().loaderTitle, blocking: false, toastMode: 'static' });
+            handle = ctx.loader.show({ message: localizeMapUiText(message), title: getThemeConfig().loaderTitle, blocking: false, toastMode: 'static' });
         } else {
             // Never cover the map in the fallback path. Browsing the current
             // map, notebook, and existing footstep information stays available.
@@ -5744,6 +5862,7 @@ function showBonbonToast(message, type = 'info') {
 
 function toast(message, type = 'info') {
     try {
+        message = localizeMapUiText(String(message || ''));
         if (showBonbonToast(message, type)) return;
         const ctx = stContext();
         if (ctx.toastr?.[type]) ctx.toastr[type](message);
@@ -5895,6 +6014,7 @@ function openMap() {
         }
         getSettings();
         createRoot();
+        observeMapUiLocale(document.getElementById(EXTENSION_ROOT_ID));
         applyFontScale();
         applyThemeClass();
         const overlay = document.getElementById('mma-overlay');
@@ -6895,7 +7015,15 @@ function confirmManageAction(type, id, action) {
         user: `${infoText}\n\n${userQuestion}`,
         remove: `${info.title}의 주입 설정만 삭제합니다.\n지도에 표시된 장소, 인물, 퀘스트, 발견 자체는 사라지지 않습니다.\n\n삭제할까요?`,
     };
-    return window.confirm(messages[action] || `${info.title} 항목을 처리할까요?`);
+    if (isKoreanMapLocale()) return window.confirm(messages[action] || `${info.title} 항목을 처리할까요?`);
+    const englishMessages = {
+        hold: `Save "${subject}" to the notebook? It won't affect roleplay unless applied later.\n\nContinue?`,
+        inject: `Apply "${info.title}" as background context in future responses?`,
+        char: `Apply "${info.title}" so ${charName} notices it first?`,
+        user: `Apply "${info.title}" so ${userName} notices it first?`,
+        remove: `Remove only the application setting for "${info.title}"?\nThe map item itself will remain.`,
+    };
+    return window.confirm(englishMessages[action] || `Manage "${info.title}"?`);
 }
 
 async function handleManageAction(type, id, action) {
@@ -7438,9 +7566,10 @@ async function openStoredCharacterNotebookResetPopup() {
 
     // This single confirmation popup contains both the real stored-key select
     // and the complete deletion warning; no second confirmation is shown.
+    localizeMapUiTree(content);
     const popup = new Popup(content, POPUP_TYPE.CONFIRM, null, {
-        okButton: '공용 데이터 초기화',
-        cancelButton: '취소',
+        okButton: localizeMapUiText('공용 데이터 초기화'),
+        cancelButton: localizeMapUiText('취소'),
         leftAlign: true,
     });
     const result = await popup.show();
@@ -7685,6 +7814,10 @@ function init() {
     initialized = true;
     safeInitStep('setupExtensionButtonInSettings', setupExtensionButtonInSettings);
     safeInitStep('ensureExtensionsMenuButton', ensureExtensionsMenuButton);
+    safeInitStep('map locale', () => {
+        observeMapUiLocale(document.getElementById('mma-settings-block'));
+        observeMapUiLocale(document.getElementById('mma-extension-menu-button'));
+    });
     // Restore an already-existing injected map prompt quietly, but do not create
     // map DOM, run migrations, or touch chat memory during SillyTavern boot.
     safeInitStep('syncExtensionPromptExistingOnly', () => syncExtensionPrompt({ createMemory: false }));
@@ -7734,6 +7867,7 @@ export function onEnable() {
 
 export function onDisable() {
     lifecycleEnabled = false;
+    stopMapUiLocaleObservers();
     initialized = false;
     if (activeDiscoveryConfirm) activeDiscoveryConfirm(false);
     cancelActiveMapGeneration('extension disabled');
