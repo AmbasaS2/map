@@ -310,5 +310,9 @@ export const ENGLISH_UI = Object.freeze({
     "관계 및 친밀도": "Relationship and closeness",
     "현재 지도": "Current map",
     "지도의 퀘스트": "Map quests",
-    "미확인": "Unknown"
+    "미확인": "Unknown",
+    "👣 동선 지도 보기": "👣 Show route on map",
+    "지도에서 동선 숨기기": "Hide tracked route",
+    "새 지도로 처음부터 다시 생성 (수첩은 유지)": "Generate a fresh map (keep notebook)",
+    "현재 지도를 이어서 갱신": "Continue existing map"
 });
