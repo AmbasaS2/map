@@ -4986,7 +4986,7 @@ function refreshVisibleMapAfterBackgroundUpdate({ locationId = '', forceMapView 
 
 function refreshMapGenerationControls() {
     const busy = Boolean(activeMapGeneration);
-    document.querySelectorAll('[data-action="refresh-all"], [data-action="refresh-location"], [data-action="restore-previous-map"], [data-action="discover"]').forEach(button => {
+    document.querySelectorAll('#mma-window [data-action="refresh-all"], #mma-window [data-action="refresh-fresh"], #mma-window [data-action="refresh-location"], #mma-window [data-action="restore-previous-map"], #mma-window [data-action="discover"]').forEach(button => {
         button.disabled = busy;
         button.setAttribute('aria-busy', busy ? 'true' : 'false');
     });
