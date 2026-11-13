@@ -22,7 +22,7 @@ const FOOTSTEP_REPAIR_MAX_TOKENS = 1600;
 const LOCATION_ICON_REVIEW_MAX_TOKENS = 600;
 const DEBUG_LOG_LIMIT = 40;
 const memoryDebugLogs = [];
-const EXTENSION_VERSION = '3.2.2';
+const EXTENSION_VERSION = '3.2.3';
 const SHARED_NOTEBOOK_KEYS = Object.freeze(['managedItems', 'footstepProfiles', 'trackedPeople', 'recommendations', 'searchResults']);
 const SHARED_NOTEBOOK_MIGRATION_VERSION = 1;
 const DISCOVERY_HISTORY_LIMIT = 30;
@@ -2293,6 +2293,7 @@ const DISCOVERY_ITEM_SCHEMA = {
         locationName: { type: 'string' },
         focus: { type: 'string' },
         focusContext: { type: 'string' },
+        evidenceLevel: { type: 'string', enum: ['confirmed', 'inferred', 'rumor'] },
         observation: { type: 'string' },
         stakes: { type: 'string' },
         interactions: { type: 'array', minItems: 2, maxItems: 3, items: { type: 'string' } },
@@ -2301,7 +2302,7 @@ const DISCOVERY_ITEM_SCHEMA = {
         motifKey: { type: 'string' },
         continuationOf: { type: 'string' },
     },
-    required: ['category', 'emoji', 'title', 'locationName', 'focus', 'focusContext', 'observation', 'stakes', 'interactions', 'participants', 'sourceAnchors', 'motifKey', 'continuationOf'],
+    required: ['category', 'emoji', 'title', 'locationName', 'focus', 'focusContext', 'evidenceLevel', 'observation', 'stakes', 'interactions', 'participants', 'sourceAnchors', 'motifKey', 'continuationOf'],
 };
 
 function getDiscoverySchema(outputMode = getOutputModeKey()) {
@@ -2361,6 +2362,24 @@ function findUnambiguousLocationNameMatch(locations = [], searchedName = '') {
         return searchedIsQualified !== locationIsQualified;
     });
     return candidates.length === 1 ? candidates[0] : null;
+}
+
+
+function normalizeDiscoveryEvidence(value) {
+    const level = String(value || '').trim().toLowerCase();
+    return ['confirmed', 'inferred', 'rumor'].includes(level) ? level : 'inferred';
+}
+
+function discoveryHasDirectRoleplayAnchor(anchors = []) {
+    const recent = getChatSnapshot(10).split(/\n\s*\n/).filter(Boolean);
+    // A generated map's own text never counts as direct confirmation.
+    return anchors.some(anchor => recent.some(message => discoverySimilarity(anchor, message) >= 0.35));
+}
+
+function getDiscoveryEvidenceLabel(value) {
+    const level = normalizeDiscoveryEvidence(value);
+    if (!isKoreanMapLocale()) return { confirmed: '✅ Observed in RP', inferred: '🧩 Inferred', rumor: '🗣️ Rumor' }[level];
+    return { confirmed: '✅ RP에서 확인', inferred: '🧩 추정', rumor: '🗣️ 소문' }[level];
 }
 
 function normalizeDiscoveryCategory(value) {
@@ -2552,6 +2571,7 @@ function discoveryFingerprintParts(item = {}) {
         focalParticipants: (item.participants || []).slice(0, 4),
         locationName: String(item.locationName || ''),
         motifKey: String(item.motifKey || item.title || ''),
+        evidenceLevel: normalizeDiscoveryEvidence(item.evidenceLevel),
         titleKey: normalizeDiscoveryText(item.title),
         observation: stripLong(item.observation || item.body || '', 320),
         stakes: stripLong(item.stakes || '', 160),
@@ -2591,6 +2611,8 @@ function normalizeDiscoveries(raw, map, history = [], outputMode = getOutputMode
         const participants = uniqueStrings(rawParticipants, 8);
         const sourceAnchors = uniqueStrings(rawAnchors, 4);
         const category = normalizeDiscoveryCategory(item.category);
+        const claimedEvidence = normalizeDiscoveryEvidence(item.evidenceLevel);
+        const evidenceLevel = claimedEvidence === 'confirmed' && !discoveryHasDirectRoleplayAnchor(sourceAnchors) ? 'inferred' : claimedEvidence;
         if (!category) {
             rejected.push({ index, reason: 'unsupported or abstract category' });
             continue;
@@ -2619,6 +2641,7 @@ function normalizeDiscoveries(raw, map, history = [], outputMode = getOutputMode
             locationName: location.name,
             focus,
             focusContext,
+            evidenceLevel,
             observation,
             stakes,
             interactions,
@@ -2767,7 +2790,8 @@ A discovery is one concrete person, creature, object, message, changed place, or
 
 Every discovery must answer four practical questions:
 1. focus and focusContext: exactly what was found, who or what it is, and why it belongs at this location;
-2. observation: what is visibly or audibly happening now, in 2 to 4 natural ${getMapNarrativeLanguage()} sentences with concrete sensory and behavioral details;
+2. evidenceLevel: choose "confirmed" only for details explicitly seen, said, or established in the supplied recent roleplay. Use "rumor" for second-hand claims and "inferred" for AI conjecture or plausible off-screen states. A previous AI-generated map alone cannot confirm a new discovery.
+3. observation: what is visibly or audibly happening now, in 2 to 4 natural ${getMapNarrativeLanguage()} sentences with concrete sensory and behavioral details;
 3. stakes: the concrete near-future change that will occur at this place if nobody intervenes;
 4. interactions: 2 to 3 materially different things a character could attempt, inspect, ask, move, help, stop, open, follow, repair, deliver, or otherwise engage with.
 
@@ -2786,7 +2810,7 @@ Set allocation:
 
 Use continuationOf only when this is a changed continuation of one exact discovery id supplied in Recent discovery history. Otherwise return an empty string. A continuation must advance that earlier state rather than repeat it.
 
-Return category, emoji, title, locationName, focus, focusContext, observation, stakes, interactions, participants, sourceAnchors, motifKey, and continuationOf for every item. Internal IDs, marker placement, and roleplay reflection text are added locally.
+Return category, emoji, title, locationName, focus, focusContext, evidenceLevel, observation, stakes, interactions, participants, sourceAnchors, motifKey, and continuationOf for every item. Internal IDs, marker placement, and roleplay reflection text are added locally.
 
 Current user: ${getCurrentUserName()}
 Current character: ${getCurrentCharacterName()}
@@ -4870,7 +4894,7 @@ The JSON must include category and items. Put at least 3 recommendation items in
         return `${getJsonOnlyInstruction(jsonSchema)}
 
 Never return only an empty object {}.
-The JSON must include items. Each item includes category, emoji, title, locationName, focus, focusContext, observation, stakes, interactions, participants, sourceAnchors, motifKey, and continuationOf.`;
+The JSON must include items. Each item includes category, emoji, title, locationName, focus, focusContext, evidenceLevel, observation, stakes, interactions, participants, sourceAnchors, motifKey, and continuationOf.`;
     }
     return `${getJsonOnlyInstruction(jsonSchema)}
 
@@ -6774,7 +6798,7 @@ function renderDiscoveryListPanel() {
                     return `
                     <button type="button" class="mma-discovery-list-card" data-discovery-open="${escapeHtml(item.id)}">
                         <span class="mma-discovery-card-icon">${escapeHtml(emoji)}</span>
-                        <span><b>${escapeHtml(item.title)}</b><small>📍 ${escapeHtml(item.locationName)}</small><em>${escapeHtml(stripLong(observation, 150))}</em></span>
+                        <span><b>${escapeHtml(item.title)}</b><small>📍 ${escapeHtml(item.locationName)} · ${escapeHtml(getDiscoveryEvidenceLabel(item.evidenceLevel))}</small><em>${escapeHtml(stripLong(observation, 150))}</em></span>
                     </button>`;
                 }).join('') || '<p class="mma-empty">표시할 발견이 없습니다.</p>'}
             </div>
@@ -6807,11 +6831,12 @@ function renderDiscoveryPanel(discoveryId) {
                 <div><span class="mma-place-icon">${escapeHtml(emoji)}</span><strong>${escapeHtml(item.title)}</strong></div>
                 <button title="${escapeHtml(ui.panelTitle)} 목록으로 돌아가기" data-action="back">↩️</button>
             </header>
-            <div class="mma-event-location">📍 ${escapeHtml(item.locationName)}</div>
+            <div class="mma-event-location">📍 ${escapeHtml(item.locationName)} · ${escapeHtml(getDiscoveryEvidenceLabel(item.evidenceLevel))}</div>
             <section class="mma-info-block mma-discovery-body">
                 <h4>🔎 지금 발견한 것</h4>
                 <p><b>${escapeHtml(focus)}</b>${focusContext ? ` — ${escapeHtml(focusContext)}` : ''}</p>
                 <p>${escapeHtml(observation)}</p>
+                <p class="mma-evidence-note">${isKoreanMapLocale() ? '표시는 지도 AI의 근거 분류이며 사실 보증은 아니야.' : 'Evidence tags reflect the map AI assessment, not proof.'}</p>
             </section>
             ${stakes ? `<section class="mma-info-block"><h4>⏳ 이대로 두면</h4><p>${escapeHtml(stakes)}</p></section>` : ''}
             ${interactions.length ? `<section class="mma-info-block"><h4>↗️ 해볼 수 있는 일</h4><ul>${interactions.map(action => `<li>${escapeHtml(action)}</li>`).join('')}</ul></section>` : ''}
@@ -7503,6 +7528,7 @@ function snapshotManagedItem(type, id, status, options = {}) {
             stakes: item.stakes || '',
             interactions: [...(item.interactions || [])],
             sourceAnchors: [...(item.sourceAnchors || item.anchors || [])],
+            evidenceLevel: normalizeDiscoveryEvidence(item.evidenceLevel),
             createdAt: nowStamp(),
             updatedAt: nowStamp(),
         };
@@ -7642,6 +7668,7 @@ What is currently observable: ${observation}
 If nobody intervenes, what changes next: ${stakes}
 Possible ways characters may engage: ${interactions.join(' / ')}
 Continuity basis: ${sourceAnchors.join(' / ')}
+Evidence status: ${normalizeDiscoveryEvidence(item.evidenceLevel)}. Treat inferred facts as provisional, and rumors as second-hand claims rather than settled truth.
 
 Maintain this as a current world state at the stated location. When the roleplay reaches this location or naturally connects to its focus, make the observable state available through concrete action, sound, dialogue, movement, or physical detail. Let the state develop from the characters' actual responses, using the listed interactions as possibilities.`;
 }
