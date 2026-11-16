@@ -5,14 +5,22 @@
 ---
 
 
-## 📸 Screenshots
+## 📸 Preview / 미리보기
 
 <p align="center">
-  <img src="assets/readme/map-marauders.jpeg" alt="Marauder's Map theme showing locations, characters, and quests" width="365" />
-  <img src="assets/readme/map-bonbon.jpeg" alt="Bonbon Board theme with emoji locations and character pieces" width="365" />
+  <a href="assets/readme/map-preview.png"><img src="assets/readme/map-preview.png" alt="Map: Marauder's Map and Bonbon Board in side-by-side previews / 마법 지도와 봉봉보드" width="900" /></a>
 </p>
 
-*Two map themes are shown with Korean UI example data. The S.H.I.E.L.D. theme is also available. Screenshots may differ by version and language.*
+*The preview shows cropped examples of two map themes. The S.H.I.E.L.D. theme is also available; actual appearance and labels may differ by version and UI language.*  
+*두 지도 테마를 보기 좋은 비율로 일부 잘라 보여줍니다. S.H.I.E.L.D. 테마도 있으며 버전이나 UI 언어에 따라 화면이 다를 수 있습니다.*
+
+<details>
+<summary>Full-size screenshots / 원본 화면 보기</summary>
+
+- [Marauder's Map / 마법 지도](assets/readme/map-marauders.jpeg)
+- [Bonbon Board / 봉봉보드](assets/readme/map-bonbon.jpeg)
+
+</details>
 
 ## 📥 Installation and First Steps
 
@@ -381,15 +389,6 @@ Refreshing the full map or a single location saves the immediately preceding sta
 
 ---
 
-
-## 📸 화면 미리보기
-
-<p align="center">
-  <img src="assets/readme/map-marauders.jpeg" alt="장소·인물·퀘스트가 표시된 마법 지도 테마" width="365" />
-  <img src="assets/readme/map-bonbon.jpeg" alt="이모지 장소와 인물 말이 표시된 봉봉보드 테마" width="365" />
-</p>
-
-*한국어 UI로 촬영한 두 가지 테마 예시입니다. S.H.I.E.L.D. 테마도 있으며, 버전·언어 설정에 따라 실제 화면은 다를 수 있습니다.*
 
 ## 📥 설치 및 처음 사용하기
 
