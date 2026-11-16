@@ -5,32 +5,37 @@
 ---
 
 
-## 📸 Preview / 미리보기
+## 📸 Preview
 
 <p align="center">
-  <a href="assets/readme/map-preview.png"><img src="assets/readme/map-preview.png" alt="Map: Marauder's Map and Bonbon Board in side-by-side previews / 마법 지도와 봉봉보드" width="900" /></a>
+  <a href="assets/readme/map-preview.png"><img src="assets/readme/map-preview.png" alt="Marauder's Map and Bonbon Board theme previews" width="900" /></a>
 </p>
 
-*The preview shows cropped examples of two map themes. The S.H.I.E.L.D. theme is also available; actual appearance and labels may differ by version and UI language.*  
-*두 지도 테마를 보기 좋은 비율로 일부 잘라 보여줍니다. S.H.I.E.L.D. 테마도 있으며 버전이나 UI 언어에 따라 화면이 다를 수 있습니다.*
+*Two cropped theme examples are shown below; S.H.I.E.L.D. Field Locator is another available theme. The original images are linked below.*
 
 <details>
-<summary>Full-size screenshots / 원본 화면 보기</summary>
+<summary>Full-size screenshots</summary>
 
-- [Marauder's Map / 마법 지도](assets/readme/map-marauders.jpeg)
-- [Bonbon Board / 봉봉보드](assets/readme/map-bonbon.jpeg)
+- [Marauder's Map](assets/readme/map-marauders.jpeg)
+- [Bonbon Board](assets/readme/map-bonbon.jpeg)
 
 </details>
 
 ## 📥 Installation and First Steps
 
 1. In SillyTavern, open **Extensions → Install extension** (sometimes under extension management).
-2. Paste \`https://github.com/AmbasaS2/map\`, install, and reload the page.
+2. Paste `https://github.com/AmbasaS2/map`, install, and reload the page.
 3. In **Extensions → Map**, choose a connection profile, a theme, and an output mode.
 4. Open the map to generate or restore the current chat's map. Opening information does not automatically apply it to the RP; choose an application mode when needed.
 
 
 ## 🧭 How to Use
+
+<p align="center">
+  <a href="assets/readme/map-workflow-guide.png"><img src="assets/readme/map-workflow-guide.png" alt="Map workflow: read current RP, generate map, explore locations and quests, apply or save" width="860" /></a>
+</p>
+
+*Illustrated workflow, not a screenshot. Reviewing the map does not add information to the RP; applying it requires an explicit mode selection.*
 
 **Choose a connection profile, theme, and output mode → open or generate the map → review locations, characters, and quests → apply them to the roleplay or save them to the notebook → explore, search, and track when needed → refresh or restore**
 
@@ -390,15 +395,37 @@ Refreshing the full map or a single location saves the immediately preceding sta
 ---
 
 
+## 📸 미리보기
+
+<p align="center">
+  <a href="assets/readme/map-preview.png"><img src="assets/readme/map-preview.png" alt="마법 지도와 봉봉보드 테마 미리보기" width="900" /></a>
+</p>
+
+*마법 지도와 봉봉보드 두 테마를 보기 좋게 일부 잘라 배치했습니다. S.H.I.E.L.D. Field Locator 테마도 있으며 전체 원본은 아래 링크에서 볼 수 있습니다.*
+
+<details>
+<summary>원본 화면 보기</summary>
+
+- [마법 지도](assets/readme/map-marauders.jpeg)
+- [봉봉보드](assets/readme/map-bonbon.jpeg)
+
+</details>
+
 ## 📥 설치 및 처음 사용하기
 
 1. SillyTavern의 **확장 프로그램 → 확장 설치** 메뉴를 엽니다. 버전에 따라 확장 관리 메뉴 안에 있을 수 있습니다.
-2. \`https://github.com/AmbasaS2/map\`을 붙여넣어 설치하고 새로고침합니다.
+2. `https://github.com/AmbasaS2/map`을 붙여넣어 설치하고 새로고침합니다.
 3. **확장 프로그램 → 지도**에서 연결 프로필, 지도 테마, 출력 방식을 선택합니다.
 4. 지도를 열어 현재 채팅의 지도를 생성하거나 저장된 지도를 불러옵니다. 정보를 보는 것만으로 RP에 자동 반영되지는 않으며, 필요할 때 반영 방식을 선택합니다.
 
 
 ## 🧭 사용 순서
+
+<p align="center">
+  <a href="assets/readme/map-workflow-guide.png"><img src="assets/readme/map-workflow-guide.png" alt="지도 사용 흐름: 현재 RP 확인, 지도 열기, 장소와 인물 탐색, 반영 또는 수첩 저장" width="860" /></a>
+</p>
+
+*실제 화면 캡처가 아닌 기능 안내용 구성도입니다. 지도를 보는 것만으로 RP에 반영되지 않으며, 직접 반영 방식을 선택해야 합니다.*
 
 **연결 프로필·테마·출력 모드 설정 → 지도 열기·생성 → 장소·인물·퀘스트 확인 → 반영 또는 수첩 저장 → 필요할 때 탐색·검색·추적 → 새로고침·복원**
 
