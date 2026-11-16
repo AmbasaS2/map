@@ -4,6 +4,24 @@
 
 ---
 
+
+## 📸 Screenshots
+
+<p align="center">
+  <img src="assets/readme/map-marauders.jpeg" alt="Marauder's Map theme showing locations, characters, and quests" width="365" />
+  <img src="assets/readme/map-bonbon.jpeg" alt="Bonbon Board theme with emoji locations and character pieces" width="365" />
+</p>
+
+*Two map themes are shown with Korean UI example data. The S.H.I.E.L.D. theme is also available. Screenshots may differ by version and language.*
+
+## 📥 Installation and First Steps
+
+1. In SillyTavern, open **Extensions → Install extension** (sometimes under extension management).
+2. Paste \`https://github.com/AmbasaS2/map\`, install, and reload the page.
+3. In **Extensions → Map**, choose a connection profile, a theme, and an output mode.
+4. Open the map to generate or restore the current chat's map. Opening information does not automatically apply it to the RP; choose an application mode when needed.
+
+
 ## 🧭 How to Use
 
 **Choose a connection profile, theme, and output mode → open or generate the map → review locations, characters, and quests → apply them to the roleplay or save them to the notebook → explore, search, and track when needed → refresh or restore**
@@ -362,6 +380,24 @@ Refreshing the full map or a single location saves the immediately preceding sta
 **지도는 현재 RP를 읽어 장소, 인물의 위치, 퀘스트와 발견을 지도 위에 정리해주는 실리태번 확장입니다.**
 
 ---
+
+
+## 📸 화면 미리보기
+
+<p align="center">
+  <img src="assets/readme/map-marauders.jpeg" alt="장소·인물·퀘스트가 표시된 마법 지도 테마" width="365" />
+  <img src="assets/readme/map-bonbon.jpeg" alt="이모지 장소와 인물 말이 표시된 봉봉보드 테마" width="365" />
+</p>
+
+*한국어 UI로 촬영한 두 가지 테마 예시입니다. S.H.I.E.L.D. 테마도 있으며, 버전·언어 설정에 따라 실제 화면은 다를 수 있습니다.*
+
+## 📥 설치 및 처음 사용하기
+
+1. SillyTavern의 **확장 프로그램 → 확장 설치** 메뉴를 엽니다. 버전에 따라 확장 관리 메뉴 안에 있을 수 있습니다.
+2. \`https://github.com/AmbasaS2/map\`을 붙여넣어 설치하고 새로고침합니다.
+3. **확장 프로그램 → 지도**에서 연결 프로필, 지도 테마, 출력 방식을 선택합니다.
+4. 지도를 열어 현재 채팅의 지도를 생성하거나 저장된 지도를 불러옵니다. 정보를 보는 것만으로 RP에 자동 반영되지는 않으며, 필요할 때 반영 방식을 선택합니다.
+
 
 ## 🧭 사용 순서
 
