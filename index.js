@@ -1,6 +1,8 @@
 import { POPUP_RESULT, POPUP_TYPE, Popup } from '../../../popup.js';
 import { getCurrentLocale } from '../../../i18n.js';
+import { saveSettings as saveSillyTavernSettings } from '../../../../script.js';
 import { ENGLISH_UI } from './i18n/en.js';
+import { auditMapFacts, buildSourceFactContract } from './map-fact-audit.mjs';
 
 /*
  * 지도 — SillyTavern UI Extension
@@ -66,7 +68,7 @@ const THEME_OPTIONS = Object.freeze({
         key: 'marauder',
         label: "Marauder's Map (HP AU)",
         shortLabel: "Marauder's Map",
-        menuIcon: '📜',
+        menuIcon: ['scroll', '▤'],
         menuTitle: "Marauder's Map",
         activationVariant: 'spell',
         closeText: 'Mischief Managed.',
@@ -90,7 +92,7 @@ const THEME_OPTIONS = Object.freeze({
         key: 'modern',
         label: 'S.H.I.E.L.D. Field Locator (MCU AU)',
         shortLabel: 'S.H.I.E.L.D. LOCATOR',
-        menuIcon: '📍',
+        menuIcon: ['location-dot', '⌖'],
         menuTitle: 'S.H.I.E.L.D. Field Locator',
         activationVariant: 'warning',
         closeText: '×',
@@ -114,7 +116,7 @@ const THEME_OPTIONS = Object.freeze({
         key: 'bonbon',
         label: 'Bonbon Board',
         shortLabel: 'BONBON BOARD',
-        menuIcon: '🎲',
+        menuIcon: ['dice', '◇'],
         menuTitle: 'Bonbon Board',
         activationVariant: 'game-box',
         closeText: '×',
@@ -163,6 +165,7 @@ let initDomReadyHandler = null;
 let appLifecycleHooksBound = false;
 let appLifecycleHandlers = [];
 let chatChangedHooked = false;
+let generationPromptHooked = false;
 let lastKnownChatSignature = '';
 let profileSwitchDepth = 0;
 let suppressChatChangeUntil = 0;
@@ -173,7 +176,7 @@ let saveMemorySequence = 0;
 let mapRevisionSequence = 0;
 // Only one map/selected-location generation may commit at a time.
 let activeMapGeneration = null;
-let activeDiscoveryConfirm = null;
+let activeMapConfirmation = null;
 const attachedNotebookMemories = new WeakSet();
 const attachedNotebookFingerprints = new WeakMap();
 const sharedNotebookMigrationSaveQueued = new WeakSet();
@@ -711,8 +714,20 @@ function getMapActivationCompleteText() {
 }
 
 
+function mapControlIcon(name, fallback = '') {
+    return `<span class="mma-control-icon" aria-hidden="true"><i class="fa-solid fa-${name}"></i><span class="mma-control-fallback">${fallback}</span></span>`;
+}
+
+async function loadMapControlFont() {
+    try {
+        if (!document.fonts) return;
+        const faces = await document.fonts.load('900 1em "Font Awesome 6 Free"', '\uf05b');
+        document.body.classList.toggle('mma-control-font-ready', faces.some(face => face.status === 'loaded'));
+    } catch { /* Keep the visible fallback if the host font is unavailable. */ }
+}
+
 function getExtensionMenuIcon() {
-    return getThemeConfig().menuIcon || '📜';
+    return mapControlIcon(...getThemeConfig().menuIcon);
 }
 
 function refreshExtensionsMenuButton() {
@@ -874,14 +889,17 @@ function isMarauderTheme() {
 }
 
 function getCharacterKeyForRecord(character, fallback = 'default-character') {
-    const stableSource = character?.avatar || character?.name || fallback || 'default-character';
-    return safeId(String(stableSource), 'character');
+    const source = String(character?.avatar || character?.name || fallback || 'default-character');
+    const comparable = source.normalize('NFKD').replace(/[\u0300-\u036f]/g, '');
+    if (/[a-z0-9가-힣]/i.test(comparable)) return safeId(source, 'character');
+    return 'character-u-' + Array.from(source.normalize('NFC'), ch => ch.codePointAt(0).toString(16)).join('-');
 }
 
 function getCurrentCharacterKey() {
     try {
         const ctx = stContext();
-        const char = Number.isInteger(ctx.characterId) ? ctx.characters?.[ctx.characterId] : null;
+        const id = ctx.characterId;
+        const char = Number.isInteger(id) || (typeof id === 'string' && /^\d+$/.test(id)) ? ctx.characters?.[id] : null;
         return getCharacterKeyForRecord(char, ctx.name2 || ctx.characterId || 'default-character');
     } catch {
         return 'character-default';
@@ -1464,7 +1482,15 @@ function saveMemory(memoryArg = null) {
             // just-edited array before persistence.
             const memory = memoryArg || ctx.chatMetadata?.[METADATA_KEY] || ensureMemory();
             const sharedNotebookChanged = persistCharacterNotebook(memory);
-            if (sharedNotebookChanged) saveSettings();
+            // The shared notebook is authoritative on reopen. Commit it in
+            // the same queue as the chat copy instead of deferring it.
+            if (sharedNotebookChanged) {
+                await saveSillyTavernSettings();
+                if (safeContext()?.chatMetadata !== ctx.chatMetadata || getStableChatSignature() !== currentSignature) {
+                    pushDebugLog('memory.save.skipped.chatChanged', '수첩 저장 중 채팅이 변경되었습니다.', { sequence });
+                    return false;
+                }
+            }
             if (typeof ctx.saveMetadata === 'function') await ctx.saveMetadata();
             else if (typeof ctx.saveChatMetadata === 'function') await ctx.saveChatMetadata();
             pushDebugLog('memory.save.success', sharedNotebookChanged
@@ -1517,7 +1543,9 @@ function getCurrentUserName() {
 function getCharacterSummary() {
     try {
         const ctx = stContext();
-        const char = Number.isInteger(ctx.characterId) ? ctx.characters?.[ctx.characterId] : null;
+        // SillyTavern's individual character IDs are array indices stored as strings.
+        const id = ctx.characterId;
+        const char = /^\d+$/.test(String(id ?? '')) ? ctx.characters?.[Number(id)] : null;
         const data = char?.data || char || {};
         const parts = [
             `Character name: ${char?.name || ctx.name2 || '{{char}}'}`,
@@ -1535,8 +1563,10 @@ function getPersonaSummary() {
     try {
         const ctx = stContext();
         const description = ctx?.persona_description
+            || ctx?.powerUserSettings?.persona_description
             || ctx?.powerUser?.persona_description
             || globalThis.power_user?.persona_description
+            || ctx.getCharacterCardFields?.()?.persona
             || '';
         return [
             `Persona name: ${ctx?.name1 || '{{user}}'}`,
@@ -1970,6 +2000,14 @@ function isPlaceholderLocationName(value) {
         || /(?:어딘가|어느 곳|정확한 장소는? (?:불명|미상)|장소를? 알 수 없|위치를? 알 수 없|확실하지 않은 (?:장소|위치))/i.test(name);
 }
 
+const MAP_SITUATION_BEATS = ['layout', 'access', 'surfaces', 'light', 'sound', 'air', 'movement', 'activity'];
+
+function readLocationProse(value) {
+    if (value && typeof value === 'object' && !Array.isArray(value)) value = MAP_SITUATION_BEATS.map(key => value[key]);
+    if (!Array.isArray(value)) return String(value);
+    return value.filter(line => typeof line === 'string').map(line => line.trim()).filter(Boolean).join(' ');
+}
+
 function normalizeMap(raw, options = {}) {
     const userName = getCurrentUserName();
     const charName = getCurrentCharacterName();
@@ -1997,14 +2035,15 @@ function normalizeMap(raw, options = {}) {
         let suffix = 2;
         while (usedLocationIds.has(id)) id = `${baseId}-${suffix++}`;
         usedLocationIds.add(id);
-        const situation = String(loc.situation || loc.currentSituation || loc.description || '이 장소의 현재 상황이 아직 또렷하지 않다.');
-        const details = String(loc.details || loc.detail || loc.observation || loc.situation || '');
+        const situation = readLocationProse(loc.situation || loc.currentSituation || loc.description || '') || '이 장소의 현재 상황이 아직 또렷하지 않다.';
+        const details = readLocationProse(loc.details || loc.detail || loc.observation || loc.situation || '');
         const rawIcon = String(loc.icon || '').trim();
         // Do not guess meaning from a local place-name dictionary. Missing or
         // malformed model output gets only a technical pin until the focused
         // AI icon review can judge every returned place together.
         const icon = normalizeLiteralEmoji(rawIcon, '📍');
-        const present = normalizePresentForLocation(loc, map, [index === 0 ? userName : '', index === 0 ? charName : ''].filter(Boolean), 6);
+        const presenceSource = loc.situation && typeof loc.situation === 'object' ? { ...loc, situation } : loc;
+        const present = normalizePresentForLocation(presenceSource, map, [index === 0 ? userName : '', index === 0 ? charName : ''].filter(Boolean), 6);
         return {
             id,
             name,
@@ -2049,46 +2088,55 @@ function normalizeMap(raw, options = {}) {
     const worldQuestLimit = generationMode === 'saver' ? 2 : 4;
     const separatedEvents = hasSeparatedQuestGroups
         ? [
-            ...(Array.isArray(map.worldEvents) ? map.worldEvents.slice(0, worldQuestLimit).map(event => ({ ...event, questScope: 'world' })) : []),
-            ...(Array.isArray(map.personalEvents) ? map.personalEvents.slice(0, 1).map(event => ({ ...event, questScope: 'personal' })) : []),
+            ...(Array.isArray(map.worldEvents) ? map.worldEvents.map(event => ({ event, scope: 'world' })) : []),
+            ...(Array.isArray(map.personalEvents) ? map.personalEvents.map(event => ({ event, scope: 'personal' })) : []),
         ]
         : [];
-    const rawEvents = hasSeparatedQuestGroups ? separatedEvents : (Array.isArray(map.events) ? map.events : []);
-    const eventCandidates = rawEvents.slice(0, eventLimit).map((event, index) => {
-        if (!event || typeof event !== 'object' || Array.isArray(event)) return null;
+    const rawEvents = hasSeparatedQuestGroups ? separatedEvents
+        : (Array.isArray(map.events) ? map.events.slice(0, eventLimit).map(event => ({ event })) : []);
+    const occupiedEventLocations = new Set();
+    const questCounts = { world: 0, personal: 0 };
+    const events = rawEvents.flatMap(({ event, scope }, index) => {
+        const discard = reason => {
+            if (hasSeparatedQuestGroups) pushDebugLog('map.quest.discard', '생성 퀘스트를 지도에 추가하지 않았습니다.', {
+                index, scope, reason, title: typeof event?.title === 'string' ? event.title : '',
+                locationName: typeof event?.locationName === 'string' ? event.locationName : '',
+            });
+            return [];
+        };
+        if (!event || typeof event !== 'object' || Array.isArray(event)) return discard('invalid-record');
         const rawSummary = String(event.summary || '').trim();
         const rawDetails = String(event.details || '').trim();
-        if (!String(event.title || '').trim() && !rawSummary && !rawDetails) return null;
+        if (!String(event.title || '').trim() && !rawSummary && !rawDetails) return discard('empty-record');
         const resolvedLocationId = resolveLocationId(event);
         // A newly generated split quest must point to one of the locations in
         // the same response. Do not silently move a world quest into the
         // protagonists' current location when the model misspells a place.
-        if (hasSeparatedQuestGroups && (!resolvedLocationId || resolvedLocationId === currentLocationId)) return null;
+        if (hasSeparatedQuestGroups && !resolvedLocationId) return discard('unknown-location');
+        if (hasSeparatedQuestGroups && resolvedLocationId === currentLocationId) return discard('current-location');
         const locationId = resolvedLocationId || currentLocationId;
+        if (occupiedEventLocations.has(locationId)) return discard('duplicate-location');
+        if (hasSeparatedQuestGroups && questCounts[scope] >= (scope === 'world' ? worldQuestLimit : 1)) return discard('scope-limit');
+        occupiedEventLocations.add(locationId);
+        if (hasSeparatedQuestGroups) questCounts[scope]++;
         const fallbackLocationName = normalizedLocations.find(l => l.id === locationId)?.name || '';
         const rawTitle = String(event.title || '').trim();
         const title = rawTitle && !isGenericEventTitle(rawTitle) ? rawTitle : (fallbackLocationName || `위치 ${index + 1}`);
         const id = String(event.id || `event-${safeId(title, `event-${index}`)}-${index + 1}`);
-        return {
+        return [{
             id,
             title,
             locationId,
             summary: String(event.summary || '양피지 위에 희미한 사건의 흔적이 남아 있다.'),
             details: String(event.details || event.summary || ''),
             reward: String(event.reward || event.possibleReward || event.outcome || '보상 정보 없음'),
-            questScope: String(event.questScope || event.scope || 'legacy'),
+            questScope: String(scope || event.questScope || event.scope || 'legacy'),
             severity: String(event.severity || '보통'),
             // New observations from the parchment never become active injections automatically.
             // User choices in the reflection panel are the only source of observed/held/injected states.
             status: 'available',
             injectionText: String(event.injectionText || ''),
-        };
-    }).filter(Boolean);
-    const occupiedEventLocations = new Set();
-    const events = eventCandidates.filter(event => {
-        if (occupiedEventLocations.has(event.locationId)) return false;
-        occupiedEventLocations.add(event.locationId);
-        return true;
+        }];
     });
 
     for (const event of events) {
@@ -2198,7 +2246,14 @@ function getMapSchema(outputMode = getOutputModeKey()) {
     const mode = normalizeOutputMode(outputMode);
     const schema = clone(MAP_SCHEMA);
     schema.name = mode === 'saver' ? 'RoleplayAreaSaverModel' : 'RoleplayAreaBasicModel';
-    schema.value.properties.locations.maxItems = mode === 'saver' ? 7 : 9;
+    const locations = schema.value.properties.locations;
+    locations.maxItems = mode === 'saver' ? 7 : 9;
+    const prose = locations.items.properties;
+    // A few connected narrative passages keep the JSON manageable without
+    // forcing one sentence for each physical/sensory category.
+    // readLocationProse() still accepts earlier eight-key objects and strings.
+    prose.situation = { type: 'array', minItems: 1, maxItems: mode === 'saver' ? 2 : 3, items: { type: 'string' } };
+    prose.details = { type: 'array', minItems: 1, maxItems: mode === 'saver' ? 2 : 3, items: { type: 'string' } };
     schema.value.properties.footsteps.minItems = FOOTSTEP_TARGET_MIN;
     schema.value.properties.footsteps.maxItems = 10;
     schema.value.properties.worldEvents.maxItems = mode === 'saver' ? 2 : 4;
@@ -2870,93 +2925,103 @@ const FOOTSTEP_PROFILE_SCHEMA = {
 };
 
 
-function buildMapPrompt(outputMode = getOutputModeKey()) {
+function getMapPromptSources() {
+    return {
+        character: getCharacterSummary(),
+        persona: getPersonaSummary(),
+        roleplay: getChatSnapshot(10),
+    };
+}
+
+function buildMapPrompt(outputMode = getOutputModeKey(), sources = getMapPromptSources()) {
     const mode = normalizeOutputMode(outputMode);
     const config = OUTPUT_MODE_CONFIGS[mode];
     const densityRules = mode === 'saver'
-        ? `Choose 4 to 7 locations, then use the matching density:\n- 4 locations: situation 8 to 10 ${getMapNarrativeLanguage()} sentences; details 4 sentences.\n- 5 locations: situation 7 to 8 ${getMapNarrativeLanguage()} sentences; details 3 to 4 sentences.\n- 6 locations: situation 5 to 7 ${getMapNarrativeLanguage()} sentences; details 3 sentences.\n- 7 locations: situation 4 to 5 ${getMapNarrativeLanguage()} sentences; details 3 sentences.`
-        : `Create 6 to 9 locations. Each situation has 8 to 12 ${getMapNarrativeLanguage()} sentences and each details field adds 4 to 6 ${getMapNarrativeLanguage()} sentences. Balance the set so location count, prose density, footsteps, and quests do not all reach their maximum at once.`;
+        ? `Choose 4 to 7 locations. Write situation as 1 to 2 connected prose passages and details as 1 to 2 complementary passages. Keep the scene economical but lived-in; let actual events and the character of each place determine its length, not a sentence quota.`
+        : `Create 6 to 9 locations. Write situation as 1 to 3 connected prose passages and details as 1 to 3 complementary passages. One complete passage can carry a quiet location; use the additional space for busy or tense scenes. Each passage may contain multiple natural sentences.`;
     const questAllocation = mode === 'saver'
         ? '- worldEvents: exactly 2 independent parallel-world quests.\n- personalEvents: 0 or 1 protagonist-linked quest.\n- Total: 2 to 3 quests.'
         : '- worldEvents: 3 to 4 independent parallel-world quests.\n- personalEvents: 0 or 1 protagonist-linked quest.\n- Total: 3 to 5 quests.';
     return `
-Read the supplied roleplay context and return structured location data for the same world, time, and ongoing continuity.
+Map the supplied roleplay as one continuous, simultaneous world snapshot and playable expansion. Everything newly invented on the map is a proposal the user may select. Within the map, give new places, characters, institutions, records, incidents and rewards concrete details and definite states.
 
 Output density:
 - Mode: ${config.label}
 - Locations: ${config.locationRange}
-- Location situation length: ${config.situationRange} ${getMapNarrativeLanguage()} sentences; details: ${config.detailsRange} ${getMapNarrativeLanguage()} sentences
-- Footsteps: 6 to 10 named individual signals across the whole map
 - Quest allocation:
 ${questAllocation}
 - Every quest summary and details field: 3 to 5 complete ${getMapNarrativeLanguage()} sentences each
 ${densityRules}
 
 Map structure:
-- Derive regionName and timeHint from the protagonists' current scene. All returned locations belong to one geographically coherent mapped area observed at the same current time; do not widen the area merely to accommodate familiar supporting characters.
-- timeHint states the current time, scene phase, or immediate timing.
+- Anchor regionName to the protagonists' current scene. Use established in-area landmarks as anchors and add distinctive reachable places where they make the map more playable. Avoid duplicate names for the same place. Keep remote destinations, their landmarks, and any objectively out-of-area venue out of locations. Spend spare room on observable local detail, not a wider map.
+- An open map may discover unnamed places inside the stated area. For each pin, check whether a person can reach it within the stated access boundary. A place known only by a message, view, crossing, or travel beyond that boundary belongs in local dialogue or a clue, never as its own pin. A nearby view of a remote place is a distinct local pin only if the viewpoint itself is reachable. Use fewer pins if necessary; never pad the list with unreachable places.
+- Test the physical place denoted by each location.name before writing its entry. If the scene at that name would have to be described from somewhere else, it is a reference, not a mapped scene. Put the observation in the accessible place from which it is made. Do not give the observed place a map entry, even an empty one.
+- Copy the current confirmed clock time into timeHint. If the interval to an event is not explicitly stated, give its stated time separately without estimating an interval. Use the known phase if no clock time is given.
 - worldSummary describes the active area in 1 to 2 ${getMapNarrativeLanguage()} sentences.
 - currentLocationName exactly matches one returned location name.
 - Every location has a specific in-world name, one literal emoji icon, a situation, details, present, and clues. Choose icons only after comparing all returned places. Each icon directly depicts the place's defining function, characteristic object, or physical identity. Semantic accuracy comes first; use a distinct icon only when an equally direct alternative exists.
-- Every footstep has a person's proper name or a proper name plus an established short title, the exact returned locationName, and a concrete visible activity in status.
-- Every worldEvents and personalEvents quest has a concrete title, the exact returned locationName, summary, details, and reward.
+- Footstep locationName exactly matches a returned location; status shows concrete visible activity.
+- Each quest supplies title, exact returned locationName, summary, details, and reward.
 
 Location writing:
-- Treat all locations as one simultaneous snapshot of the supplied roleplay.
 - Keep each recurring person in one location and preserve the display spelling used in the roleplay.
 - present contains only people or groups physically visible at that exact place and moment, from 0 to 6 entries.
-- A visible group is one complete ${getMapNarrativeLanguage()} phrase stating what kind of group is there, what they are doing or where they gather, and a plausible rough count.
-- situation establishes the recognizable physical place: layout, entrances, surfaces, furniture or structures, light, air, sound, material, movement, and the activity already occurring there.
-- details is a second view of the same place and moment. Add a distinct local beat, object, exchange, trace, risk, expectation, or change without repeating situation.
+- Describe visible groups in one ${getMapNarrativeLanguage()} phrase with group type, activity or position, and approximate count.
+- situation is a sequence of short, connected prose passages that will be displayed as one paragraph. Make each passage lead naturally into the next through a specific action, physical constraint, person, or change in the ongoing scene. Vary sentence rhythm and focus; this is a living place, not an inventory of furnishings or sensations.
+- details adds a complementary view of the same place and moment through the most meaningful local beat, exchange, trace, risk, expectation, or change. Its passages also read together naturally; do not retell situation.
+- Choose sensory details only when they sharpen the current action or atmosphere. There is no fixed checklist of lighting, smell, sound, surfaces, or movement to complete.
 - Place named people through visible posture, movement, work, dialogue, objects, attention, avoidance, or interaction. When the same individual appears in more than one field, align that person's actions across situation, present, footsteps, and quests.
 - Quiet places remain playable through a concrete routine, object, expectation, interruption, or unsettled detail. Busy places remain readable through the visible flow of people and competing activity.
 - clues are short locally observable anchors that can help continue a scene.
+- Preserve one brief anchor for the active unresolved purpose of the current scene, when the supplied roleplay establishes one. Place it once in that location's details or clues, even in saver mode. Keep its established history and unresolved status clear. An invented clue or discovery can offer a way forward while leaving the protagonists’ response and the actual resolution open.
 
 Footstep selection:
 - Footsteps are a selected set of 6 to 10 named individual person signals across the whole map. Each item represents exactly one identifiable person.
 - Choose candidates in this order: established supporting named characters who pass the current-region and current-time presence test below; named actors involved in returned events or quests; then newly created named minor NPCs suited to the current world.
-- When grounded named people total fewer than six, create enough named minor NPCs to reach at least six. Give each new minor NPC an ordinary proper name suited to this world, one modest local role, a current action, and one returned location. Do not invent an earlier relationship or shared history with the protagonists.
+- If fewer than six are grounded, add minor locals to reach six. Give each a fitting proper name, modest role, visible action, and one map location. Do not invent prior ties to the protagonists.
 - label contains only the proper name, or the proper name plus one short established title. Do not use ???, a count, an activity phrase, a generic role such as "student" or "guard", a crowd, a group, or an animal group as a label.
 - Distribute the selected people across the returned map. When at least four locations are returned, use at least four locations for footsteps; the protagonists and people in the current scene must not consume the whole roster.
-- Crowd, group, counted-person, animal-group, plural role, and activity descriptions remain in location.present or location prose.
-- Do not copy or mirror location.present into footsteps. Select established named people and create named minor NPCs only where needed.
-- When the same individual appears in present and footsteps, keep that person's location and current action consistent.
+- Keep groups and activity-only descriptions in present or place prose. Select individuals independently of present. Respect physically empty or closed locations, even when adding minor NPCs.
 
 Quest writing:
 - The protagonists are the Current user and Current character named below. The protagonists' current activity belongs in currentLocationName, location.situation, and location.details.
 - Across both quest arrays, use returned locations other than currentLocationName and assign at most one quest to each location.
 - Every worldEvents quest is already unfolding at another returned location during the same time period. Its causal chain begins with a secondary character, named group, institution, community, environment, organization, or local system rather than the protagonists' latest conversation.
-- Give every worldEvents quest a specific actor, immediate goal, active obstacle, meaningful consequence if unresolved, and a believable entry point through which the protagonists could hear about it, encounter it, join it, help it, oppose it, investigate it, compete, negotiate, or otherwise become involved.
+- Give each world quest an actor, immediate goal, obstacle, consequence if unresolved, and a believable way to hear, encounter, join, help, oppose, investigate, compete, or negotiate.
 - Prefer established secondary characters, groups, places, and unresolved world facts from the supplied continuity. When a new actor is useful, give that actor a specific name or clearly identified group role suited to the current setting.
-- Diversify worldEvents across distinct forms suited to the supplied world: a secondary character's plan or problem; an open recruitment, contest, event, service, or commission; a change involving an institution, community, environment, organization, or local system; and a social, comic, practical, risky, or advantageous opportunity.
+- Vary world quests across local plans, commissions, contests, institutional or environmental changes, and social or practical opportunities.
 - Every worldEvents quest continues through its own actors and circumstances whether or not the protagonists arrive. Vary the central actor, location, objective, obstacle, tone, and kind of choice.
-- Use personalEvents only when a confirmed earlier action by either protagonist has produced a concrete response elsewhere. Place that response in the hands of another named character or group who is waiting, searching, preparing, reacting, demanding, offering, concealing, confronting, or changing plans because of what occurred.
-- A personalEvents quest creates a new external decision point. Return an empty personalEvents array when the supplied continuity does not support a specific external consequence.
-- Give every quest an actionable objective, obstacle, entry point, consequence, and usable reward. Surrounding activity whose interest comes from observation alone belongs in the relevant location description.
+- Describe the actors' next move if nobody intervenes, then give an opening the user may observe, join, or pass by. Write approaches as offers and possibilities. Leave the user's movement, answer, acceptance, and help undecided.
+- Use personalEvents only for a new unresolved external decision caused by a confirmed earlier protagonist action, shown through a named actor or group responding elsewhere. Keep completed goals and settled debts closed. Return [] when no such consequence is established.
+- Keep purely observational activity in location prose.
 - reward names a concrete, usable result that the people or situation can plausibly provide: a named item, key, equipment, access or use right, specific invitation or appointment, defined role or authority, one favor from a named NPC, or evidence or information with a clear subject and source.
-- State any meaningful limit, target, or permitted use in the reward itself.
+- Tie the reward to the action that earns it and to an actor who can actually grant it. For information, titles, permits or access, name what they let someone find or do and where or when they matter. You may invent a giver, their authority and a rare or consequential payoff when they fit the setting. State the condition the player would need to fulfill; selection by itself does not award anything.
+- A shortcut needs a concrete route, destination, use, and an actor able to offer it. If the scene does not establish those, use a useful local item or favor the on-scene actor plausibly controls.
+- An investigation can introduce a concealed register, a specific witness or a sealed report with definite contents. A named steward may offer a signed warrant to inspect it after the terms are met. Use that specificity to give the scene stakes, and leave the characters to discover the truth through play.
 
 Names and continuity:
 - Write descriptive content in natural ${getMapNarrativeLanguage()} while preserving established character and place names in their current display form.
-- Use confirmed roleplay facts as the primary source, followed by the character card and persona.
-- For every established named character used in location prose, present, footsteps, or quests, require both: the person appears in the supplied recent roleplay, character card, or persona; and those sources establish a concrete current-time reason for that person to be physically inside the returned mapped region. Current presence may be supported by being observed there; confirmed arrival or movement within that region now; a duty currently being performed there; a meeting or event underway there now; or an established routine that places the person there at that current time.
-- A relationship, shared history, or known existence in the setting establishes identity only, not current presence. When regional presence is not established, omit that person and use a local named minor NPC if the map needs another actor.
-- Keep unknown identities hidden only when the supplied story has already made that uncertainty meaningful.
-- Return only fields requested by the schema. IDs, internal status, map title, event links, visibility flags, and roleplay reflection text are added locally.
+- Use confirmed roleplay facts first, then card and persona. Keep rumor, inference, and proposed outcomes provisional.
+- Treat source-confirmed facts, explicitly unresolved history, and new map proposals as distinct. Invent from gaps in the setting: a report may be missing, withheld, filed, or revealed as a new scene. Never assert that existing RP already confirmed a detail unless the source says so, or claim that the protagonists already took a proposed action or received its reward.
+- In prose, present, footsteps, and quests, use an established named person only if recent RP, card, or persona establishes a concrete reason for their physical presence in the mapped region now: observation, confirmed movement, current duty or event, or a time-specific routine. Relationships, history and rumor do not establish presence. Prefer an in-area minor local if needed.
+- If the latest scene puts a named person outside the map or says they have not returned, keep them off-map. Do not invent their return, a new message from them, or their participation as a quest actor or reward giver. On-scene actors can pursue this lead and new clues without moving the absent person back into the scene.
+- Preserve narratively established anonymity.
+- Return schema fields only; IDs, status, title, links, visibility, and RP text are added locally.
 
 Current user: ${getCurrentUserName()}
 Current character: ${getCurrentCharacterName()}
 
 [Character card]
-${getCharacterSummary() || '(unavailable)'}
+${sources.character || '(unavailable)'}
 
 [Persona]
-${getPersonaSummary() || '(unavailable)'}
+${sources.persona || '(unavailable)'}
 
 [Recent roleplay]
-${getChatSnapshot(10) || '(no recent roleplay)'}
+${sources.roleplay || '(no recent roleplay)'}
 
-Return JSON only.`;
+Final continuity check before JSON: In the current location, include a short clue naming the object or question the protagonists are actively dealing with and what remains unresolved, if the latest roleplay establishes it. Keep the clue there even if another local problem is visibly louder. Keep only locations accessible within the active mapped area. An explicitly empty place has no named signals. Do not revive a completed goal or count a rumored arrival as present. When the situation and details arrays are joined into paragraphs, the prose must remain fluid, specific, and playable rather than a numbered sensory checklist. Vary sentence lengths and link observations through action and cause. Cut reiterated action, repeated motifs, and decorative qualifiers. Keep a closed location empty. For each location, match the situation passage count in the schema. Before returning either quest array, check that all destinations are different from currentLocationName and their actors are in the area. If a quest has no eligible destination, write the current-place activity in location prose and choose a different local quest. Make the actor, reward and condition concrete. Preserve prior established facts and the user’s freedom to observe, participate or pass.`;
 }
 
 function buildLocationIconReviewPrompt(map, targetLocationIds = []) {
@@ -3206,8 +3271,8 @@ Location to preserve: ${location.name}
 Writing requirements:
 - location.name remains exactly ${location.name}.
 - Write natural ${getMapNarrativeLanguage()} while preserving established character and place names in their current display form.
-- location.situation is 8 to 12 complete ${getMapNarrativeLanguage()} sentences. Establish the recognizable physical space, its atmosphere, people, current activity, and immediate tension through concrete observable details.
-- location.details adds 4 to 6 complete ${getMapNarrativeLanguage()} sentences from a distinct second angle in the same place and moment.
+- location.situation is one coherent, natural ${getMapNarrativeLanguage()} scene paragraph. Weave recognizable physical space, relevant atmosphere, people, their ongoing activity, and immediate tension into connected prose. Let the activity and complexity of this location determine length; do not pad to hit a sentence count.
+- location.details is a complementary natural paragraph from another angle in the same place and moment. Develop a distinct meaningful action, exchange, trace, or clue without repeating a sensory inventory.
 - location.present contains 0 to 6 people or complete group descriptions physically visible here.
 - location.clues contains short locally observable anchors.
 - Each footstep uses one individual person's proper name, or a proper name plus one short established title; locationName remains ${location.name}, and status gives that individual's concrete visible activity.
@@ -3939,8 +4004,8 @@ function renderPersonSearchResultPanel(result, origin = 'search') {
     panel.innerHTML = `
         <div class="mma-action-panel mma-person-search-result-panel">
             <header class="mma-place-header">
-                <div><span class="mma-place-icon">🔎</span><strong>인물 검색</strong></div>
-                <button title="${escapeHtml(backTitle)}" data-action="back">↩️</button>
+                <div><span class="mma-place-icon">${mapControlIcon('magnifying-glass')}</span><strong>인물 검색</strong></div>
+                <button aria-label="${escapeHtml(backTitle)}" title="${escapeHtml(backTitle)}" data-action="back">${mapControlIcon('reply', '↩')}</button>
             </header>
             <article class="mma-event-card person-search-card">
                 <div class="mma-event-title"><b>${escapeHtml(result.name)}</b><span>${result.isOnMap ? '지도 확인' : '추정'}</span></div>
@@ -3970,8 +4035,8 @@ function renderPersonSearchResultPanel(result, origin = 'search') {
                 <div class="mma-event-actions">
                     ${liveLinks.locationId ? '<button data-action="show-location">위치 보기</button>' : ''}
                     ${liveLinks.footstepId ? '<button data-action="open-footstep">상세 보기</button>' : '<button data-action="add-footstep">지도에 표시</button>'}
-                    <button data-action="track-person" title="이 인물의 이후 위치 변화를 수첩에서 다시 확인합니다.">👁 이후 동선 추적</button>
-                    <button data-action="open-search-history">📓 기록 보기</button>
+                    <button data-action="track-person" title="이 인물의 이후 위치 변화를 수첩에서 다시 확인합니다.">${mapControlIcon('eye')} 이후 동선 추적</button>
+                    <button data-action="open-search-history">${mapControlIcon('book', '▤')} 기록 보기</button>
                 </div>
                 <small class="mma-search-auto-save-note">검색 결과는 수첩에 자동 저장됩니다.</small>
             </article>
@@ -4218,7 +4283,7 @@ function renderFailurePanel(title = '지도 생성 실패', detail = '처리 중
                 <div class="mma-blank-note">${escapeHtml(title)}</div>
                 <p class="mma-spell-hint">${escapeHtml(detail)}</p>
                 <div class="mma-place-actions">
-                    <button data-action="copy-debug">🐞 디버그 로그 복사</button>
+                    <button data-action="copy-debug">${mapControlIcon('bug')} 디버그 로그 복사</button>
                     <button data-action="retry-map">다시 시도</button>
                 </div>
             </div>
@@ -4243,7 +4308,7 @@ function renderDebugPanel() {
         <div class="mma-action-panel mma-debug-panel">
             <header class="mma-place-header">
                 <div><span class="mma-place-icon">🐞</span><strong>디버그 로그</strong></div>
-                <button title="돌아가기" data-action="back">↩️</button>
+                <button aria-label="돌아가기" title="돌아가기" data-action="back">${mapControlIcon('reply', '↩')}</button>
             </header>
             <p class="mma-panel-note">모바일에서 콘솔 확인이 어려울 때 이 내용을 복사해 보내주세요. 최근 오류와 API 호출 흐름만 기록합니다.</p>
             <div class="mma-place-actions">
@@ -4284,7 +4349,7 @@ function renderRecommendationPanel(activeTab = 'place') {
         </div>
     `;
     const placePanel = `
-        <p class="mma-panel-note">어떤 장소를 검색해볼까요? 모든 검색 내역은 수첩 📓에 기록할 수 있습니다.</p>
+        <p class="mma-panel-note">어떤 장소를 검색해볼까요? 모든 검색 내역은 수첩에 기록할 수 있습니다.</p>
         <div class="mma-recommend-buttons">
             ${categories.map(cat => `<button data-category="${escapeHtml(cat)}">${escapeHtml(cat)}</button>`).join('')}
         </div>
@@ -4297,12 +4362,12 @@ function renderRecommendationPanel(activeTab = 'place') {
     panel.innerHTML = `
         <div class="mma-action-panel mma-search-panel">
             <header class="mma-place-header">
-                <div><span class="mma-place-icon">🔎</span><strong>검색</strong></div>
-                <button title="위치 카드로 돌아가기" data-action="back">↩️</button>
+                <div><span class="mma-place-icon">${mapControlIcon('magnifying-glass')}</span><strong>검색</strong></div>
+                <button aria-label="위치 카드로 돌아가기" title="위치 카드로 돌아가기" data-action="back">${mapControlIcon('reply', '↩')}</button>
             </header>
             <div class="mma-search-tabs" role="tablist" aria-label="검색 종류">
-                <button type="button" role="tab" data-search-tab="person" aria-selected="${selectedTab === 'person'}" class="${selectedTab === 'person' ? 'active' : ''}">인물 찾기</button>
-                <button type="button" role="tab" data-search-tab="place" aria-selected="${selectedTab === 'place'}" class="${selectedTab === 'place' ? 'active' : ''}">장소 찾기</button>
+                <button type="button" role="tab" data-search-tab="person" aria-selected="${selectedTab === 'person'}" class="${selectedTab === 'person' ? 'active' : ''}">${mapControlIcon('user')} 인물 찾기</button>
+                <button type="button" role="tab" data-search-tab="place" aria-selected="${selectedTab === 'place'}" class="${selectedTab === 'place' ? 'active' : ''}">${mapControlIcon('location-dot')} 장소 찾기</button>
             </div>
             ${selectedTab === 'person' ? personPanel : placePanel}
         </div>
@@ -4402,7 +4467,7 @@ function renderRecommendationCards(items) {
             ${Array.isArray(item.possibleScenes) && item.possibleScenes.length ? `<ul class="mma-possible-scenes">${item.possibleScenes.slice(0, 3).map(scene => `<li>${escapeHtml(scene)}</li>`).join('')}</ul>` : ''}
             <div class="mma-event-actions">
                 ${renderActionButtons('recommendation', item.id)}
-                <button class="mma-recommend-delete" title="검색 결과를 완전히 삭제" aria-label="검색 결과 삭제" data-recommend-delete="${escapeHtml(item.id)}">🗑️</button>
+                <button class="mma-recommend-delete" title="검색 결과를 완전히 삭제" aria-label="검색 결과 삭제" data-recommend-delete="${escapeHtml(item.id)}">${mapControlIcon('trash', '×')}</button>
             </div>
         </article>
     `).join('');
@@ -4422,9 +4487,10 @@ async function deleteRecommendation(id) {
         toast('이미 삭제되었거나 찾을 수 없는 검색 결과입니다.', 'warning');
         return false;
     }
-    if (!window.confirm(isKoreanMapLocale()
+    if (!await askMapConfirmation(isKoreanMapLocale()
         ? `${item.title || '이 검색 장소'}을(를) 삭제할까요?\n수집/반영해 둔 동일 항목도 함께 해제됩니다.`
         : `Delete "${item.title || 'this searched place'}"?\nAny collected or applied state for this item will also be removed.`)) return false;
+    if (getExistingMemory() !== memory) return false;
 
     const before = {
         placeResults: memory.recommendations?.length || 0,
@@ -4573,8 +4639,8 @@ function renderNotebookPanel() {
     panel.innerHTML = `
         <div class="mma-action-panel mma-notebook-panel">
             <header class="mma-place-header">
-                <div><span class="mma-place-icon">📓</span><strong>수첩</strong></div>
-                <button title="위치 카드로 돌아가기" data-action="back">↩️</button>
+                <div><span class="mma-place-icon">${mapControlIcon('book')}</span><strong>수첩</strong></div>
+                <button aria-label="위치 카드로 돌아가기" title="위치 카드로 돌아가기" data-action="back">${mapControlIcon('reply', '↩')}</button>
             </header>
             <p class="mma-panel-note">반영 데이터, 추적 중인 인물, 수집한 장소를 한곳에서 볼 수 있습니다. 반영 데이터만 롤플에 반영되고 그 외 정보는 수첩에서만 볼 수 있습니다. 수집한 정보, 추적 중인 인물을 반영 데이터로 변경할 수 있습니다.</p>
             <details open class="mma-notebook-section"><summary>반영/수집 데이터 <small>${managed.length}</small></summary>${managed.length ? managed.map(item => renderManagedItemCard(item)).join('') : '<p class="mma-empty">반영 또는 수집 중인 항목이 없습니다.</p>'}</details>
@@ -4685,7 +4751,7 @@ function renderTrackedCard(key, item) {
             ${Array.isArray(item.hooks) && item.hooks.length ? `<ul class="mma-possible-scenes">${item.hooks.slice(0, 4).map(hook => `<li>${escapeHtml(hook)}</li>`).join('')}</ul>` : ''}
             <div class="mma-event-actions">
                 <button data-track-refresh="${escapeHtml(key)}">지금 어디 있지?</button>
-                <button data-track-route="${escapeHtml(key)}">👣 동선 지도 보기</button>
+                <button data-track-route="${escapeHtml(key)}">${mapControlIcon('shoe-prints')} 동선 지도 보기</button>
                 ${renderActionButtons('tracked', key)}
                 <button data-track-remove="${escapeHtml(key)}">추적 해제</button>
             </div>
@@ -4703,7 +4769,7 @@ function renderSearchHistoryCard(result) {
             <p>${escapeHtml(stripLong(result.summary || result.currentActivity || '', 220))}</p>
             <div class="mma-event-actions">
                 <button data-search-open="${escapeHtml(result.id)}">다시 보기</button>
-                <button data-search-delete="${escapeHtml(result.id)}">🗑️ 삭제</button>
+                <button data-search-delete="${escapeHtml(result.id)}">${mapControlIcon('trash', '×')} 삭제</button>
             </div>
         </article>
     `;
@@ -4719,9 +4785,10 @@ async function deletePersonSearchResult(id) {
         toast('이미 삭제되었거나 찾을 수 없는 검색 기록입니다.', 'warning');
         return false;
     }
-    if (!window.confirm(isKoreanMapLocale()
+    if (!await askMapConfirmation(isKoreanMapLocale()
         ? '이 인물 검색 기록을 삭제할까요?\n추적 중인 인물이나 이미 반영한 데이터는 삭제되지 않습니다.'
         : 'Delete this person search record?\nTracked people and already-applied items will remain.')) return false;
+    if (getExistingMemory() !== memory) return false;
 
     const before = memory.searchResults?.length || 0;
     memory.searchResults = (memory.searchResults || []).filter(result => result.id !== id);
@@ -4832,19 +4899,15 @@ function getJsonOnlyInstruction(jsonSchema) {
 function getSchemaAwareJsonInstruction(jsonSchema) {
     if (!jsonSchema) return '';
     if (String(jsonSchema?.name || '').startsWith('RoleplayArea')) {
+        const { situation, details } = jsonSchema.value.properties.locations.items.properties;
+        const proseRule = `Each situation has ${situation.minItems} to ${situation.maxItems} connected passages; each details array has ${details.minItems} to ${details.maxItems} complementary passages.`;
         return `${getJsonOnlyInstruction(jsonSchema)}
 
-Never return only an empty object {}.
-The JSON must include these top-level fields:
-- regionName: string
-- timeHint: string
-- worldSummary: string
-- currentLocationName: string matching one returned location name
-- locations: array of map locations
-- footsteps: selected individual character/location signals across the returned map snapshot; each item represents one person, and crowds remain in locations[].present
-- worldEvents: array of independent quests already unfolding elsewhere in the supplied world
-- personalEvents: array containing 0 or 1 quest caused by or directed toward the protagonists
-If locations is empty, the response is invalid.`;
+Top-level keys: regionName, worldSummary, timeHint, currentLocationName, locations, footsteps, worldEvents, personalEvents.
+Each location requires name, icon, situation, details, present, clues. Both situation and details are JSON arrays of prose strings, not objects with named sensory categories. ${proseRule} Each string may contain multiple sentences; adjacent strings should read as one natural paragraph when joined with spaces. Do not add paragraph labels, numbered sensory items, or extra schema keys.
+Footsteps use label, locationName, status. Quests use title, locationName, summary, details, reward. Every quest field is one JSON string. Keep all summary sentences inside the summary string and all detail sentences inside the details string.
+
+Check the proposed pins against the activated sources before emitting JSON. If you would describe the pin itself as across the boundary, unreachable on foot, or expressly off limits now, leave that name out of locations and show any observation from a distinct reachable place. An accessible exterior or viewpoint can be a pin of its own. Keep inventing reachable local scenes. New map proposals can introduce records, institutions, permissions and special rewards. Make them concrete and compatible with established roleplay. Give quests a named giver and a condition for earning the reward. Discovery, consent, resolution and receiving the reward remain to be roleplayed.`;
     }
     if (jsonSchema === LOCATION_SCHEMA) {
         return `${getJsonOnlyInstruction(jsonSchema)}
@@ -4864,7 +4927,7 @@ The JSON must include footsteps with exactly ${count} additional named individua
         return `${getJsonOnlyInstruction(jsonSchema)}
 
 Never return only an empty object {}.
-The JSON must include icons with exactly ${count} items. Every item includes one supplied id and exactly one literal emoji in icon. Return every supplied id exactly once and no additional ids.`;
+The top-level key is "icons" and its value is an array of exactly ${count} objects. Shape: {"icons":[{"id":"<supplied target ID>","icon":"<one literal emoji>"}]}. Replace the placeholders with the actual ids and icons. Include each target id once. Do not use an object keyed by location IDs.`;
     }
     if (jsonSchema === FOOTSTEP_PROFILE_SCHEMA) {
         return `${getJsonOnlyInstruction(jsonSchema)}
@@ -5047,15 +5110,39 @@ async function getActivatedWorldInfoForProfile(ctx) {
         throw new Error('SillyTavern 로어북 활성화 기능을 사용할 수 없어 별도 프로필 요청을 중단했습니다.');
     }
 
-    const { world_info_include_names } = await import('/scripts/world-info.js');
-    const chatForWorldInfo = (Array.isArray(ctx.chat) ? ctx.chat : [])
-        .filter(message => message && !message.is_system)
-        .map(message => {
-            const content = String(message.mes || message.message || '');
+    const { world_info_include_names, supportsScopedWorldInfoActivation } = await import('/scripts/world-info.js');
+    const { getRegexedString, regex_placement } = await import('/scripts/extensions/regex/engine.js');
+    const messages = (Array.isArray(ctx.chat) ? ctx.chat : []).filter(message => message && !message.is_system);
+    const scanMessages = messages.map((message, index) => {
+        const placement = message.is_user ? regex_placement.USER_INPUT : regex_placement.AI_OUTPUT;
+        const content = getRegexedString(String(message.mes || message.message || ''), placement, {
+            isPrompt: true,
+            depth: messages.length - index - 1,
+        });
             const name = String(message.name || (message.is_user ? getCurrentUserName() : getCurrentCharacterName()));
-            return world_info_include_names ? name + ': ' + content : content;
-        })
-        .reverse();
+            return { ...message, mes: content, name };
+    });
+    const chatForWorldInfo = scanMessages.map(message => world_info_include_names ? message.name + ': ' + message.mes : message.mes).reverse();
+
+    const vectorSettings = ctx.extensionSettings?.vectors;
+    let scopedActivations = [];
+    if (vectorSettings?.enabled_world_info && !ctx.extensionSettings?.disabledExtensions?.includes('vectors')) {
+        if (supportsScopedWorldInfoActivation) {
+            try {
+                const { getVectorizedWorldInfo } = await import('/scripts/extensions/vectors/index.js');
+                scopedActivations = await getVectorizedWorldInfo(scanMessages);
+                pushDebugLog('request.profile.vector_lore', '현재 요청의 벡터 로어북을 조회했습니다.', {
+                    entries: scopedActivations.map(({ world, uid }) => ({ world, uid })),
+                });
+            } catch (error) {
+                pushDebugLog('request.profile.vector_lore.error', '벡터 검색 실패 후 키워드 로어북을 사용합니다.', {
+                    error: String(error?.message || error),
+                });
+            }
+        } else {
+            pushDebugLog('request.profile.vector_lore.unavailable', '현재 SillyTavern에서 지도 전용 벡터 로어북 조회를 지원하지 않습니다.');
+        }
+    }
 
     const fields = typeof ctx.getCharacterCardFields === 'function'
         ? (ctx.getCharacterCardFields() || {})
@@ -5073,6 +5160,7 @@ async function getActivatedWorldInfoForProfile(ctx) {
             scenario: String(fields.scenario || ''),
             creatorNotes: String(fields.creatorNotes || ''),
             trigger: 'normal',
+            ...(supportsScopedWorldInfoActivation ? { scopedActivations } : {}),
         },
     );
 
@@ -5118,6 +5206,7 @@ async function generateQuietWithSelectedProfile(quietPrompt, jsonSchema = null, 
     if (externalSignal?.aborted) throw createMapGenerationCancelledError('request was cancelled before start');
 
     if (!target || target === 'main') {
+        options.observeMapRequest?.({ route: 'main', quietPrompt: prompt, coverage: 'host-final-unobserved' });
         pushDebugLog('request.profile', '메인 API로 요청합니다.', { target: 'main', schema: Boolean(jsonSchema), maxTokens });
         try {
             const result = jsonSchema
@@ -5142,6 +5231,7 @@ async function generateQuietWithSelectedProfile(quietPrompt, jsonSchema = null, 
                 pushDebugLog('request.main.structured.error', '메인 API 구조화 출력 실패, 일반 JSON 지시문으로 재시도합니다.', {
                     error: String(error?.message || error),
                 });
+                options.observeMapRequest?.({ route: 'main', quietPrompt: prompt + getSchemaAwareJsonInstruction(jsonSchema), coverage: 'host-final-unobserved' });
                 const fallback = await ctx.generateQuietPrompt({
                     quietPrompt: `${prompt}${getSchemaAwareJsonInstruction(jsonSchema)}`,
                     responseLength: maxTokens,
@@ -5214,6 +5304,7 @@ async function generateQuietWithSelectedProfile(quietPrompt, jsonSchema = null, 
         });
 
         const messages = [{ role: 'user', content: finalPrompt }];
+        options.observeMapRequest?.({ route: 'profile', message: messages[0].content, lore, coverage: 'connection-manager-message' });
         const result = await Service.sendRequest(
             profile.id,
             messages,
@@ -5424,6 +5515,60 @@ function preserveContinuedMapIdentities(previousMap, nextMap) {
     return nextMap;
 }
 
+let stagedMapFactAudit = null;
+
+// Isolated QA can register reviewed bindings once for the current chat. The
+// callback is opt-in and has no persistence or network behavior of its own.
+export function stageMapFactAudit(bindings, onReport) {
+    const chat = getStableChatSignature();
+    if (!chat || !Array.isArray(bindings) || typeof onReport !== 'function') throw new TypeError('Fact audit needs an active chat, bindings, and a report callback.');
+    stagedMapFactAudit = { chat, bindings: structuredClone(bindings), onReport };
+}
+
+function reportMapFacts(parsed, rawText, sources, request, staged) {
+    try {
+        // The main API builds the provider payload inside ST. A submitted
+        // quiet prompt alone cannot establish its final source coverage.
+        const sent = request?.route === 'profile' ? Object.fromEntries(
+            Object.entries({ ...sources, lore: request.lore }).filter(([, text]) => text && request.message.includes(text))
+        ) : {};
+        const contract = buildSourceFactContract(sent, staged?.bindings);
+        const report = auditMapFacts(parsed, contract);
+        pushDebugLog('map.generate.fact_audit', '지도 사실 검토 결과를 기록했습니다.', {
+            mode: report.meta.mode, coverage: request?.coverage || 'unobserved',
+            sections: Object.keys(sent), scope: report.meta.scopeKind,
+            issues: [...report.blockers, ...report.review].slice(0, 20).map(({ code, path }) => ({ code, path })),
+            unverified: contract.unverified.length,
+        });
+        staged?.onReport({ request, sent, contract: structuredClone(contract), report, rawText });
+        return contract;
+    } catch {
+        pushDebugLog('map.generate.fact_audit.error', '사실 검토 기록을 생성하지 못했습니다. 지도 생성은 계속합니다.');
+    }
+}
+
+function preserveReviewedMapThread(map, contract) {
+    const location = map.locations.find(place => place.id === map.currentLocationId);
+    if (!location) return;
+    const thread = contract?.evidence?.find(row => {
+        if (row.kind !== 'unresolvedThread' || row.status !== 'unconfirmed') return false;
+        const { locationName, clue, topic } = row.value ?? {};
+        return locationName === location.name && typeof clue === 'string' && clue.trim() && clue.length <= 220
+            && typeof topic === 'string' && topic.trim() && clue.includes(topic)
+            && row.sources.some(source => source.quote === clue)
+            && row.sources.some(source => source.quote.includes(locationName));
+    });
+    if (!thread) return;
+    const { clue, topic } = thread.value;
+    // Preserve only the independent source wording and never duplicate a
+    // subject which the model already used anywhere in the map prose.
+    if (map.locations.some(place => [place.situation, place.details, ...place.clues].some(text => text.includes(topic)))
+        || map.events.some(event => [event.title, event.summary, event.details].some(text => text.includes(topic)))) return;
+    if (location.clues.length < 10) location.clues.push(clue);
+    else location.details = [location.details, clue].filter(Boolean).join(' ');
+    pushDebugLog('map.thread.retained', '현재 장소에 확인된 미해결 단서의 원문을 보존했습니다.');
+}
+
 async function generateMap(force = false, options = {}) {
     const memory = ensureMemory();
     const hadMapBefore = isValidMapData(memory.map);
@@ -5447,6 +5592,8 @@ async function generateMap(force = false, options = {}) {
         ? createPreviousMapSnapshot(memory, 'refresh-all')
         : null;
     const startChatSignature = rememberCurrentChatSignature?.() || getStableChatSignature();
+    const stagedAudit = stagedMapFactAudit?.chat === startChatSignature ? stagedMapFactAudit : null;
+    stagedMapFactAudit = null;
     pushDebugLog('map.generate.start', force ? 'force refresh' : 'open/generate', {
         jobId: job.id,
         notebookKey: getCurrentCharacterKey(),
@@ -5458,7 +5605,9 @@ async function generateMap(force = false, options = {}) {
 
     try {
         await withLoader(getThemeConfig().castingText, async () => {
-            const prompt = buildMapPrompt(outputMode) + (continuePrevious ? buildMapContinuationMemory(startMap, memory) : '');
+            const sources = getMapPromptSources();
+            let factRequest;
+            const prompt = buildMapPrompt(outputMode, sources) + (continuePrevious ? buildMapContinuationMemory(startMap, memory) : '');
             pushDebugLog('request.start', '지도 생성 요청 시작', {
                 jobId: job.id,
                 promptLength: prompt.length,
@@ -5473,6 +5622,7 @@ async function generateMap(force = false, options = {}) {
                 signal: job.controller.signal,
                 connectionProfile: job.connectionProfile,
                 job,
+                observeMapRequest: request => { factRequest = request; },
             });
             assertCurrentMapGeneration(job);
             pushDebugLog('response.received', `지도 생성 응답 수신: ${String(rawText || '').length}자`, {
@@ -5488,7 +5638,9 @@ async function generateMap(force = false, options = {}) {
                 throw createMapGenerationCancelledError('chat changed during generation');
             }
             assertCurrentMapGeneration(job);
+            const factContract = reportMapFacts(parsed, rawText, sources, factRequest, stagedAudit);
             const normalizedMap = normalizeMap(parsed, { source: 'full-generation', outputMode });
+            preserveReviewedMapThread(normalizedMap, factContract);
             if (continuePrevious) preserveContinuedMapIdentities(startMap, normalizedMap);
             await repairFootstepRosterIfNeeded(normalizedMap, outputMode, job);
             await reviewLocationIconsWithAi(normalizedMap, {
@@ -5560,48 +5712,54 @@ async function generateMap(force = false, options = {}) {
     }
 }
 
+function askMapConfirmation(message, { title, confirmLabel, cancelLabel } = {}) {
+    const host = document.getElementById('mma-window');
+    if (!host || activeMapConfirmation) return Promise.resolve(null);
+
+    const korean = isKoreanMapLocale();
+    const dialog = document.createElement('dialog');
+    dialog.className = 'mma-map-confirm';
+    dialog.setAttribute('aria-labelledby', 'mma-map-confirm-title');
+    dialog.setAttribute('aria-describedby', 'mma-map-confirm-message');
+    dialog.innerHTML = `
+        <section class="mma-discovery-confirm">
+            <h3 id="mma-map-confirm-title">${escapeHtml(title || (korean ? '지도' : 'Map'))}</h3>
+            <p id="mma-map-confirm-message">${escapeHtml(message)}</p>
+            <div class="mma-discovery-confirm-actions">
+                <button type="button" data-map-cancel autofocus>${escapeHtml(cancelLabel || (korean ? '취소' : 'Cancel'))}</button>
+                <button type="button" data-map-confirm>${escapeHtml(confirmLabel || (korean ? '확인' : 'Confirm'))}</button>
+            </div>
+        </section>`;
+
+    return new Promise(resolve => {
+        const finish = (result = null) => {
+            if (activeMapConfirmation !== finish) return;
+            activeMapConfirmation = null;
+            if (dialog.open) dialog.close();
+            dialog.remove();
+            resolve(result);
+        };
+        dialog.addEventListener('cancel', event => {
+            event.preventDefault();
+            finish();
+        });
+        dialog.addEventListener('close', () => finish());
+        dialog.querySelector('[data-map-cancel]').addEventListener('click', () => finish(false));
+        dialog.querySelector('[data-map-confirm]').addEventListener('click', () => finish(true));
+
+        activeMapConfirmation = finish;
+        host.appendChild(dialog);
+        try {
+            dialog.showModal();
+        } catch {
+            finish();
+        }
+    });
+}
+
 function confirmDiscoveryGeneration() {
     const ui = getDiscoveryUiConfig();
-    const host = document.getElementById('mma-window') || document.body;
-    if (activeDiscoveryConfirm) activeDiscoveryConfirm(false);
-    document.getElementById('mma-discovery-confirm')?.remove();
-    return new Promise(resolve => {
-        const overlay = document.createElement('div');
-        overlay.id = 'mma-discovery-confirm';
-        overlay.className = 'mma-discovery-confirm-overlay';
-        overlay.innerHTML = `
-            <section class="mma-discovery-confirm" role="dialog" aria-modal="true" aria-labelledby="mma-discovery-confirm-title">
-                <h3 id="mma-discovery-confirm-title">${escapeHtml(ui.question)}</h3>
-                <div class="mma-discovery-confirm-actions">
-                    <button type="button" data-discovery-cancel>취소</button>
-                    <button type="button" data-discovery-confirm>${escapeHtml(ui.confirm)}</button>
-                </div>
-            </section>`;
-        let settled = false;
-        const finish = value => {
-            if (settled) return;
-            settled = true;
-            document.removeEventListener('keydown', onKeyDown, true);
-            overlay.remove();
-            if (activeDiscoveryConfirm === finish) activeDiscoveryConfirm = null;
-            resolve(value);
-        };
-        const onKeyDown = event => {
-            if (event.key === 'Escape') {
-                event.preventDefault();
-                finish(false);
-            }
-        };
-        overlay.addEventListener('click', event => {
-            if (event.target === overlay) finish(false);
-        });
-        overlay.querySelector('[data-discovery-cancel]')?.addEventListener('click', () => finish(false));
-        overlay.querySelector('[data-discovery-confirm]')?.addEventListener('click', () => finish(true));
-        document.addEventListener('keydown', onKeyDown, true);
-        activeDiscoveryConfirm = finish;
-        host.appendChild(overlay);
-        overlay.querySelector('[data-discovery-confirm]')?.focus();
-    });
+    return askMapConfirmation(ui.question, { title: ui.name, confirmLabel: ui.confirm });
 }
 
 async function requestDiscoveryGeneration() {
@@ -5892,7 +6050,7 @@ async function handleFootstepClick(footstepId) {
     const confirmMessage = isKoreanMapLocale()
         ? message
         : `Check "${label}"'s current status?${hint ? '\n\nCurrent signal: ' + hint : ''}`;
-    if (!window.confirm(confirmMessage)) return;
+    if (!await askMapConfirmation(confirmMessage)) return;
     const profile = await getOrGenerateFootstepProfile(footstepId);
     if (profile) renderFootstepPanel(footstepId);
 }
@@ -5922,7 +6080,7 @@ function renderFootstepPanel(footstepId) {
         <div class="mma-place-card mma-footstep-card">
             <header class="mma-place-header">
                 <div><span class="mma-place-icon">${isModernTheme() ? '●' : (isBonbonTheme() ? '<span class="mma-bonbon-mini-pawn" aria-hidden="true">♟</span>' : '👣')}</span><strong>${escapeHtml(profile.name)}</strong></div>
-                <button title="위치 카드로 돌아가기" data-action="back">↩️</button>
+                <button aria-label="위치 카드로 돌아가기" title="위치 카드로 돌아가기" data-action="back">${mapControlIcon('reply', '↩')}</button>
             </header>
             <section class="mma-info-block">
                 <h4>🪪 정보</h4>
@@ -5957,8 +6115,8 @@ function renderFootstepPanel(footstepId) {
             </section>
             ${profile.hooks?.length ? `<section class="mma-info-block"><h4>✨ 따라갈 만한 단서</h4><ul>${profile.hooks.map(h => `<li>${escapeHtml(h)}</li>`).join('')}</ul></section>` : ''}
             <footer class="mma-place-actions">
-                <button data-action="track" title="이 인물의 이후 위치 변화를 수첩에서 다시 확인합니다.">👁 이후 동선 추적</button>
-                <button data-action="actions">📓 반영</button>
+                <button data-action="track" title="이 인물의 이후 위치 변화를 수첩에서 다시 확인합니다.">${mapControlIcon('eye')} 이후 동선 추적</button>
+                <button data-action="actions">${mapControlIcon('book', '▤')} 반영</button>
             </footer>
         </div>
     `;
@@ -5978,8 +6136,8 @@ function renderFootstepActionPanel(footstepId) {
     panel.innerHTML = `
         <div class="mma-action-panel">
             <header class="mma-place-header">
-                <div><span class="mma-place-icon">📓</span><strong>수첩 반영</strong></div>
-                <button title="발자국 상태로 돌아가기" data-action="back">↩️</button>
+                <div><span class="mma-place-icon">${mapControlIcon('book')}</span><strong>수첩 반영</strong></div>
+                <button aria-label="발자국 상태로 돌아가기" title="발자국 상태로 돌아가기" data-action="back">${mapControlIcon('reply', '↩')}</button>
             </header>
             <p class="mma-panel-note">선택한 인물의 현재 상태, 행동, 생각 정보가 다음 응답부터 반영된다. 보류는 롤플에 반영되지 않고 나중에 다시 선택할 수 있도록 남는다.</p>
             <article class="mma-event-card footstep-manage">
@@ -6378,7 +6536,7 @@ function openMap() {
 function closeMap(reason = 'manual') {
     // Closing only hides the overlay. A requested map keeps generating in the
     // background and will be saved for the user to open after it completes.
-    if (activeDiscoveryConfirm) activeDiscoveryConfirm(false);
+    activeMapConfirmation?.();
     if (mapResizeState) endMapResize();
     const overlay = document.getElementById('mma-overlay');
     const generationContinues = Boolean(activeMapGeneration);
@@ -6458,7 +6616,7 @@ function renderSpellScreen() {
             <div class="mma-spell-top">
                 <div class="mma-brand">${escapeHtml(theme.shortLabel)}</div>
                 <div class="mma-spell-actions">
-                    ${!bonbon && hasPreviousMapSnapshot(memory) ? `<button class="mma-managed-button mma-restore-previous-button" data-action="restore-previous-map" title="${modern ? '직전 위치 신호 기록 복원' : '이전 지도 불러오기'}" aria-label="${modern ? '직전 위치 신호 기록 복원' : '이전 지도 불러오기'}">↩️</button>` : ''}
+                    ${!bonbon && hasPreviousMapSnapshot(memory) ? `<button class="mma-managed-button mma-restore-previous-button" data-action="restore-previous-map" title="${modern ? '직전 위치 신호 기록 복원' : '이전 지도 불러오기'}" aria-label="${modern ? '직전 위치 신호 기록 복원' : '이전 지도 불러오기'}">${mapControlIcon('reply', '↩')}</button>` : ''}
                     <button class="mma-managed-button mma-close-button" data-action="close" aria-label="${bonbon ? '게임 상자 닫기' : '닫기'}" title="${bonbon ? '게임 상자 닫기' : '닫기'}">${escapeHtml(theme.closeText)}</button>
                 </div>
             </div>
@@ -6566,13 +6724,13 @@ function renderMapView() {
                 <div class="mma-top-right">
                     <button class="mma-managed-button mma-close-button" data-action="close" aria-label="${isBonbonTheme() ? '게임 상자 닫기' : '닫기'}" title="${isBonbonTheme() ? '게임 상자 닫기' : '닫기'}">${escapeHtml(theme.closeText)}</button>
                     <nav class="mma-toolbar-actions" aria-label="지도 버튼">
-                        <button title="${isModernTheme() ? '현재 작전 구역 위치 신호 다시 스캔' : '현재 지도를 이어서 갱신'}" data-action="refresh-all">🔄</button>
-                        <button title="새 지도로 처음부터 다시 생성 (수첩은 유지)" data-action="refresh-fresh">🆕</button>
-                        <button title="${isModernTheme() ? '직전 위치 신호 기록 복원' : '이전 지도 불러오기'}" data-action="restore-previous-map" ${hasPreviousMapSnapshot(memory) ? '' : 'disabled'}>↩️</button>
-                        ${visibleTrackedRouteKey ? '<button title="지도에서 동선 숨기기" data-action="clear-route">👣✕</button>' : ''}
-                        <button title="검색" data-action="recommend">🔎</button>
-                        <button title="수첩" data-action="notebook">📓</button>
-                        <button title="지도 메모리 보기" data-action="memory">🧠</button>
+                        <button aria-label="${isModernTheme() ? '현재 작전 구역 위치 신호 다시 스캔' : '현재 지도를 이어서 갱신'}" title="${isModernTheme() ? '현재 작전 구역 위치 신호 다시 스캔' : '현재 지도를 이어서 갱신'}" data-action="refresh-all">${mapControlIcon('arrows-rotate', '↻')}</button>
+                        <button aria-label="새 지도로 처음부터 다시 생성 (수첩은 유지)" title="새 지도로 처음부터 다시 생성 (수첩은 유지)" data-action="refresh-fresh">${mapControlIcon('file-circle-plus', '+')}</button>
+                        <button aria-label="${isModernTheme() ? '직전 위치 신호 기록 복원' : '이전 지도 불러오기'}" title="${isModernTheme() ? '직전 위치 신호 기록 복원' : '이전 지도 불러오기'}" data-action="restore-previous-map" ${hasPreviousMapSnapshot(memory) ? '' : 'disabled'}>${mapControlIcon('reply', '↩')}</button>
+                        ${visibleTrackedRouteKey ? `<button aria-label="지도에서 동선 숨기기" title="지도에서 동선 숨기기" data-action="clear-route">${mapControlIcon('eye-slash', '×')}</button>` : ''}
+                        <button aria-label="검색" title="검색" data-action="recommend">${mapControlIcon('magnifying-glass', '⌕')}</button>
+                        <button aria-label="수첩" title="수첩" data-action="notebook">${mapControlIcon('book', '▤')}</button>
+                        <button aria-label="지도 메모리 보기" title="지도 메모리 보기" data-action="memory">${mapControlIcon('brain', '▤')}</button>
                     </nav>
                 </div>
             </header>
@@ -6585,10 +6743,10 @@ function renderMapView() {
     `;
     content.querySelector('[data-action="close"]')?.addEventListener('click', () => closeMap('close-button'));
     content.querySelector('[data-action="refresh-all"]')?.addEventListener('click', () => generateMap(true));
-    content.querySelector('[data-action="refresh-fresh"]')?.addEventListener('click', () => {
-        const accepted = window.confirm(isKoreanMapLocale()
-            ? '현재 지도 대신 완전히 새 지도를 그릴까?\\n기존 수첩과 반영 데이터는 유지되고, 직전 지도는 ↩️로 한 번 복원할 수 있어.'
-            : 'Generate a fresh map instead of continuing the current one?\\nNotebook and applied items are kept. The previous map can be restored once with ↩️.');
+    content.querySelector('[data-action="refresh-fresh"]')?.addEventListener('click', async () => {
+        const accepted = await askMapConfirmation(isKoreanMapLocale()
+            ? '현재 지도 대신 완전히 새 지도를 그릴까?\n기존 수첩과 반영 데이터는 유지돼. 직전 지도는 이전 지도 불러오기로 한 번 복원할 수 있어.'
+            : 'Generate a fresh map instead of continuing the current one?\nNotebook and applied items are kept. You can restore the previous map once from the toolbar.');
         if (accepted) generateMap(true, { freshStart: true });
     });
     content.querySelector('[data-action="restore-previous-map"]')?.addEventListener('click', () => restorePreviousMap());
@@ -6638,7 +6796,7 @@ function renderCanvas() {
     discoverButton.title = discoveryUi.name;
     discoverButton.setAttribute('aria-label', discoveryUi.name);
     discoverButton.disabled = Boolean(activeMapGeneration);
-    discoverButton.innerHTML = `<span aria-hidden="true">${escapeHtml(discoveryUi.icon)}</span>`;
+    discoverButton.innerHTML = mapControlIcon({ marauder: 'wand-magic-sparkles', modern: 'satellite-dish', bonbon: 'key' }[getThemeConfig().key], '⌕');
     discoverButton.addEventListener('click', event => {
         event.stopPropagation();
         requestDiscoveryGeneration();
@@ -6795,7 +6953,7 @@ function renderDiscoveryListPanel() {
         <div class="mma-place-card mma-discovery-list-panel">
             <header class="mma-place-header">
                 <div><span class="mma-place-icon">${escapeHtml(ui.icon)}</span><strong>${escapeHtml(ui.panelTitle)}</strong></div>
-                <button title="위치 카드로 돌아가기" data-action="back">↩️</button>
+                <button aria-label="위치 카드로 돌아가기" title="위치 카드로 돌아가기" data-action="back">${mapControlIcon('reply', '↩')}</button>
             </header>
             <p class="mma-panel-note">${items.length ? `${items.length}개의 발견이 현재 지도에 표시됩니다.` : '현재 표시할 발견이 없습니다.'}</p>
             <div class="mma-discovery-list">
@@ -6837,7 +6995,7 @@ function renderDiscoveryPanel(discoveryId) {
         <div class="mma-place-card mma-discovery-panel">
             <header class="mma-place-header">
                 <div><span class="mma-place-icon">${escapeHtml(emoji)}</span><strong>${escapeHtml(item.title)}</strong></div>
-                <button title="${escapeHtml(ui.panelTitle)} 목록으로 돌아가기" data-action="back">↩️</button>
+                <button aria-label="${escapeHtml(ui.panelTitle)} 목록으로 돌아가기" title="${escapeHtml(ui.panelTitle)} 목록으로 돌아가기" data-action="back">${mapControlIcon('reply', '↩')}</button>
             </header>
             <div class="mma-event-location">📍 ${escapeHtml(item.locationName)} · ${escapeHtml(getDiscoveryEvidenceLabel(item.evidenceLevel))}</div>
             <section class="mma-info-block mma-discovery-body">
@@ -7126,7 +7284,7 @@ function renderLocationPanel(locationId) {
         <div class="mma-place-card">
             <header class="mma-place-header">
                 <div><span class="mma-place-icon">${escapeHtml(location.icon || '📍')}</span><strong>${escapeHtml(location.name)}</strong></div>
-                <button title="이 장소만 다시 새로고침" data-action="refresh-location">🔄</button>
+                <button aria-label="이 장소만 다시 새로고침" title="이 장소만 다시 새로고침" data-action="refresh-location">${mapControlIcon('arrows-rotate', '↻')}</button>
             </header>
             <section class="mma-info-block">
                 <h4>${escapeHtml(getThemeConfig().locationInfoIcon || '🎨')}</h4>
@@ -7142,7 +7300,7 @@ function renderLocationPanel(locationId) {
                 <div class="mma-location-events">${relatedEvents.map(event => renderLocationEventSummaryCard(event, location)).join('')}</div>
             </section>` : ''}
             <footer class="mma-place-actions">
-                <button data-action="actions">📓 반영</button>
+                <button data-action="actions">${mapControlIcon('book', '▤')} 반영</button>
             </footer>
         </div>
     `;
@@ -7174,8 +7332,8 @@ function renderActionPanel(locationFilterId = null, globalView = false) {
         panel.innerHTML = `
             <div class="mma-action-panel">
                 <header class="mma-place-header">
-                    <div><span class="mma-place-icon">📓</span><strong>수첩 반영</strong></div>
-                    <button title="위치 카드로 돌아가기" data-action="back">↩️</button>
+                    <div><span class="mma-place-icon">${mapControlIcon('book')}</span><strong>수첩 반영</strong></div>
+                    <button aria-label="위치 카드로 돌아가기" title="위치 카드로 돌아가기" data-action="back">${mapControlIcon('reply', '↩')}</button>
                 </header>
                 <p class="mma-panel-note">반영 또는 수집으로 선택해 둔 항목만 표시됩니다. 여기에서 반영 방식 변경 또는 주입 해제를 처리할 수 있습니다.</p>
                 ${active.length ? active.map(item => renderManagedItemCard(item)).join('') : '<p class="mma-empty">현재 반영 또는 수집 중인 항목이 없습니다.</p>'}
@@ -7194,8 +7352,8 @@ function renderActionPanel(locationFilterId = null, globalView = false) {
     panel.innerHTML = `
         <div class="mma-action-panel">
             <header class="mma-place-header">
-                <div><span class="mma-place-icon">📓</span><strong>수첩 반영</strong></div>
-                <button title="위치 카드로 돌아가기" data-action="back">↩️</button>
+                <div><span class="mma-place-icon">${mapControlIcon('book')}</span><strong>수첩 반영</strong></div>
+                <button aria-label="위치 카드로 돌아가기" title="위치 카드로 돌아가기" data-action="back">${mapControlIcon('reply', '↩')}</button>
             </header>
             <p class="mma-panel-note">장소와 퀘스트는 각각 따로 수집하거나 반영할 수 있습니다.</p>
             ${selectedLocation ? `<h4 class="mma-section-title">장소 정보를 선택하고 연결 퀘스트는 따로 결정할 수 있어요.</h4>${renderLocationManageCard(selectedLocation)}` : ''}
@@ -7261,24 +7419,24 @@ function renderActionButtons(type, id) {
     const activeItem = type === 'managed' ? memory.managedItems.find(x => x.id === id) : null;
     const button = (action, icon, title) => {
         const active = activeItem && activeItem.status === actionToStatus(action) ? ' active' : '';
-        return `<button class="mma-action-choice${active}" title="${escapeHtml(title)}" data-type="${safeType}" data-id="${safeId}" data-event-action="${action}">${icon}</button>`;
+        return `<button class="mma-action-choice${active}" aria-label="${escapeHtml(title)}" title="${escapeHtml(title)}" data-type="${safeType}" data-id="${safeId}" data-event-action="${action}">${icon}</button>`;
     };
 
     if (type === 'managed') {
         return [
-            button('inject', '🪄', '일반 반영으로 변경'),
-            button('char', '👤', '캐릭터가 먼저 눈치챔으로 변경'),
-            button('user', '🧍', '유저가 먼저 눈치챔으로 변경'),
-            button('hold', '📓', '수집으로 변경'),
-            button('remove', '🗑️', '반영 설정만 해제'),
+            button('inject', mapControlIcon('wand-magic-sparkles', '+'), '일반 반영으로 변경'),
+            button('char', mapControlIcon('user', 'C'), '캐릭터가 먼저 눈치챔으로 변경'),
+            button('user', mapControlIcon('person', 'U'), '유저가 먼저 눈치챔으로 변경'),
+            button('hold', mapControlIcon('book', '▤'), '수집으로 변경'),
+            button('remove', mapControlIcon('trash', '×'), '반영 설정만 해제'),
         ].join('');
     }
 
     return [
-        button('inject', '🪄', '다음 응답부터 일반 반영'),
-        button('char', '👤', '캐릭터가 먼저 눈치챔'),
-        button('user', '🧍', '유저가 먼저 눈치챔'),
-        button('hold', '📓', '수첩에 수집'),
+        button('inject', mapControlIcon('wand-magic-sparkles', '+'), '다음 응답부터 일반 반영'),
+        button('char', mapControlIcon('user', 'C'), '캐릭터가 먼저 눈치챔'),
+        button('user', mapControlIcon('person', 'U'), '유저가 먼저 눈치챔'),
+        button('hold', mapControlIcon('book', '▤'), '수첩에 수집'),
     ].join('');
 }
 
@@ -7369,22 +7527,27 @@ function confirmManageAction(type, id, action) {
         user: `${infoText}\n\n${userQuestion}`,
         remove: `${info.title}의 주입 설정만 삭제합니다.\n지도에 표시된 장소, 인물, 퀘스트, 발견 자체는 사라지지 않습니다.\n\n삭제할까요?`,
     };
-    if (isKoreanMapLocale()) return window.confirm(messages[action] || `${info.title} 항목을 처리할까요?`);
+    const labels = isKoreanMapLocale()
+        ? { hold: '수집', inject: '반영', char: '반영', user: '반영', remove: '반영 해제' }
+        : { hold: 'Collect', inject: 'Apply', char: 'Apply', user: 'Apply', remove: 'Remove application' };
+    const options = { title: info.title, confirmLabel: labels[action] };
+    if (isKoreanMapLocale()) return askMapConfirmation(messages[action] || `${info.title} 항목을 처리할까요?`, options);
     const englishMessages = {
         hold: `Save "${subject}" to the notebook? It won't affect roleplay unless applied later.\n\nContinue?`,
-        inject: `Apply "${info.title}" as background context in future responses?`,
+        inject: `Use this selection as background context in future responses?`,
         char: `Apply "${info.title}" so ${charName} notices it first?`,
         user: `Apply "${info.title}" so ${userName} notices it first?`,
-        remove: `Remove only the application setting for "${info.title}"?\nThe map item itself will remain.`,
+        remove: `Clear its roleplay application? The map item will stay on the map.`,
     };
-    return window.confirm(englishMessages[action] || `Manage "${info.title}"?`);
+    return askMapConfirmation(englishMessages[action] || `Manage "${info.title}"?`, options);
 }
 
 async function handleManageAction(type, id, action) {
     const memory = ensureMemory();
     const map = memory.map;
     if (!map) return;
-    if (!confirmManageAction(type, id, action)) return;
+    const isTargetCurrent = () => getExistingMemory() === memory && memory.map === map;
+    if (!await confirmManageAction(type, id, action) || !isTargetCurrent()) return;
     const shouldReturnToNotebook = Boolean(document.querySelector('.mma-notebook-panel'));
     const existingManagedLocation = type === 'managed'
         ? memory.managedItems.find(item => item.id === id && item.type === 'location')
@@ -7394,11 +7557,19 @@ async function handleManageAction(type, id, action) {
         ? (map.events || []).filter(event => event.locationId === chosenLocationId && event.status !== 'ignored')
         : [];
     const availableQuestCount = linkedQuests.length || (existingManagedLocation?.eventSnapshots || []).length;
-    // The first confirm cancels the whole action. This second choice uses
-    // Cancel specifically for place-only (never silently bundle quests).
-    const includeLinkedQuests = action !== 'remove' && availableQuestCount > 0 && window.confirm(isKoreanMapLocale()
-        ? `이 장소의 퀘스트 ${availableQuestCount}개도 함께 ${action === 'hold' ? '수집' : '반영'}할까?\n\n확인: 장소 + 퀘스트\n취소: 장소만`
-        : `Include ${availableQuestCount} linked quest(s) with this location?\n\nOK: location + quests\nCancel: location only`);
+    let includeLinkedQuests = false;
+    if (action !== 'remove' && availableQuestCount > 0) {
+        const korean = isKoreanMapLocale();
+        const choice = await askMapConfirmation(korean
+            ? `이 장소의 퀘스트 ${availableQuestCount}개도 함께 ${action === 'hold' ? '수집' : '반영'}할까?`
+            : `Include ${availableQuestCount} linked quest(s) with this location?`, {
+            title: korean ? '연결된 퀘스트' : 'Linked quests',
+            confirmLabel: korean ? '장소와 퀘스트' : 'Location and quests',
+            cancelLabel: korean ? '장소만' : 'Location only',
+        });
+        if (choice === null || !isTargetCurrent()) return;
+        includeLinkedQuests = choice;
+    }
 
     if (type === 'managed') {
         const item = memory.managedItems.find(x => x.id === id);
@@ -7683,7 +7854,7 @@ function buildLocationContextFallback(loc, events = []) {
 }
 
 function buildEventContextFallback(event, loc) {
-    const reward = event?.reward ? ` Potential reward after the event is meaningfully played out: ${event.reward}. Do not grant this reward before the scene is resolved.` : '';
+    const reward = event?.reward ? ` Potential reward after the quest is resolved in roleplay: ${event.reward}. Selection does not grant it. Honor it only after its terms are fulfilled in play.` : '';
     return `Selected map event: ${event.title}. Location: ${loc?.name || 'unknown'}. Location atmosphere: ${loc?.situation || ''} People present or nearby: ${(loc?.present || []).join(', ') || 'not clearly identified'}. Event details: ${event.summary} ${event.details || ''}. When the roleplay scene is at, approaching, or naturally arrives at this location, treat this selected quest as an active scene opportunity: let it begin through observable dialogue, action, interruption, or discovery involving the relevant people. Keep it unresolved until roleplay actions address it. Do not force the user to travel, speak, accept the quest, or take a specific action.${reward} Do not mention the map UI.`;
 }
 
@@ -7736,7 +7907,7 @@ function buildExtensionPrompt(memory = null) {
         const mode = item.status === 'char_notice'
             ? `${charName} should notice or react to this map context first if it fits the scene.`
             : item.status === 'user_notice'
-                ? `The narration may make this map context available for ${userName} to notice first without forcing an action.`
+                ? `Show ${userName} a perceivable cue first. Leave their notice, response, and action open. Give NPCs no first explanation unless the user explicitly asked.`
                 : 'Let this selected map context subtly influence the next response and future responses until removed.';
         if (item.type === 'discovery') {
             const context = item.contextText || buildDiscoveryContext(item);
@@ -7745,11 +7916,9 @@ function buildExtensionPrompt(memory = null) {
         const people = (item.present || []).length ? `People present or nearby: ${(item.present || []).join(', ')}.` : '';
         const clues = (item.clues || []).length ? `Notable clues: ${(item.clues || []).join('; ')}.` : '';
         const events = (item.eventSnapshots || []).length ? `Related events: ${item.eventSnapshots.map(e => `${e.title}: ${e.injectionText || e.summary}`).join(' / ')}.` : '';
-        const arrivalRule = item.type === 'event'
-            ? `Quest activation rule: when the roleplay scene is at, approaching, or naturally arrives at this location, treat this selected quest as an active scene opportunity. Let it start through observable dialogue, action, interruption, or discovery involving the relevant people. Keep it unresolved until roleplay actions address it. Do not force the user to travel, speak, accept the quest, or take a specific action.${item.reward ? ` Potential reward after meaningful resolution: ${item.reward}. Do not award it before the scene is resolved.` : ''}`
-            : item.type === 'location' && (item.eventSnapshots || []).length
-                ? `Location event rule: when the roleplay scene is at, approaching, or naturally arrives at this location, the related quests listed above may become playable scenes through observable dialogue, action, interruption, or discovery. Use the quest that fits the immediate scene; do not force the user to travel, speak, accept a quest, or take a specific action.`
-                : '';
+        const rewardRule = item.type === 'event' && item.reward
+            ? `Potential reward after meaningful resolution: ${item.reward}. Do not award it before resolution or record it as acquired merely because the item was selected.`
+            : '';
         const context = item.englishContext || buildLocationContextFallback({ name: item.locationName, situation: item.situation || item.summary, details: item.details, present: item.present || [], clues: item.clues || [] }, item.eventSnapshots || []);
         const typeLabel = item.type === 'location'
             ? 'Selected location'
@@ -7760,16 +7929,41 @@ function buildExtensionPrompt(memory = null) {
                     : item.type === 'tracked'
                         ? 'Selected tracked person status'
                         : 'Selected event';
-        return `${index + 1}. ${typeLabel}: ${item.title}\nLocation: ${item.locationName}.\nEnglish map context:\n${context}\n${people}\n${clues}\n${events}\n${arrivalRule}\nMode: ${mode}`;
+        return `${index + 1}. ${typeLabel}: ${item.title}\nLocation: ${item.locationName}.\nEnglish map context:\n${context}\n${people}\n${clues}\n${events}\n${rewardRule}\nMode: ${mode}`;
     }).join('\n\n');
-    return `[Selected roleplay context]\nThe user selected the following map observations to be reflected in future roleplay responses. Do not mention the extension, buttons, UI, or that this is injected context. Integrate the information naturally with the current scene, tone, and character behavior. Do not override the user's agency. Treat this as background context, not as a message from the user.\n\n${lines}`;
+    const questRule = active.some(item => item.type === 'event' || (item.type === 'location' && item.eventSnapshots?.length))
+        ? ' Use quest cues when the roleplay reaches the stated place or supplies a concrete link. Let selected new records, institutions, and offers appear in play at that point. Preserve established continuity and leave travel, speech, acceptance and action to the user. Selection opens the quest opportunity. Resolution and earning its reward require the relevant events to happen in roleplay.'
+        : '';
+    return `[Selected roleplay context]\nThe user selected the following map material for future scenes. Established roleplay takes precedence. New material can enter play from now on, without implying that the user already knew it, accepted it, or acted on it. Integrate it naturally and keep the user's choices open. Do not mention this prompt or the map UI.\n\n${lines}${questRule ? `\n\n[Quest timing]${questRule}` : ''}`;
+}
+
+function readSavedInjectionContext(ctx, preferAttached = false) {
+    if (!getStableChatSignature()) return null;
+    const settings = ctx.extensionSettings?.[MODULE_NAME] || {};
+    const key = getCurrentCharacterKey();
+    const resetToken = getSharedNotebookResetToken(settings, key);
+    const memory = getExistingMemory();
+    if (preferAttached && memory && attachedNotebookMemories.has(memory)
+        && memory.sharedNotebookKey === key && String(memory.sharedNotebookResetAt || '') === resetToken) {
+        return memory;
+    }
+    const { notebook } = getCharacterNotebook(settings, key);
+    if (notebook && (!resetToken || String(notebook.resetToken || '') === resetToken)) return notebook;
+    if (resetToken && String(memory?.sharedNotebookResetAt || '') !== resetToken) return null;
+    // Older ST string IDs used the character name. Some names yielded a
+    // random key. Use only the copy carried by this chat in those cases.
+    const legacyNameKey = getCharacterKeyForRecord(null, ctx.name2 || ctx.characterId);
+    if (memory?.sharedNotebookKey && memory.sharedNotebookKey !== key
+        && memory.sharedNotebookKey !== legacyNameKey
+        && !/^character-[a-z0-9]{6}$/.test(memory.sharedNotebookKey)) return null;
+    return memory;
 }
 
 function syncExtensionPrompt(options = {}) {
     try {
         const ctx = stContext();
         const createMemory = options?.createMemory !== false;
-        const memory = createMemory ? ensureMemory() : getExistingMemory();
+        const memory = createMemory ? ensureMemory() : readSavedInjectionContext(ctx, options.preferAttached);
         const prompt = memory ? buildExtensionPrompt(memory) : '';
         if (typeof ctx.setExtensionPrompt === 'function') {
             const promptTypes = ctx.extension_prompt_types || globalThis.extension_prompt_types || {};
@@ -7788,6 +7982,13 @@ function syncExtensionPrompt(options = {}) {
     }
 }
 
+function syncSelectionBeforeGeneration(type) {
+    if (type === 'quiet') return;
+    // ST can clear prompt slots while reopening a chat. Resolve the active
+    // selection again before it assembles the request, without saving anything.
+    syncExtensionPrompt({ createMemory: false, preferAttached: true });
+}
+
 function renderMemoryPanel() {
     const panel = document.getElementById('mma-side-panel');
     if (!panel) return;
@@ -7801,8 +8002,8 @@ function renderMemoryPanel() {
     panel.innerHTML = `
         <div class="mma-memory-panel">
             <header class="mma-place-header">
-                <div><span class="mma-place-icon">🧠</span><strong>지도 메모리</strong></div>
-                <button title="위치 카드로 돌아가기" data-action="back">↩️</button>
+                <div><span class="mma-place-icon">${mapControlIcon('brain')}</span><strong>지도 메모리</strong></div>
+                <button aria-label="위치 카드로 돌아가기" title="위치 카드로 돌아가기" data-action="back">${mapControlIcon('reply', '↩')}</button>
             </header>
             <section class="mma-info-block">
                 <h4>📜</h4>
@@ -7893,7 +8094,7 @@ async function resetStoredCharacterNotebook(key) {
 
     const isCurrentCharacter = key === getCurrentCharacterKey();
     if (isCurrentCharacter) {
-        if (activeDiscoveryConfirm) activeDiscoveryConfirm(false);
+        activeMapConfirmation?.();
         cancelActiveMapGeneration('shared notebook reset');
     }
 
@@ -8024,11 +8225,11 @@ function setupExtensionButtonInSettings() {
                     </div>
                 </div>
                 <div class="mma-settings-field mma-settings-cleanup-field">
-                    <button id="mma-reset-character-notebook" type="button" class="menu_button">🧹 공용 지도 데이터 정리</button>
+                    <button id="mma-reset-character-notebook" type="button" class="menu_button">${mapControlIcon('broom')} 공용 지도 데이터 정리</button>
                     <p class="mma-settings-note">선택한 캐릭터의 공용 수첩 데이터만 정리합니다. 채팅별 지도는 유지됩니다.</p>
                 </div>
                 <div class="mma-settings-field mma-settings-debug-field">
-                    <button id="mma-open-debug" type="button" class="menu_button mma-debug-settings-button">🐞 <span>디버그 로그</span></button>
+                    <button id="mma-open-debug" type="button" class="menu_button mma-debug-settings-button">${mapControlIcon('bug')} <span>디버그 로그</span></button>
                 </div>
                 <div id="mma-settings-debug-panel" class="mma-settings-debug-panel" style="display:none;">
                     <div class="mma-debug-actions">
@@ -8093,6 +8294,7 @@ async function populateConnectionProfileSelect() {
 
 
 function ensureExtensionsMenuButton() {
+    void loadMapControlFont();
     const menu = document.querySelector('#extensionsMenu');
     if (!menu) return false;
     if (document.getElementById('mma-extension-menu-button')) return true;
@@ -8226,11 +8428,14 @@ function init() {
     safeInitStep('syncExtensionPromptExistingOnly', () => syncExtensionPrompt({ createMemory: false }));
 
     safeInitStep('event hooks', () => {
-        if (chatChangedHooked) return;
         const { eventSource, event_types } = stContext();
-        if (eventSource?.on && event_types?.CHAT_CHANGED) {
+        if (!chatChangedHooked && eventSource?.on && event_types?.CHAT_CHANGED) {
             eventSource.on(event_types.CHAT_CHANGED, handleMapChatChanged);
             chatChangedHooked = true;
+        }
+        if (!generationPromptHooked && eventSource?.on && event_types?.GENERATION_AFTER_COMMANDS) {
+            eventSource.on(event_types.GENERATION_AFTER_COMMANDS, syncSelectionBeforeGeneration);
+            generationPromptHooked = true;
         }
     });
 }
@@ -8274,7 +8479,7 @@ export function onDisable() {
     stopMarauderSerifProtection();
     stopMapUiLocaleObservers();
     initialized = false;
-    if (activeDiscoveryConfirm) activeDiscoveryConfirm(false);
+    activeMapConfirmation?.();
     cancelActiveMapGeneration('extension disabled');
     if (mapResizeState) endMapResize();
     pushDebugLog('extension.disable', '확장이 비활성화됩니다.');
@@ -8286,6 +8491,10 @@ export function onDisable() {
         if (chatChangedHooked && typeof eventSource?.off === 'function' && event_types?.CHAT_CHANGED) {
             eventSource.off(event_types.CHAT_CHANGED, handleMapChatChanged);
             chatChangedHooked = false;
+        }
+        if (generationPromptHooked && typeof eventSource?.off === 'function' && event_types?.GENERATION_AFTER_COMMANDS) {
+            eventSource.off(event_types.GENERATION_AFTER_COMMANDS, syncSelectionBeforeGeneration);
+            generationPromptHooked = false;
         }
     } catch { /* noop */ }
     lastKnownChatSignature = '';

@@ -1174,7 +1174,6 @@ button.mma-footstep:focus-visible em {
 /* v1 final layer balance:
    Above SillyTavern's normal toolbar, below companion popups/toasts/loaders. */
 #mma-root {
-  position: relative !important;
   z-index: 9988 !important;
 }
 
@@ -10870,3 +10869,49 @@ button.mma-footstep:focus-visible em {
 #mma-window.mma-theme-bonbon .mma-bonbon-route-stop > .mma-node.mma-bonbon-location-card .mma-node-label {
   font-size: calc(var(--mma-body-font-size) * 0.846154) !important;
 }
+
+/* Keep icon-only controls visible if the host font is unavailable. */
+.mma-control-icon { display: inline-block; line-height: 1; }
+.mma-control-icon:where(:has(.mma-control-fallback:empty)) { display: none; }
+.mma-control-icon > i { display: none; }
+.mma-control-font-ready .mma-control-icon { display: inline-block; }
+.mma-control-font-ready .mma-control-icon > i {
+    display: inline-block;
+    font-family: "Font Awesome 6 Free" !important;
+    font-weight: 900 !important;
+}
+#mma-window .mma-control-icon > .fa-solid,
+#mma-window .mma-control-icon > .fa-solid::before {
+    font-family: "Font Awesome 6 Free" !important;
+    font-weight: 900 !important;
+}
+.mma-control-font-ready .mma-control-fallback { display: none; }
+#mma-window button:focus-visible,
+#mma-extension-menu-button:focus-visible,
+#mma-settings-block button:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+
+/* In-app confirmations reuse the current map theme in the browser top layer. */
+.mma-map-confirm {
+    width: min(440px, calc(100vw - 24px));
+    max-height: calc(100dvh - 32px);
+    margin: auto;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    overflow: auto;
+}
+.mma-map-confirm::backdrop { background: rgb(0 0 0 / 52%); }
+.mma-map-confirm > .mma-discovery-confirm {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: none;
+}
+.mma-map-confirm p {
+    margin: 10px 0 16px;
+    white-space: pre-line;
+    overflow-wrap: anywhere;
+    line-height: 1.5;
+}
+.mma-map-confirm .mma-discovery-confirm-actions { flex-wrap: wrap; }
+#mma-window .mma-map-confirm .mma-discovery-confirm-actions button { min-height: 44px !important; }
