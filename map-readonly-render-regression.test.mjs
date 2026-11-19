@@ -12,7 +12,7 @@ function section(start, end) {
     return source.slice(at, next);
 }
 
-const selectionCode = section('function selectLocation(locationId) {', 'function stripEventLinesFromLocationPalette(');
+const selectionCode = section('function selectLocation(locationId, memoryArg = null) {', 'function stripEventLinesFromLocationPalette(');
 const badgeCode = section('function eventBadgeForLocation(locationId, map = ensureMemory().map) {', 'function getNodePositions(');
 const viewCode = section('function renderMapView() {', 'function renderCanvas(');
 const canvasCode = section('function renderCanvas(memoryArg = null) {', 'function eventBadgeForLocation(');
@@ -67,7 +67,7 @@ test('invalid location cannot alter saved selection', () => {
 
 test('map view reuses memory and saves only if missing/stale selection is initialized', () => {
     assert.match(viewCode, /renderCanvas\(memory\);/);
-    assert.match(viewCode, /selectLocation\(memory\.selectedLocationId\);/);
+    assert.match(viewCode, /selectLocation\(memory\.selectedLocationId, memory\);/);
     assert.match(viewCode, /const previousSelection = memory\.selectedLocationId;/);
     assert.match(viewCode, /if \(memory\.selectedLocationId !== previousSelection\) saveMemory\(memory\);/);
     assert.equal((viewCode.match(/saveMemory\(/g) || []).length, 1);
