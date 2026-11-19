@@ -65,10 +65,12 @@ test('invalid location cannot alter saved selection', () => {
     assert.equal(f.stats.alerts.length, 1);
 });
 
-test('map view reuses its hydrated memory and never saves on a passive redraw', () => {
+test('map view reuses memory and saves only if missing/stale selection is initialized', () => {
     assert.match(viewCode, /renderCanvas\(memory\);/);
     assert.match(viewCode, /selectLocation\(memory\.selectedLocationId\);/);
-    assert.doesNotMatch(viewCode, /saveMemory\(/);
+    assert.match(viewCode, /const previousSelection = memory\.selectedLocationId;/);
+    assert.match(viewCode, /if \(memory\.selectedLocationId !== previousSelection\) saveMemory\(memory\);/);
+    assert.equal((viewCode.match(/saveMemory\(/g) || []).length, 1);
 });
 
 test('canvas receives existing memory, avoiding a second full hydration', () => {
