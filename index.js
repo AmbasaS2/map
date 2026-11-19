@@ -6708,7 +6708,11 @@ function renderMapView() {
         return;
     }
     if (!memory.selectedLocationId || !map.locations.some(l => l.id === memory.selectedLocationId)) {
+        const previousSelection = memory.selectedLocationId;
         memory.selectedLocationId = map.currentLocationId || map.locations[0]?.id || null;
+        // A missing/stale saved selection is a real metadata change. Preserve
+        // the original one-time persistence behavior, unlike no-op redraws.
+        if (memory.selectedLocationId !== previousSelection) saveMemory(memory);
     }
     const lastChecked = isModernTheme() && memory.generatedAt
         ? `<small class="mma-last-checked" title="${escapeHtml(memory.generatedAt)}">마지막 확인 ${escapeHtml(formatCompactMapTime(memory.generatedAt))}</small>`
