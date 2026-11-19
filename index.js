@@ -4687,8 +4687,8 @@ function getTrackedRouteSegments(tracked, map, positions) {
     return result;
 }
 
-function drawTrackedRoute(canvas, map, positions) {
-    const tracked = ensureMemory().trackedPeople?.[visibleTrackedRouteKey];
+function drawTrackedRoute(canvas, map, positions, memoryArg = null) {
+    const tracked = (memoryArg || ensureMemory()).trackedPeople?.[visibleTrackedRouteKey];
     if (!tracked) return;
     const segments = getTrackedRouteSegments(tracked, map, positions);
     if (!segments.length) return;
@@ -6708,7 +6708,11 @@ function renderMapView() {
         return;
     }
     if (!memory.selectedLocationId || !map.locations.some(l => l.id === memory.selectedLocationId)) {
+        const previousSelection = memory.selectedLocationId;
         memory.selectedLocationId = map.currentLocationId || map.locations[0]?.id || null;
+        // A missing/stale saved selection is a real metadata change. Preserve
+        // the original one-time persistence behavior, unlike no-op redraws.
+        if (memory.selectedLocationId !== previousSelection) saveMemory(memory);
     }
     const lastChecked = isModernTheme() && memory.generatedAt
         ? `<small class="mma-last-checked" title="${escapeHtml(memory.generatedAt)}">마지막 확인 ${escapeHtml(formatCompactMapTime(memory.generatedAt))}</small>`
@@ -6754,7 +6758,7 @@ function renderMapView() {
     content.querySelector('[data-action="recommend"]')?.addEventListener('click', () => renderRecommendationPanel());
     content.querySelector('[data-action="notebook"]')?.addEventListener('click', renderNotebookPanel);
     content.querySelector('[data-action="memory"]')?.addEventListener('click', renderMemoryPanel);
-    renderCanvas();
+    renderCanvas(memory);
     selectLocation(memory.selectedLocationId);
     refreshMapGenerationControls();
     pushDebugLog('render.map.success', '지도 화면 렌더링 완료', {
@@ -6765,10 +6769,12 @@ function renderMapView() {
     });
 }
 
-function renderCanvas() {
+function renderCanvas(memoryArg = null) {
     const canvas = document.getElementById('mma-map-canvas');
     if (!canvas) return;
-    const memory = ensureMemory();
+    // renderMapView already owns the current hydrated memory. Re-running
+    // ensureMemory for every nested canvas render repeats normalization work.
+    const memory = memoryArg || ensureMemory();
     const map = memory.map;
     const locations = (map?.locations || []).map(location => ({ ...location }));
     const bonbon = isBonbonTheme();
@@ -6807,7 +6813,7 @@ function renderCanvas() {
         ? getBonbonJourneyPositions(locations.length)
         : getNodePositions(locations.length);
     const bonbonRouteStops = new Map();
-    drawTrackedRoute(canvas, map, positions);
+    drawTrackedRoute(canvas, map, positions, memory);
     locations.forEach((loc, index) => {
         const pos = positions[index] || { x: 50, y: 50 };
         const node = document.createElement('button');
@@ -6828,7 +6834,7 @@ function renderCanvas() {
         if (currentClass) {
             node.setAttribute('aria-current', 'location');
         }
-        node.innerHTML = `<b aria-hidden="true">${escapeHtml(loc.icon || '📍')}</b><span class="mma-node-label">${escapeHtml(loc.name)}</span>${eventBadgeForLocation(loc.id)}`;
+        node.innerHTML = `<b aria-hidden="true">${escapeHtml(loc.icon || '📍')}</b><span class="mma-node-label">${escapeHtml(loc.name)}</span>${eventBadgeForLocation(loc.id, map)}`;
         node.addEventListener('click', () => selectLocation(loc.id));
         if (bonbon) {
             const stop = document.createElement('div');
@@ -7031,8 +7037,7 @@ async function dismissDiscovery(discoveryId) {
     renderDiscoveryListPanel();
 }
 
-function eventBadgeForLocation(locationId) {
-    const map = ensureMemory().map;
+function eventBadgeForLocation(locationId, map = ensureMemory().map) {
     const count = (map?.events || []).filter(e => e.locationId === locationId && e.status !== 'ignored').length;
     return count ? `<i class="mma-event-badge">${count}</i>` : '';
 }
@@ -7162,8 +7167,11 @@ function selectLocation(locationId) {
         toast('현재 지도에서 해당 위치를 찾을 수 없습니다.', 'info');
         return;
     }
+    const selectedLocationChanged = memory.selectedLocationId !== location.id;
     memory.selectedLocationId = location.id;
-    saveMemory();
+    // Opening/redrawing an existing map is not a user state change. Avoid
+    // re-saving a large JSONL on every map open or repeat selection click.
+    if (selectedLocationChanged) saveMemory();
     document.querySelectorAll('.mma-node').forEach(node => node.classList.toggle('selected', node.dataset.id === location.id));
     renderLocationPanel(location.id);
 }
