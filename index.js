@@ -6759,7 +6759,7 @@ function renderMapView() {
     content.querySelector('[data-action="notebook"]')?.addEventListener('click', renderNotebookPanel);
     content.querySelector('[data-action="memory"]')?.addEventListener('click', renderMemoryPanel);
     renderCanvas(memory);
-    selectLocation(memory.selectedLocationId);
+    selectLocation(memory.selectedLocationId, memory);
     refreshMapGenerationControls();
     pushDebugLog('render.map.success', '지도 화면 렌더링 완료', {
         locations: map.locations?.length || 0,
@@ -7158,8 +7158,8 @@ function getFootstepPosition(anchor, localIndex, globalIndex, occupiedPoints) {
     };
 }
 
-function selectLocation(locationId) {
-    const memory = ensureMemory();
+function selectLocation(locationId, memoryArg = null) {
+    const memory = memoryArg || ensureMemory();
     const map = memory.map;
     if (!map) return;
     const location = map.locations.find(l => l.id === locationId) || (!locationId ? map.locations[0] : null);
@@ -7173,7 +7173,7 @@ function selectLocation(locationId) {
     // re-saving a large JSONL on every map open or repeat selection click.
     if (selectedLocationChanged) saveMemory();
     document.querySelectorAll('.mma-node').forEach(node => node.classList.toggle('selected', node.dataset.id === location.id));
-    renderLocationPanel(location.id);
+    renderLocationPanel(location.id, memory);
 }
 
 
@@ -7279,10 +7279,12 @@ function renderLocationEventSummaryCard(event, location = null) {
     `;
 }
 
-function renderLocationPanel(locationId) {
+function renderLocationPanel(locationId, memoryArg = null) {
     const panel = document.getElementById('mma-side-panel');
     if (!panel) return;
-    const memory = ensureMemory();
+    // The parent map view or location selector already owns this memory.
+    // Avoid rehydrating a large shared notebook for a passive panel redraw.
+    const memory = memoryArg || ensureMemory();
     const map = memory.map;
     const location = map?.locations.find(l => l.id === locationId);
     if (!location) return;
