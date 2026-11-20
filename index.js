@@ -26,7 +26,7 @@ const FOOTSTEP_REPAIR_MAX_TOKENS = 1600;
 const LOCATION_ICON_REVIEW_MAX_TOKENS = 600;
 const DEBUG_LOG_LIMIT = 40;
 const memoryDebugLogs = [];
-const EXTENSION_VERSION = '3.2.9';
+const EXTENSION_VERSION = '3.2.10';
 const SHARED_NOTEBOOK_KEYS = Object.freeze(['managedItems', 'footstepProfiles', 'trackedPeople', 'recommendations', 'searchResults']);
 const SHARED_NOTEBOOK_MIGRATION_VERSION = 1;
 const DISCOVERY_HISTORY_LIMIT = 30;
@@ -675,6 +675,43 @@ async function readPersistedNotebookSettings() {
     return settings?.extension_settings?.[MODULE_NAME] || null;
 }
 
+// SillyTavern may defer saveSettings() during startup or connection-profile
+// transitions. Its returned promise does NOT guarantee an on-disk write.
+// Verify the persisted state, allowing a bounded deferred-save window while
+// refusing to overwrite a changed legacy source or another migration marker.
+async function verifyNotebookSettingsCleanup(legacy, backup) {
+    const retryDelays = [0, 150, 350, 700, 1200, 1800];
+    let lastState = '';
+    for (let attempt = 0; attempt < retryDelays.length; attempt++) {
+        if (attempt > 0) {
+            await new Promise(resolve => setTimeout(resolve, retryDelays[attempt]));
+            const current = getSettings();
+            if (current.notebookStorage?.backup !== backup || current.characterNotebooks) {
+                throw new Error('지도 공용 수첩 설정이 이전 중 변경되었습니다. 자동 저장을 중단했습니다.');
+            }
+            await saveSillyTavernSettings();
+        }
+        const persisted = await readPersistedNotebookSettings();
+        const storedLegacy = persisted?.characterNotebooks;
+        const legacyCount = storedLegacy && typeof storedLegacy === 'object' && !Array.isArray(storedLegacy)
+            ? Object.keys(storedLegacy).length : 0;
+        const marker = persisted?.notebookStorage;
+        if (persisted && !legacyCount && marker?.format === 'server-files-v1' && marker.backup === backup) {
+            return true;
+        }
+        // These are actual divergent writes, not merely delayed settings
+        // persistence. Do not retry an overwrite of changed user data.
+        if (legacyCount && !notebooksEqual(storedLegacy, legacy)) {
+            throw new Error('settings.json의 기존 수첩 내용이 이전 중 변경되었습니다. 자동 덮어쓰기를 중단했습니다.');
+        }
+        if (marker?.format === 'server-files-v1' && marker.backup !== backup) {
+            throw new Error('settings.json에 다른 공용 수첩 이전 기록이 있습니다. 자동 덮어쓰기를 중단했습니다.');
+        }
+        lastState = 'legacy=' + legacyCount + ', marker=' + String(marker?.format || 'none');
+    }
+    throw new Error('settings.json 저장이 지연되거나 확인되지 않았습니다 (' + lastState + '). 기존 자료를 유지합니다.');
+}
+
 async function initializeNotebookStorage() {
     if (notebookFilesReady) return true;
     const settings = getSettings();
@@ -754,11 +791,7 @@ async function initializeNotebookStorage() {
         delete settings.characterNotebooks;
         try {
             await saveSillyTavernSettings();
-            const persisted=await readPersistedNotebookSettings();
-            if (!persisted || Object.keys(persisted.characterNotebooks || {}).length ||
-                persisted.notebookStorage?.format!=='server-files-v1' ||
-                persisted.notebookStorage?.backup!==index.backup)
-                throw new Error('settings.json에서 이전 데이터 정리를 검증할 수 없습니다.');
+            await verifyNotebookSettingsCleanup(legacy, index.backup);
             pushDebugLog('notebook.storage.migrated','캐릭터 공용 수첩의 파일 이전을 검증했습니다.',{
                 characters:index.keys.length,backup:index.backup});
         } catch (error) {

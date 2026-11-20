@@ -35,7 +35,7 @@ function createServer() {
     const files=new Map();
     let persisted={extension_settings:{marauders_map:{}}};
     const actions=[];
-    let failUpload=false, failSettings=false;
+    let failUpload=false, failSettings=false, deferredSaveCount=0, saveAttempts=0;
     const response=(status,value)=>({ok:status>=200&&status<300,status,
         json:async()=>structuredClone(value)});
     const fetchMock=async(url,opts={})=>{
@@ -63,8 +63,17 @@ function createServer() {
     return {
         files,actions,fetchMock,failUpload(v){failUpload=v;},
         failSettings(v){failSettings=v;},
-        persist(settings) {if(failSettings)throw Error('synthetic settings persistence failure');
-            persisted={extension_settings:{marauders_map:structuredClone(settings)}};},
+        deferSaves(count){deferredSaveCount=count;},
+        get saveAttempts(){return saveAttempts;},
+        persist(settings) {
+            saveAttempts++;
+            if(failSettings)throw Error('synthetic settings persistence failure');
+            if(deferredSaveCount>0){deferredSaveCount--;return;}
+            persisted={extension_settings:{marauders_map:structuredClone(settings)}};
+        },
+        setPersisted(settings){
+            persisted={extension_settings:{marauders_map:structuredClone(settings)}};
+        },
         persisted(){return structuredClone(persisted)},
     };
 }
@@ -75,11 +84,14 @@ function data(name='상점') {
         trackedPeople:{},recommendations:[],searchResults:[],createdAt:'now',updatedAt:'now'};
 }
 
-function makeController(settings,server) {
+function makeController(settings,server,options={}) {
     const diagnostics=[];
     const sandbox={
         saveMemoryQueue:Promise.resolve(),
+        setTimeout:(fn,delay)=>setTimeout(fn,Math.min(delay,8)),
         fetch:server.fetchMock,
+        // Fast-forward bounded backoff in tests while preserving async turns.
+        setTimeout:done=>queueMicrotask(done),
         getSettings:()=>settings,stContext:()=>headers,
         readNotebookIndex,writeNotebookIndex,readNotebookSnapshot,
         writeNotebookSnapshot,backupLegacyNotebooks,readNotebookBackup,
@@ -93,7 +105,8 @@ function makeController(settings,server) {
         activeMapConfirmation:null,cancelActiveMapGeneration:()=>{},
         getExistingMemory:()=>null,
         toast:()=>{},pushDebugLog:()=>{},
-        saveSillyTavernSettings:async()=>server.persist(settings),
+        saveSillyTavernSettings:async()=>options.settingsSaver
+            ? options.settingsSaver(settings,server) : server.persist(settings),
         saveSettings:()=>{},pushDebugLog:(...x)=>diagnostics.push(x),
         toast:(...x)=>diagnostics.push(x),console,
     };
@@ -438,6 +451,133 @@ test('large migration keeps dozens of long shared notebooks separated instead of
     assert.equal(JSON.stringify(server.persisted().extension_settings.marauders_map).includes('englishContext'),false);
     assert.equal((await readNotebookSnapshot(owners[23],headers)).notebook.managedItems[0].englishContext,
         original[owners[23]].managedItems[0].englishContext);
+    assert.deepEqual(await readNotebookBackup(index.backup,headers),original);
+});
+
+test('deferred settings save: automatic migration succeeds when initial saves are queued/no-ops',async()=>{
+    const server=createServer();install(server);
+    const original={Remus:data('리무스'),Sirius:data('시리우스')};
+    const settings={characterNotebooks:structuredClone(original),theme:'marauder'};
+    server.setPersisted(settings);
+    server.deferSaves(2); // SillyTavern returns before writing during startup/connection transitions.
+    const controller=makeController(settings,server);
+    assert.equal(await controller.ensureNotebookStorage(),true);
+    assert.ok(server.saveAttempts>=3,'migration retried until persisted on disk');
+    assert.equal(settings.characterNotebooks,undefined);
+    assert.equal(server.persisted().extension_settings.marauders_map.characterNotebooks,undefined);
+    assert.equal(server.persisted().extension_settings.marauders_map.notebookStorage.format,'server-files-v1');
+    assert.deepEqual((await readNotebookBackup((await readNotebookIndex(headers)).backup,headers)),original);
+    assert.equal(controller.getState().ready,true);
+});
+
+test('permanently deferred settings save keeps verified server snapshots and original settings data',async()=>{
+    const server=createServer();install(server);
+    const original={Remus:data('리무스')};
+    const settings={characterNotebooks:structuredClone(original)};
+    server.setPersisted(settings);
+    server.deferSaves(99);
+    const controller=makeController(settings,server);
+    await assert.rejects(controller.ensureNotebookStorage(),/저장이 지연되거나 확인되지 않았습니다/);
+    assert.equal(controller.getState().ready,false);
+    assert.deepEqual(settings.characterNotebooks,original);
+    assert.deepEqual(server.persisted().extension_settings.marauders_map.characterNotebooks,original);
+    assert.deepEqual((await readNotebookSnapshot('Remus',headers)).notebook,original.Remus);
+    assert.deepEqual(await readNotebookBackup((await readNotebookIndex(headers)).backup,headers),original);
+});
+
+test('if another device changed original settings while saving was deferred, migration refuses overwrite',async()=>{
+    const server=createServer();install(server);
+    const original={Remus:data('리무스')};
+    const settings={characterNotebooks:structuredClone(original)};
+    server.setPersisted({...settings,characterNotebooks:{Remus:data('다른 기기의 기록')}});
+    server.deferSaves(99);
+    const controller=makeController(settings,server);
+    await assert.rejects(controller.ensureNotebookStorage(),/기존 수첩 내용이 이전 중 변경되었습니다/);
+    assert.equal(controller.getState().ready,false);
+    assert.deepEqual(settings.characterNotebooks,original);
+    assert.equal(server.persisted().extension_settings.marauders_map.characterNotebooks.Remus.managedItems[0].title,'다른 기기의 기록');
+});
+
+test('deferred SillyTavern settings save retries verified cleanup without losing notebooks',async()=>{
+    const server=createServer();install(server);
+    const original={Remus:data('verified legacy')};
+    const settings={characterNotebooks:structuredClone(original)};
+    let saves=0;
+    const c=makeController(settings,server,{settingsSaver:async (updated,db)=>{
+        saves++;
+        // ST saveSettings may resolve early when settingsReady is false or
+        // custom connection transition defers the actual save to later.
+        if(saves<3)return;
+        db.persist(updated);
+    }});
+    await c.ensureNotebookStorage();
+    assert.ok(saves>=3);
+    assert.equal(c.getState().ready,true);
+    assert.equal(settings.characterNotebooks,undefined);
+    assert.equal(server.persisted().extension_settings.marauders_map.characterNotebooks,undefined);
+    const index=await readNotebookIndex(headers);
+    assert.deepEqual(await readNotebookBackup(index.backup,headers),original);
+    assert.deepEqual((await readNotebookSnapshot('Remus',headers)).notebook,original.Remus);
+});
+
+test('persisted settings arriving after save promise resolves is verified, not prematurely rejected',async()=>{
+    const server=createServer();install(server);
+    const original={Remus:data('slow disk flush')};
+    const settings={characterNotebooks:structuredClone(original)};
+    let saves=0;
+    const c=makeController(settings,server,{settingsSaver:async (updated,db)=>{
+        saves++;
+        if(saves===1){
+            const snapshot=structuredClone(updated);
+            setTimeout(()=>db.persist(snapshot),3);
+            return;
+        }
+        db.persist(updated);
+    }});
+    await c.ensureNotebookStorage();
+    assert.equal(c.getState().ready,true);
+    assert.equal(settings.characterNotebooks,undefined);
+    assert.deepEqual((await readNotebookSnapshot('Remus',headers)).notebook,original.Remus);
+});
+
+test('permanently postponed settings saves fail closed and allow retry with existing verified files',async()=>{
+    const server=createServer();install(server);
+    const original={Remus:data('unchanged')};
+    const settings={characterNotebooks:structuredClone(original)};
+    let saveAllowed=false,saves=0;
+    const c=makeController(settings,server,{settingsSaver:async (value,db)=>{
+        saves++;
+        if(saveAllowed)db.persist(value);
+    }});
+    await assert.rejects(c.ensureNotebookStorage(),/저장/);
+    assert.equal(c.getState().ready,false);
+    assert.deepEqual(settings.characterNotebooks,original);
+    const index=await readNotebookIndex(headers);
+    assert.deepEqual(await readNotebookBackup(index.backup,headers),original);
+    assert.deepEqual((await readNotebookSnapshot('Remus',headers)).notebook,original.Remus);
+    assert.ok(saves>=2);
+    saveAllowed=true;
+    await c.ensureNotebookStorage();
+    assert.equal(c.getState().ready,true);
+    assert.equal(settings.characterNotebooks,undefined);
+});
+
+test('another writer changing legacy settings during deferred cleanup aborts without overwriting it',async()=>{
+    const server=createServer();install(server);
+    const original={Remus:data('original')};
+    const settings={characterNotebooks:structuredClone(original)};
+    let attempts=0;
+    const c=makeController(settings,server,{settingsSaver:async (_updated,db)=>{
+        attempts++;
+        if(attempts===1){
+            db.persist({characterNotebooks:{Remus:data('concurrent new update')}});
+        }
+    }});
+    await assert.rejects(c.ensureNotebookStorage(),/변경되었습니다|덮어쓰기를 중단/);
+    assert.equal(c.getState().ready,false);
+    assert.equal(settings.characterNotebooks.Remus.managedItems[0].title,'original');
+    assert.equal(server.persisted().extension_settings.marauders_map.characterNotebooks.Remus.managedItems[0].title,'concurrent new update');
+    const index=await readNotebookIndex(headers);
     assert.deepEqual(await readNotebookBackup(index.backup,headers),original);
 });
 test.after(()=>{
