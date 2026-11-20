@@ -3,6 +3,8 @@ import { getCurrentLocale } from '../../../i18n.js';
 import { saveSettings as saveSillyTavernSettings } from '../../../../script.js';
 import { ENGLISH_UI } from './i18n/en.js';
 import { auditMapFacts, buildSourceFactContract } from './map-fact-audit.mjs';
+import { readNotebookIndex, writeNotebookIndex, readNotebookSnapshot, writeNotebookSnapshot,
+    backupLegacyNotebooks, readNotebookBackup } from './map-notebook-storage.mjs';
 
 /*
  * 지도 — SillyTavern UI Extension
@@ -24,7 +26,7 @@ const FOOTSTEP_REPAIR_MAX_TOKENS = 1600;
 const LOCATION_ICON_REVIEW_MAX_TOKENS = 600;
 const DEBUG_LOG_LIMIT = 40;
 const memoryDebugLogs = [];
-const EXTENSION_VERSION = '3.2.7';
+const EXTENSION_VERSION = '3.2.9';
 const SHARED_NOTEBOOK_KEYS = Object.freeze(['managedItems', 'footstepProfiles', 'trackedPeople', 'recommendations', 'searchResults']);
 const SHARED_NOTEBOOK_MIGRATION_VERSION = 1;
 const DISCOVERY_HISTORY_LIMIT = 30;
@@ -180,6 +182,15 @@ let activeMapConfirmation = null;
 const attachedNotebookMemories = new WeakSet();
 const attachedNotebookFingerprints = new WeakMap();
 const sharedNotebookMigrationSaveQueued = new WeakSet();
+// Shared notebook data moves to verified server files. A synchronous in-memory
+// copy remains for UI / RP prompt generation.
+let notebookFilesReady = false;
+let notebookFiles = Object.create(null);
+let notebookFileRevisions = Object.create(null);
+let notebookFileIndex = null;
+let notebookStorageInit = null;
+let notebookStorageNoticeShown = false;
+
 
 function shouldIgnoreChatChanged() {
     return profileSwitchDepth > 0 || Date.now() < suppressChatChangeUntil;
@@ -629,6 +640,178 @@ function getSettings() {
         if (!Object.hasOwn(settings, key)) settings[key] = value;
     }
     return settings;
+}
+
+function getNotebookStore(settings = getSettings()) {
+    return notebookFilesReady ? notebookFiles : (settings.characterNotebooks || {});
+}
+
+function savedNotebookStoreIsValid(value) {
+    return value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function notebooksEqual(a, b) {
+    return JSON.stringify(a) === JSON.stringify(b);
+}
+
+// Keep file I/O bounded for users with dozens of characters: sequential
+// per-key operations but up to four independent owners at a time.
+async function mapNotebookBatches(keys, task, batchSize = 4) {
+    const out = [];
+    for (let i = 0; i < keys.length; i += batchSize) {
+        out.push(...await Promise.all(keys.slice(i, i + batchSize).map(task)));
+    }
+    return out;
+}
+
+async function readPersistedNotebookSettings() {
+    const ctx = stContext();
+    const response = await fetch('/api/settings/get', {
+        method: 'POST', headers: ctx.getRequestHeaders(), body: '{}', cache: 'no-store',
+    });
+    if (!response.ok) throw new Error('지도 설정 저장 확인 실패 (HTTP ' + response.status + ')');
+    const result = await response.json();
+    const settings = typeof result.settings === 'string' ? JSON.parse(result.settings) : result.settings;
+    return settings?.extension_settings?.[MODULE_NAME] || null;
+}
+
+async function initializeNotebookStorage() {
+    if (notebookFilesReady) return true;
+    const settings = getSettings();
+    const legacy = settings.characterNotebooks || {};
+    if (!savedNotebookStoreIsValid(legacy)) throw new Error('기존 지도 공용 수첩 데이터가 올바르지 않습니다.');
+    const marker = settings.notebookStorage;
+    const completed = marker?.format === 'server-files-v1';
+    const ctx = stContext();
+    let index = await readNotebookIndex(ctx);
+    const legacyKeys = Object.keys(legacy);
+    if (!index) {
+        // Even an empty file-backed store has an explicit index. A missing
+        // index after migration must be diagnosed, not mistaken for reset.
+        if (completed)
+            throw new Error('지도 공용 수첩 인덱스 파일이 사라졌습니다. 자동 재생성을 중단했습니다.');
+        if (legacyKeys.length) {
+            const backup = await backupLegacyNotebooks(legacy, ctx);
+            await mapNotebookBatches(legacyKeys,async key=>{
+                const existing = await readNotebookSnapshot(key, ctx);
+                if (existing && !notebooksEqual(existing.notebook, legacy[key]))
+                    throw new Error('기존 수첩과 저장 파일 충돌: ' + key);
+                if (!existing) await writeNotebookSnapshot(key, legacy[key], 0, ctx);
+            },3);
+            index = await writeNotebookIndex(legacyKeys, backup, ctx);
+        } else {
+            index = await writeNotebookIndex([], '', ctx);
+        }
+    } else if (legacyKeys.length) {
+        const missing = legacyKeys.filter(key => !index.keys.includes(key));
+        if (missing.length) {
+            if (completed)
+                throw new Error('파일 인덱스에 없는 지도 수첩이 설정에 있습니다. 다른 기기를 확인해 주세요.');
+            const backup = await backupLegacyNotebooks(legacy, ctx);
+            await mapNotebookBatches(missing,async key=>{
+                const existing = await readNotebookSnapshot(key, ctx);
+                if (existing && !notebooksEqual(existing.notebook, legacy[key]))
+                    throw new Error('기존 수첩과 저장 파일 충돌: ' + key);
+                if (!existing) await writeNotebookSnapshot(key, legacy[key], 0, ctx);
+            },3);
+            index = await writeNotebookIndex([...index.keys,...missing],backup,ctx);
+        }
+    }
+    const cache = Object.create(null);
+    const revisions = Object.create(null);
+    const snapshots = await mapNotebookBatches(index.keys, async key=>{
+        const stored = await readNotebookSnapshot(key, ctx);
+        if (!stored) throw new Error('지도 공용 수첩 파일 누락: ' + key);
+        if (!completed && Object.hasOwn(legacy,key) && !notebooksEqual(legacy[key], stored.notebook))
+            throw new Error('기존 수첩과 저장 파일이 다릅니다. 이전을 중단했습니다: ' + key);
+        const resetToken=String(settings.characterNotebookResets?.[key] || '');
+        if (resetToken && String(stored.notebook.resetToken || '') !== resetToken)
+            throw new Error('지도 수첩 초기화 기록과 저장 파일의 버전이 다릅니다: '+key);
+        return {key,stored};
+    });
+    for (const {key,stored} of snapshots) {
+        cache[key]=stored.notebook;
+        revisions[key]=stored.revision;
+    }
+    // Complete every file and immutable-backup verification before marking
+    // the cache ready. A failed read is not an empty or usable notebook store.
+    if (legacyKeys.length) {
+        if (!index.backup) throw new Error('원본 백업이 없어 기존 설정을 유지합니다.');
+        const originalBackup = await readNotebookBackup(index.backup,ctx);
+        if (!notebooksEqual(legacy,originalBackup))
+            throw new Error('원본 백업 검증 실패. 기존 설정을 유지합니다.');
+        for (const key of legacyKeys) {
+            if (!index.keys.includes(key) || !Object.hasOwn(cache,key))
+                throw new Error('수첩 파일 누락, 기존 설정 유지: '+key);
+        }
+    }
+    notebookFiles=cache;
+    notebookFileRevisions=revisions;
+    notebookFileIndex=index;
+    notebookFilesReady=true;
+    settings.notebookStorage={format:'server-files-v1',backup:index.backup,cleared:index.keys.length===0};
+    if (legacyKeys.length) {
+        delete settings.characterNotebooks;
+        try {
+            await saveSillyTavernSettings();
+            const persisted=await readPersistedNotebookSettings();
+            if (!persisted || Object.keys(persisted.characterNotebooks || {}).length ||
+                persisted.notebookStorage?.format!=='server-files-v1' ||
+                persisted.notebookStorage?.backup!==index.backup)
+                throw new Error('settings.json에서 이전 데이터 정리를 검증할 수 없습니다.');
+            pushDebugLog('notebook.storage.migrated','캐릭터 공용 수첩의 파일 이전을 검증했습니다.',{
+                characters:index.keys.length,backup:index.backup});
+        } catch (error) {
+            // Do not allow writes until it is known whether settings cleanup
+            // reached disk. The original, verified backup and new files stay.
+            notebookFilesReady=false;
+            settings.characterNotebooks=legacy;
+            throw new Error('공용 수첩 이전 후 settings.json 저장 검증 실패: '+String(error));
+        }
+    } else if (!completed) {
+        saveSettings();
+    }
+    const memory=getExistingMemory();
+    if (memory) {
+        attachedNotebookMemories.delete(memory);
+        attachCharacterNotebook(memory);
+    }
+    syncExtensionPrompt({createMemory:false,preferAttached:true});
+    return true;
+}
+
+function ensureNotebookStorage() {
+    // A migration in progress must finish the verified settings cleanup
+    // before any UI action or other save may use the file cache.
+    if (notebookStorageInit) return notebookStorageInit;
+    if (notebookFilesReady) return Promise.resolve(true);
+    if (!notebookStorageInit) {
+        notebookStorageInit=initializeNotebookStorage().catch(error=>{
+            notebookStorageInit=null;
+            if (!notebookStorageNoticeShown) {
+                notebookStorageNoticeShown=true;
+                console.error('[MarauderMap] Notebook storage unavailable:',error);
+                toast('지도 공용 수첩 저장소를 확인하지 못했습니다. 기존 데이터를 보호하기 위해 저장을 중단했습니다.','error');
+            }
+            throw error;
+        });
+    }
+    return notebookStorageInit;
+}
+
+async function writeCurrentNotebookFile(key) {
+    if (!notebookFilesReady) throw Error('지도 공용 수첩 파일 저장소가 준비되지 않았습니다.');
+    const snapshot=notebookFiles[key];
+    if (!snapshot) return false;
+    const revision=await writeNotebookSnapshot(key,snapshot,notebookFileRevisions[key] || 0,stContext());
+    notebookFileRevisions[key]=revision;
+    if (!notebookFileIndex.keys.includes(key)) {
+        notebookFileIndex=await writeNotebookIndex([...notebookFileIndex.keys,key],
+            notebookFileIndex.backup,stContext());
+        getSettings().notebookStorage.cleared=false;
+        saveSettings();
+    }
+    return true;
 }
 
 function saveSettings() {
@@ -1192,7 +1375,7 @@ async function restorePreviousMap() {
 
 
 function getCharacterNotebook(settings = getSettings(), key = getCurrentCharacterKey()) {
-    const notebooks = settings?.characterNotebooks;
+    const notebooks = getNotebookStore(settings);
     if (!notebooks || typeof notebooks !== 'object' || Array.isArray(notebooks)) {
         return { key, notebook: null };
     }
@@ -1250,8 +1433,9 @@ function attachCharacterNotebook(memory) {
     let { notebook } = getCharacterNotebook(settings, key);
     let settingsChanged = false;
     if (resetToken && notebook && String(notebook.resetToken || '') !== resetToken) {
-        // A 3.1.0 (or stale-device) notebook copy predating the explicit reset
-        // must not be allowed to repopulate the character after cleanup.
+        if (notebookFilesReady) {
+            throw new Error('공용 수첩 초기화와 서버 파일이 충돌합니다. 이전 데이터를 자동 복원하지 않습니다: '+key);
+        }
         delete settings.characterNotebooks[key];
         if (Object.keys(settings.characterNotebooks).length === 0) delete settings.characterNotebooks;
         notebook = null;
@@ -1264,8 +1448,7 @@ function attachCharacterNotebook(memory) {
     if (resetChanged) clearSharedNotebookData(memory);
 
     const mayMigrateChatCopy = !resetChanged && notebookHasData(memory) && (
-        memory.sharedNotebookKey !== key
-        || !notebook
+        !notebook || (!notebookFilesReady && memory.sharedNotebookKey !== key)
     );
 
     if (notebook) {
@@ -1326,7 +1509,7 @@ function persistCharacterNotebook(memory) {
         return false;
     }
 
-    if (!settings.characterNotebooks || typeof settings.characterNotebooks !== 'object' || Array.isArray(settings.characterNotebooks)) {
+    if (!notebookFilesReady && (!settings.characterNotebooks || typeof settings.characterNotebooks !== 'object' || Array.isArray(settings.characterNotebooks))) {
         settings.characterNotebooks = {};
     }
     const notebook = storedNotebook && typeof storedNotebook === 'object'
@@ -1340,7 +1523,7 @@ function persistCharacterNotebook(memory) {
     else delete notebook.resetToken;
     notebook.createdAt = notebook.createdAt || nowStamp();
     notebook.updatedAt = nowStamp();
-    settings.characterNotebooks[key] = notebook;
+    (notebookFilesReady ? notebookFiles : settings.characterNotebooks)[key] = notebook;
     memory.sharedNotebookKey = key;
     memory.sharedNotebookResetAt = resetToken;
     attachedNotebookFingerprints.set(memory, after);
@@ -1476,16 +1659,35 @@ function saveMemory(memoryArg = null) {
                 return false;
             }
 
+            await ensureNotebookStorage();
+            const resumed = safeContext();
+            if (!resumed || (metadataAtQueue && resumed.chatMetadata !== metadataAtQueue) ||
+                (chatSignatureAtQueue && getStableChatSignature() !== chatSignatureAtQueue)) {
+                pushDebugLog('memory.save.skipped.chatChanged','수첩 파일 확인 중 채팅이 변경되어 저장을 건너뛰었습니다.', {sequence});
+                return false;
+            }
             const ctx = stContext();
             // Read the already-mutated chat memory directly. Re-running
             // ensureMemory() here can reattach an older notebook copy over a
             // just-edited array before persistence.
             const memory = memoryArg || ctx.chatMetadata?.[METADATA_KEY] || ensureMemory();
+            const notebookKey = memory.sharedNotebookKey || getCurrentCharacterKey();
+            const { notebook: previousNotebook } = getCharacterNotebook(getSettings(), notebookKey);
+            const previousCopy = previousNotebook ? clone(previousNotebook) : null;
+            const beforeFingerprint = attachedNotebookFingerprints.get(memory);
             const sharedNotebookChanged = persistCharacterNotebook(memory);
-            // The shared notebook is authoritative on reopen. Commit it in
-            // the same queue as the chat copy instead of deferring it.
+            // Commit one verified character file, not all SillyTavern settings.
             if (sharedNotebookChanged) {
-                await saveSillyTavernSettings();
+                try {
+                    await writeCurrentNotebookFile(notebookKey);
+                } catch (error) {
+                    if (previousCopy) notebookFiles[notebookKey] = previousCopy;
+                    else delete notebookFiles[notebookKey];
+                    if (beforeFingerprint === undefined) attachedNotebookFingerprints.delete(memory);
+                    else attachedNotebookFingerprints.set(memory,beforeFingerprint);
+                    toast('공용 수첩 파일 저장에 실패했습니다. 변경 내용을 보호하려면 다른 기기를 확인하고 다시 저장해 주세요.','error');
+                    throw error;
+                }
                 if (safeContext()?.chatMetadata !== ctx.chatMetadata || getStableChatSignature() !== currentSignature) {
                     pushDebugLog('memory.save.skipped.chatChanged', '수첩 저장 중 채팅이 변경되었습니다.', { sequence });
                     return false;
@@ -6502,7 +6704,7 @@ function createRoot() {
     });
 }
 
-function openMap() {
+async function openMap() {
     try {
         setupDebugHooks();
         pushDebugLog('openMap.start', '지도를 여는 중입니다.');
@@ -6519,6 +6721,10 @@ function openMap() {
         const overlay = document.getElementById('mma-overlay');
         overlay?.classList.remove('mma-hidden');
         overlay?.setAttribute('aria-hidden', 'false');
+        setBusy(true, '공용 수첩 저장소 확인 중...');
+        try { await ensureNotebookStorage(); }
+        finally { setBusy(false); }
+        if (!lifecycleEnabled || overlay?.classList.contains('mma-hidden')) return;
         const memory = ensureMemory();
         pushDebugLog('openMap.visible', '지도 오버레이를 표시했습니다.', {
             theme: getThemeKey(),
@@ -6530,6 +6736,7 @@ function openMap() {
     } catch (error) {
         pushDebugLog('openMap.error', '지도 열기 실패', error);
         console.error('[MarauderMap] openMap failed:', error);
+        renderFailurePanel('공용 수첩 저장소 오류', '공용 수첩 파일을 확인하지 못했습니다. 지도 데이터는 삭제되지 않았습니다.');
     }
 }
 
@@ -8060,7 +8267,7 @@ function escapeHtml(value) {
 
 function getStoredCharacterNotebookEntries() {
     const settings = getSettings();
-    const notebooks = settings?.characterNotebooks;
+    const notebooks = getNotebookStore(settings);
     if (!notebooks || typeof notebooks !== 'object' || Array.isArray(notebooks)) return [];
 
     const context = safeContext();
@@ -8076,7 +8283,7 @@ function getStoredCharacterNotebookEntries() {
         if (currentName && currentName !== '{{char}}') namesByKey.set(currentKey, currentName);
     }
 
-    return Object.keys(notebooks).map(key => {
+    return Object.keys(notebooks).filter(key => notebookHasData(notebooks[key])).map(key => {
         const matchedName = namesByKey.get(key) || '';
         const isCurrent = key === currentKey;
         return {
@@ -8095,9 +8302,12 @@ function getStoredCharacterNotebookEntries() {
 }
 
 async function resetStoredCharacterNotebook(key) {
+    await ensureNotebookStorage();
+    // Finish already queued writes before clearing this character notebook.
+    await saveMemoryQueue;
     const settings = getSettings();
-    const notebooks = settings?.characterNotebooks;
-    if (!key || !notebooks || typeof notebooks !== 'object' || Array.isArray(notebooks) || !Object.hasOwn(notebooks, key)) {
+    const notebooks = getNotebookStore(settings);
+    if (!key || !notebooks || typeof notebooks !== 'object' || Array.isArray(notebooks) || !notebookHasData(notebooks[key])) {
         toast('선택한 캐릭터의 저장 데이터를 찾지 못했습니다. 목록을 다시 열어 주세요.', 'warning');
         return false;
     }
@@ -8112,10 +8322,14 @@ async function resetStoredCharacterNotebook(key) {
     if (!settings.characterNotebookResets || typeof settings.characterNotebookResets !== 'object' || Array.isArray(settings.characterNotebookResets)) {
         settings.characterNotebookResets = {};
     }
+    // Revisioned empty tombstone prevents stale devices from recreating a
+    // cleared character store. Other characters and per-chat maps stay intact.
+    const empty = {...createEmptyNotebook(),resetToken};
+    const revision = await writeNotebookSnapshot(key,empty,notebookFileRevisions[key] || 0,stContext());
+    notebookFileRevisions[key] = revision;
+    notebookFiles[key] = empty;
     settings.characterNotebookResets[key] = resetToken;
-    delete notebooks[key];
-    if (Object.keys(notebooks).length === 0) delete settings.characterNotebooks;
-    saveSettings();
+    await saveSillyTavernSettings();
 
     if (isCurrentCharacter) {
         const context = safeContext();
@@ -8148,7 +8362,7 @@ async function resetStoredCharacterNotebook(key) {
 }
 
 async function openStoredCharacterNotebookResetPopup() {
-    runLegacySharedNotebookCleanupOnce();
+    await ensureNotebookStorage();
     const entries = getStoredCharacterNotebookEntries();
     if (!entries.length) {
         toast('초기화할 공용 지도 저장 데이터가 없습니다.', 'info');
@@ -8436,6 +8650,14 @@ function init() {
     // Restore an already-existing injected map prompt quietly, but do not create
     // map DOM, run migrations, or touch chat memory during SillyTavern boot.
     safeInitStep('syncExtensionPromptExistingOnly', () => syncExtensionPrompt({ createMemory: false }));
+    // Async non-blocking preload for shared RP prompts on chat changes.
+    // Opening Map/save explicitly await this same initialization.
+    const startNotebookPreload = () => { void ensureNotebookStorage().catch(() => {}); };
+    if (typeof requestIdleCallback === 'function') {
+        requestIdleCallback(startNotebookPreload, {timeout: 5000});
+    } else {
+        setTimeout(startNotebookPreload, 900);
+    }
 
     safeInitStep('event hooks', () => {
         const { eventSource, event_types } = stContext();

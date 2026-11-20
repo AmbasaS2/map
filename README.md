@@ -357,8 +357,10 @@ Up to 24 uncollected place-search results are retained, and the 30 most recent d
 | Category | Storage scope |
 |---|---|
 | **Current map and one-step previous map** | Saved only in the current chat. They are never mixed with maps from other chats. |
-| **Notebook and tracking information** | Saved in a notebook shared by the same character and available across that character's chats. |
+| **Notebook and tracking information** | Saved as a character-specific server JSON file under the same SillyTavern user account; shared across that character's chats and devices. |
 | **Map Memory `🧠`** | Summarizes the current map and location, generation time, locations, quests, application states, discovery count, and saved and active applied-item counts. |
+
+Character notebooks use the per-user server files directory, with one `map-notebook-<hash>.json` per character and a `map-notebook-index-v1.json` index. Migration makes and verifies a `map-notebook-legacy-*.json` recovery backup, writes and reads each server file, and only then removes the redundant characterNotebooks from settings.json. Lightweight Map preferences and reset markers remain in settings.json. Missing files, network failures and conflicting revisions are not silently overwritten. Refresh Map on other devices before editing. Chat-specific current and previous maps remain in chat metadata.
 
 Map does not store map data or debug logs in `localStorage` or `IndexedDB`.
 
@@ -749,8 +751,10 @@ Bonbon Board에서는 네 면의 게임 경로 위에 장소를 나타내는 이
 | 구분 | 저장 범위 |
 |---|---|
 | **현재 지도와 직전 지도** | 현재 채팅에만 저장됩니다. 다른 채팅의 지도와 섞이지 않습니다. |
-| **수첩과 추적 정보** | 같은 캐릭터의 공용 수첩에 저장되어 다른 채팅에서도 이어서 볼 수 있습니다. |
+| **수첩과 추적 정보** | 실리태번 서버의 캐릭터별 공용 수첩 JSON 파일에 저장되어 같은 캐릭터의 여러 채팅과 PC·모바일에서 공유됩니다. |
 | **지도 메모리 `🧠`** | 현재 지도와 현재 위치, 생성 시각, 장소, 퀘스트, 반영 상태, 발견 개수, 저장된 반영 데이터와 활성 반영 항목 개수를 요약해서 보여줍니다. |
+
+공용 수첩은 `SillyTavern/data/<사용자>/files/map-notebook-<해시>.json`에 캐릭터별로 저장되고, `map-notebook-index-v1.json`으로 목록을 관리합니다. 기존 `settings.json`의 공용 수첩은 서버 파일 업로드·재읽기·원본 백업 검증이 완료된 뒤에만 설정에서 정리합니다. 복구용 `map-notebook-legacy-*.json` 파일은 삭제하지 않습니다. settings.json에는 가벼운 설정과 초기화 기록만 남습니다. 파일 누락·기기 간 수정 충돌·네트워크 오류가 발생하면 덮어쓰지 않고 작업을 중단합니다. 다른 기기에서 이전 버전을 켜두었다면 새로고침 후 수정해 주세요. 현재 지도와 직전 지도는 계속 해당 채팅의 메타데이터에 저장됩니다.
 
 지도 확장은 `localStorage`나 `IndexedDB`에 지도 데이터나 디버그 로그를 저장하지 않습니다.
 
