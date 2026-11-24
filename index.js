@@ -576,7 +576,7 @@ function observeMapUiLocale(root) {
         queued = true;
         queueMicrotask(() => {
             queued = false;
-            if (root.isConnected) localizeMapUiTree(root);
+            if (root.isConnected && mapLocaleObservers.get(root) === observer) localizeMapUiTree(root);
         });
     });
     observer.observe(root, {
@@ -6726,7 +6726,6 @@ function createRoot() {
         <div id="mma-map-toast-layer" class="mma-map-toast-layer" aria-live="polite" aria-atomic="false"></div>
     `;
     document.body.appendChild(root);
-    startMarauderSerifProtection();
     setupOverlayDebugObserver();
     pushDebugLog('root.created', '확장 루트를 생성했습니다.');
     applyFontScale();
@@ -6754,6 +6753,7 @@ async function openMap() {
         const overlay = document.getElementById('mma-overlay');
         overlay?.classList.remove('mma-hidden');
         overlay?.setAttribute('aria-hidden', 'false');
+        startMarauderSerifProtection();
         setBusy(true, '공용 수첩 저장소 확인 중...');
         try { await ensureNotebookStorage(); }
         finally { setBusy(false); }
@@ -6787,6 +6787,10 @@ function closeMap(reason = 'manual') {
     });
     overlay?.classList.add('mma-hidden');
     overlay?.setAttribute('aria-hidden', 'true');
+    stopMarauderSerifProtection();
+    const root = document.getElementById(EXTENSION_ROOT_ID);
+    mapLocaleObservers.get(root)?.disconnect();
+    mapLocaleObservers.delete(root);
     if (generationContinues) toast('지도는 백그라운드에서 계속 생성 중입니다.', 'info');
 }
 
