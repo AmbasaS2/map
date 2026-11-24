@@ -37,7 +37,7 @@ The settings below follow the order shown in the Extensions panel.
 
 ### 🌐 Language (Automatic)
 
-Map follows the language selected in SillyTavern User Settings without an extra setting. Korean keeps the original interface. English is available for international users; other UI locales currently fall back to English. New AI-generated descriptions use the selected SillyTavern language, while internal roleplay context remains in English as before. Already saved map descriptions are not translated retroactively; refresh the map to regenerate them in the selected language. UI localization does not call an AI or translation service.
+Map follows the language selected in SillyTavern User Settings without an extra setting. Korean keeps the original interface. English is available for international users; other UI locales currently fall back to English. New AI-generated descriptions use the selected SillyTavern language, while internal roleplay context remains in English as before. Already saved map descriptions are not translated retroactively; use the fresh-map button to regenerate them in the selected language. UI localization does not call an AI or translation service.
 
 ### 🔌 Connection Profile
 
@@ -154,14 +154,16 @@ The area, time, and scene summary appear above the map. **S.H.I.E.L.D. Field Loc
 
 ### Top Buttons
 
+Current controls use Font Awesome icons; the labels below describe their functions. Older screenshots may show the earlier emoji buttons.
+
 | Button | Function |
 |---|---|
-| `🔄` | Continues the existing map using recent roleplay. Matching locations, characters and quests retain their identities; new events are not automatically canon. The pre-refresh map is saved as the previous map. |
-| `🆕` | Starts a fresh map after confirmation. Notebook entries and previously applied context remain; the previous map can still be restored once. |
-| `↩️` | Restores the map from immediately before the full-map or single-location refresh. The restore can be used only once. |
-| `🔎` | Finds a character's location or searches for places suited to the current roleplay. |
-| `📓` | Opens the notebook for managing applied or collected information and tracked characters. |
-| `🧠` | Shows the current map and location, locations, quests, application states, discovery count, and saved and active applied-item counts. |
+| **Continue map (circular arrows)** | Continues the existing map using recent roleplay. Matching locations, characters and quests retain their identities; new events are not automatically canon. The pre-refresh map is saved as the previous map. |
+| **Fresh map (file with plus)** | Starts a fresh map after confirmation. Notebook entries and previously applied context remain; the previous map can still be restored once. |
+| **Restore previous (return arrow)** | Restores the map from immediately before the full-map or single-location refresh. The restore can be used only once. |
+| **Search (magnifying glass)** | Finds a character's location or searches for places suited to the current roleplay. |
+| **Notebook (book)** | Opens the notebook for managing applied or collected information and tracked characters. |
+| **Map memory (brain)** | Shows the current map and location, locations, quests, application states, discovery count, and saved and active applied-item counts. |
 
 ---
 
@@ -373,7 +375,7 @@ Refreshing the full map or a single location saves the immediately preceding sta
 | Feature | Processing |
 |---|---|
 | **Open a saved map or location** | Displays the saved information as-is. |
-| **Create a new map or refresh the full map `🔄`** | Reads the recent roleplay and creates locations, character position signals, and quests again. |
+| **Continue the map / Create a fresh map** | Both read recent RP; continuing also uses the existing map to preserve continuity, while a fresh map generates independently of the existing map. |
 | **Refresh one location `🔄`** | Checks that location's situation, nearby characters, and quest again. |
 | **Find a person already on the current map `🔎`** | Reuses a detailed profile that still matches the current signal. If the profile is missing or outdated, or only a name and basic location exist, generates the detailed state again. |
 | **Find a person not on the map `🔎`** | Reads the current roleplay and separately searches for the character's location and activity. |
@@ -433,7 +435,7 @@ Refreshing the full map or a single location saves the immediately preceding sta
 
 ### 🌐 언어 (자동)
 
-지도는 별도의 언어 설정 없이 실리태번 사용자 설정에서 선택한 언어를 따릅니다. 한국어 화면은 기존 표현을 유지하고, 해외 사용자는 영어 UI를 사용할 수 있습니다. 영어·한국어 이외의 UI 언어는 현재 영어로 표시됩니다. 새로 생성하는 지도 설명과 인물·장소 정보는 실리태번에서 선택한 언어로 요청하지만, 롤플레이 반영용 내부 문맥은 기존처럼 영어로 유지합니다. 이미 저장된 지도 내용은 자동 번역되지 않으므로 선택한 언어로 새로 만들려면 전체 새로고침을 해 주세요. 화면 번역은 별도 AI 호출이나 번역 서비스 비용을 사용하지 않습니다.
+지도는 별도의 언어 설정 없이 실리태번 사용자 설정에서 선택한 언어를 따릅니다. 한국어 화면은 기존 표현을 유지하고, 해외 사용자는 영어 UI를 사용할 수 있습니다. 영어·한국어 이외의 UI 언어는 현재 영어로 표시됩니다. 새로 생성하는 지도 설명과 인물·장소 정보는 실리태번에서 선택한 언어로 요청하지만, 롤플레이 반영용 내부 문맥은 기존처럼 영어로 유지합니다. 이미 저장된 지도 내용은 자동 번역되지 않으므로 선택한 언어로 처음부터 새로 만들려면 새 지도 생성 버튼을 사용해 주세요. 화면 번역은 별도 AI 호출이나 번역 서비스 비용을 사용하지 않습니다.
 
 ### 🔌 연결 프로필
 
@@ -548,14 +550,16 @@ Bonbon Board에서는 네 면의 게임 경로 위에 장소를 나타내는 이
 
 ### 상단 버튼
 
+현재 버튼은 Font Awesome 아이콘을 사용합니다. 아래는 각 버튼의 기능 이름이며, 이전 화면 예시의 이모지 버튼과 모양이 다를 수 있습니다.
+
 | 버튼 | 기능 |
 |---|---|
-| `🔄` | 최근 RP와 기존 지도를 함께 읽어 세계를 이어 갱신합니다. 이름이 일치하는 장소·인물·퀘스트의 식별 정보를 이어가며, 지도에 제안된 사건을 자동으로 확정하지 않습니다. 직전 지도도 보관됩니다. |
-| `🆕` | 확인 후 기존 지도와 별도로 새 지도를 생성합니다. 수첩과 이미 반영한 문맥은 유지하며, 직전 지도는 한 번 복원할 수 있습니다. |
-| `↩️` | 전체 지도 또는 장소 하나를 새로고침하기 직전의 지도로 되돌아갑니다. 복원은 한 번만 사용할 수 있습니다. |
-| `🔎` | 인물의 위치를 찾거나 현재 RP에 어울리는 장소를 검색합니다. |
-| `📓` | 반영·수집한 정보와 추적 중인 인물을 관리하는 수첩을 엽니다. |
-| `🧠` | 현재 지도와 현재 위치, 장소, 퀘스트, 반영 상태, 발견 개수, 저장된 반영 데이터와 활성 반영 항목 개수를 요약해서 봅니다. |
+| **이어서 갱신 (순환 화살표)** | 최근 RP와 기존 지도를 함께 읽어 세계를 이어 갱신합니다. 이름이 일치하는 장소·인물·퀘스트의 식별 정보를 이어가며, 지도에 제안된 사건을 자동으로 확정하지 않습니다. 직전 지도도 보관됩니다. |
+| **새 지도 생성 (＋가 붙은 문서)** | 확인 후 기존 지도와 별도로 새 지도를 생성합니다. 수첩과 이미 반영한 문맥은 유지하며, 직전 지도는 한 번 복원할 수 있습니다. |
+| **직전 지도 복원 (되돌리기 화살표)** | 전체 지도 또는 장소 하나를 새로고침하기 직전의 지도로 되돌아갑니다. 복원은 한 번만 사용할 수 있습니다. |
+| **검색 (돋보기)** | 인물의 위치를 찾거나 현재 RP에 어울리는 장소를 검색합니다. |
+| **수첩 (책)** | 반영·수집한 정보와 추적 중인 인물을 관리하는 수첩을 엽니다. |
+| **지도 메모리 (뇌)** | 현재 지도와 현재 위치, 장소, 퀘스트, 반영 상태, 발견 개수, 저장된 반영 데이터와 활성 반영 항목 개수를 요약해서 봅니다. |
 
 ---
 
@@ -767,7 +771,7 @@ Bonbon Board에서는 네 면의 게임 경로 위에 장소를 나타내는 이
 | 기능 | 처리 방식 |
 |---|---|
 | **저장된 지도·장소 열기** | 저장된 정보를 그대로 표시합니다. |
-| **새 지도 생성·전체 지도 새로고침 `🔄`** | 최근 RP를 읽어 장소, 인물 위치 신호와 퀘스트를 새로 만듭니다. |
+| **지도 이어서 갱신 / 새 지도 생성** | 둘 다 최근 RP를 읽습니다. 이어서 갱신은 기존 지도도 참고해 연속성을 유지하고, 새 지도 생성은 기존 지도와 별도로 구성합니다. |
 | **장소 새로고침 `🔄`** | 선택한 장소의 상황, 주변 인물과 퀘스트를 새로 확인합니다. |
 | **현재 지도에 있는 인물 찾기 `🔎`** | 현재 위치 신호와 일치하는 상세 정보는 그대로 표시합니다. 상세 정보가 없거나 낡았거나 이름과 기본 위치만 있으면 상세 상태를 다시 생성합니다. |
 | **지도에 없는 인물 찾기 `🔎`** | 현재 RP를 읽어 인물의 위치와 행동을 별도로 찾습니다. |
