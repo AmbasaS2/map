@@ -156,6 +156,10 @@ The area, time, and scene summary appear above the map. **S.H.I.E.L.D. Field Loc
 
 Current controls use Font Awesome icons; the labels below describe their functions. Older screenshots may show the earlier emoji buttons.
 
+<p align="center">
+  <a href="assets/readme/mobile/map-controls-mobile.webp"><img src="assets/readme/mobile/map-controls-mobile.webp" alt="Marauder's Map toolbar and map controls (v3.2.10 UI illustration)" width="860" /></a>
+</p>
+
 | Button | Function |
 |---|---|
 | **Continue map (circular arrows)** | Continues the existing map using recent roleplay. Matching locations, characters and quests retain their identities; new events are not automatically canon. The pre-refresh map is saved as the previous map. |
@@ -243,6 +247,10 @@ Locations, quests, characters, discoveries, and searched places are managed thro
 
 Only information with a selected application mode is provided to subsequent AI responses through SillyTavern's extension prompt. No sentence is automatically inserted into the input box.
 
+<p align="center">
+  <a href="assets/readme/mobile/map-location-collection-mobile.webp"><img src="assets/readme/mobile/map-location-collection-mobile.webp" alt="Collect a location alone or with linked quests (v3.2.10 UI illustration)" width="860" /></a>
+</p>
+
 ---
 
 ## 🪄 Revelio / 📡 Nearby Scan / 🔑 Key Card
@@ -252,6 +260,10 @@ Only information with a selected application mode is provided to subsequent AI r
 </p>
 
 Newly generated discoveries carry an **Observed in RP / Inferred / Rumor** evidence tag. The 'observed' tag is used only when the supplied recent roleplay has a matching anchor; previous AI maps alone cannot confirm facts. The tag and supporting anchors are AI assessments, not proof. Inferred information and rumors stay explicitly uncertain even when you apply them.
+
+<p align="center">
+  <a href="assets/readme/mobile/map-discovery-details-mobile.webp"><img src="assets/readme/mobile/map-discovery-details-mobile.webp" alt="Discovery details and evidence labels (v3.2.10 UI illustration)" width="860" /></a>
+</p>
 
 The button in the upper-right corner of the map board uses a separate AI request to find specific people, objects, messages, location changes, or signs of events in progress that are not yet shown on the current map.
 
@@ -325,6 +337,10 @@ A place you like can be applied immediately or collected in the `📓` notebook.
 ## 👁 Character Tracking
 
 Select `👁 이후 동선 추적` (Track Later Movement) in character details to check that character's later location and movement again from the notebook.
+
+<p align="center">
+  <a href="assets/readme/mobile/map-character-tracking-mobile.webp"><img src="assets/readme/mobile/map-character-tracking-mobile.webp" alt="Character tracking and route display (v3.2.10 UI illustration)" width="860" /></a>
+</p>
 
 | Feature | Description |
 |---|---|
@@ -552,6 +568,10 @@ Bonbon Board에서는 네 면의 게임 경로 위에 장소를 나타내는 이
 
 현재 버튼은 Font Awesome 아이콘을 사용합니다. 아래는 각 버튼의 기능 이름이며, 이전 화면 예시의 이모지 버튼과 모양이 다를 수 있습니다.
 
+<p align="center">
+  <a href="assets/readme/mobile/map-controls-mobile.webp"><img src="assets/readme/mobile/map-controls-mobile.webp" alt="마루더즈 맵 상단 버튼과 지도 조작 (v3.2.10 UI 구성 예시)" width="860" /></a>
+</p>
+
 | 버튼 | 기능 |
 |---|---|
 | **이어서 갱신 (순환 화살표)** | 최근 RP와 기존 지도를 함께 읽어 세계를 이어 갱신합니다. 이름이 일치하는 장소·인물·퀘스트의 식별 정보를 이어가며, 지도에 제안된 사건을 자동으로 확정하지 않습니다. 직전 지도도 보관됩니다. |
@@ -639,6 +659,10 @@ Bonbon Board에서는 네 면의 게임 경로 위에 장소를 나타내는 이
 
 반영을 선택한 정보만 실리태번의 확장 프롬프트를 통해 다음 AI 답변에 참고됩니다. 입력창에 문장이 자동으로 붙지는 않습니다.
 
+<p align="center">
+  <a href="assets/readme/mobile/map-location-collection-mobile.webp"><img src="assets/readme/mobile/map-location-collection-mobile.webp" alt="장소만 또는 연결 퀘스트와 함께 수집 (v3.2.10 UI 구성 예시)" width="860" /></a>
+</p>
+
 ---
 
 ## 🪄 Revelio / 📡 주변 상황 탐색 / 🔑 열쇠 카드
@@ -648,6 +672,10 @@ Bonbon Board에서는 네 면의 게임 경로 위에 장소를 나타내는 이
 </p>
 
 새로 생성된 발견에는 **RP에서 확인 / 추정 / 소문** 근거 표시를 붙입니다. 최근 RP의 실제 내용과 근거가 연결되는 경우에만 '확인'으로 분류하고, AI가 이전에 생성한 지도 설명만으로 사실을 확정하지 않습니다. 표시와 근거 설명은 AI의 분류 결과이며 사실 보증이 아닙니다. 추정이나 소문을 RP에 반영하더라도 확정 사실로 취급하지 않도록 지시합니다.
+
+<p align="center">
+  <a href="assets/readme/mobile/map-discovery-details-mobile.webp"><img src="assets/readme/mobile/map-discovery-details-mobile.webp" alt="발견물 상세와 근거 표시 (v3.2.10 UI 구성 예시)" width="860" /></a>
+</p>
 
 지도판 오른쪽 위의 버튼을 누르면 현재 지도에 아직 표시되지 않은 구체적인 존재·물건·메시지·장소의 변화·진행 중인 사건의 징후를 별도의 AI 요청으로 확인합니다.
 
@@ -721,6 +749,10 @@ Bonbon Board에서는 네 면의 게임 경로 위에 장소를 나타내는 이
 ## 👁 인물 추적
 
 인물 정보에서 `👁 이후 동선 추적`을 누르면 수첩에서 이후 위치와 동선을 다시 확인할 수 있습니다.
+
+<p align="center">
+  <a href="assets/readme/mobile/map-character-tracking-mobile.webp"><img src="assets/readme/mobile/map-character-tracking-mobile.webp" alt="인물 추적과 동선 지도 (v3.2.10 UI 구성 예시)" width="860" /></a>
+</p>
 
 | 기능 | 설명 |
 |---|---|
