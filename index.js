@@ -26,7 +26,7 @@ const FOOTSTEP_REPAIR_MAX_TOKENS = 1600;
 const LOCATION_ICON_REVIEW_MAX_TOKENS = 600;
 const DEBUG_LOG_LIMIT = 40;
 const memoryDebugLogs = [];
-const EXTENSION_VERSION = '3.2.10';
+const EXTENSION_VERSION = '3.2.11';
 const SHARED_NOTEBOOK_KEYS = Object.freeze(['managedItems', 'footstepProfiles', 'trackedPeople', 'recommendations', 'searchResults']);
 const SHARED_NOTEBOOK_MIGRATION_VERSION = 1;
 const DISCOVERY_HISTORY_LIMIT = 30;
@@ -476,11 +476,12 @@ function setupDebugHooks() {
         if (mapResizeState) endMapResize();
     });
     window.visualViewport?.addEventListener?.('resize', () => {
+        if (!isMapOverlayVisible()) return;
         const canvas = document.getElementById('mma-map-canvas');
         if (canvas && !mapResizeState && canvas.dataset.mmaUserResized === 'true') {
             const rect = canvas.getBoundingClientRect();
             const max = Math.max(240, Math.round(getViewportHeight() - rect.top - 18));
-            if (canvas.getBoundingClientRect().height > max) applyMapCanvasHeight(canvas, max, max);
+            if (rect.height > max) applyMapCanvasHeight(canvas, max, max, rememberMapCanvasBaseHeight(canvas, rect));
         }
     });
 }
@@ -545,46 +546,79 @@ function localizeMapUiText(input) {
     return translated ? input.replace(plain, translated) : input;
 }
 
-function localizeMapUiTree(root) {
-    if (!root || isKoreanMapLocale()) return;
-    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-    while (walker.nextNode()) {
-        const node = walker.currentNode;
-        const parent = node.parentElement;
-        if (!parent || parent.closest('script, style, pre, code, [data-mma-no-translate], .mma-place-card .mma-place-header strong, .mma-world-summary, .mma-region, .mma-person-signal-summary')) continue;
-        const previous = node.nodeValue;
-        const next = localizeMapUiText(previous);
-        if (next !== previous) node.nodeValue = next;
+const MAP_UI_TEXT_EXCLUSIONS = 'script, style, pre, code, [data-mma-no-translate], .mma-place-card .mma-place-header strong, .mma-world-summary, .mma-region, .mma-person-signal-summary, .mma-node-label, .mma-footstep em';
+const MAP_UI_ATTRIBUTES = ['title', 'aria-label', 'placeholder'];
+
+function localizeMapUiNode(node, attr = null, applied = null) {
+    const element = attr ? node : node.parentElement;
+    if (!element || element.closest(attr
+        ? '[data-mma-no-translate], .mma-node, .mma-footstep, .mma-discovery-marker'
+        : MAP_UI_TEXT_EXCLUSIONS)) return;
+    const previous = attr ? element.getAttribute(attr) : node.nodeValue;
+    if (previous == null) return;
+    const key = attr || 'text';
+    if (applied?.get(node)?.[key] === previous) return;
+    const next = localizeMapUiText(previous);
+    if (next === previous) return;
+    if (applied) {
+        const values = applied.get(node) || {};
+        values[key] = next;
+        applied.set(node, values);
     }
-    const elements = [root, ...root.querySelectorAll('[title], [aria-label], [placeholder]')];
-    for (const element of elements) {
-        for (const attr of ['title', 'aria-label', 'placeholder']) {
-            if (!element.hasAttribute?.(attr)) continue;
-            const previous = element.getAttribute(attr);
-            const next = localizeMapUiText(previous);
-            if (next !== previous) element.setAttribute(attr, next);
+    if (attr) element.setAttribute(attr, next);
+    else node.nodeValue = next;
+}
+
+function localizeMapUiTree(root, applied = null) {
+    if (!root || isKoreanMapLocale()) return;
+    if (root.nodeType === Node.TEXT_NODE) {
+        localizeMapUiNode(root, null, applied);
+        return;
+    }
+    if (root.nodeType !== Node.ELEMENT_NODE) return;
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    while (walker.nextNode()) localizeMapUiNode(walker.currentNode, null, applied);
+    for (const element of [root, ...root.querySelectorAll('[title], [aria-label], [placeholder]')]) {
+        for (const attr of MAP_UI_ATTRIBUTES) {
+            if (element.hasAttribute(attr)) localizeMapUiNode(element, attr, applied);
         }
     }
 }
 
 function observeMapUiLocale(root) {
     if (isKoreanMapLocale() || !root || mapLocaleObservers.has(root)) return;
-    localizeMapUiTree(root);
-    let queued = false;
-    const observer = new MutationObserver(() => {
-        if (queued) return;
-        queued = true;
-        queueMicrotask(() => {
-            queued = false;
-            if (root.isConnected && mapLocaleObservers.get(root) === observer) localizeMapUiTree(root);
-        });
+    const applied = new WeakMap();
+    localizeMapUiTree(root, applied);
+    const observer = new MutationObserver(records => {
+        if (!root.isConnected || mapLocaleObservers.get(root) !== observer || isKoreanMapLocale()) return;
+        const additions = new Set();
+        for (const record of records) {
+            if (record.type === 'childList') {
+                for (const node of record.addedNodes) if (root.contains(node)) additions.add(node);
+            }
+        }
+        for (const node of additions) {
+            let covered = false;
+            for (let parent = node.parentNode; parent && parent !== root; parent = parent.parentNode) {
+                if (additions.has(parent)) { covered = true; break; }
+            }
+            if (!covered) localizeMapUiTree(node, applied);
+        }
+        for (const record of records) {
+            if (!root.contains(record.target)) continue;
+            if (record.type === 'characterData') {
+                localizeMapUiNode(record.target, null, applied);
+            } else if (record.type === 'attributes') {
+                localizeMapUiNode(record.target, record.attributeName, applied);
+            }
+        }
     });
     observer.observe(root, {
         subtree: true,
         childList: true,
         characterData: true,
         attributes: true,
-        attributeFilter: ['title', 'aria-label', 'placeholder'],
+        attributeFilter: MAP_UI_ATTRIBUTES,
     });
     mapLocaleObservers.set(root, observer);
 }
@@ -954,120 +988,128 @@ function refreshExtensionsMenuButton() {
 }
 
 
-// Protect only Marauder's deliberately serif-styled controls from font extensions
-// that use more specific CSS or write inline styles after the map is rendered.
+// Keep the original inline font protection for the two themed maps. Observe
+// only the changed nodes; Bonbon intentionally inherits the SillyTavern font.
 const MARAUDER_SERIF_FONT = "Georgia, 'Times New Roman', serif";
 const MARAUDER_SERIF_TARGETS = '.mma-brand, .mma-managed-button, .mma-spell-button, .mma-spell-button span';
-const marauderOriginalFonts = new Map();
-let marauderSerifObserver = null;
-
-function restoreMarauderSerifFonts() {
-    for (const [element, original] of marauderOriginalFonts) {
-        if (element.isConnected
-            && sameProtectedFontFamily(element.style.getPropertyValue('font-family'), MARAUDER_SERIF_FONT)
-            && element.style.getPropertyPriority('font-family') === 'important') {
-            if (original.value) element.style.setProperty('font-family', original.value, original.priority);
-            else element.style.removeProperty('font-family');
-        }
-        marauderOriginalFonts.delete(element);
-    }
-}
-
-function syncMarauderSerifFonts() {
-    const windowEl = document.getElementById('mma-window');
-    if (!windowEl?.classList.contains('mma-theme-marauder')) {
-        restoreMarauderSerifFonts();
-        return;
-    }
-
-    // Drop detached elements after a panel rerender without altering any other theme.
-    for (const element of marauderOriginalFonts.keys()) {
-        if (!windowEl.contains(element)) marauderOriginalFonts.delete(element);
-    }
-    for (const element of windowEl.querySelectorAll(MARAUDER_SERIF_TARGETS)) {
-        const value = element.style.getPropertyValue('font-family');
-        const priority = element.style.getPropertyPriority('font-family');
-        if (sameProtectedFontFamily(value, MARAUDER_SERIF_FONT) && priority === 'important') continue;
-        if (!marauderOriginalFonts.has(element)) {
-            marauderOriginalFonts.set(element, { value, priority });
-        }
-        element.style.setProperty('font-family', MARAUDER_SERIF_FONT, 'important');
-    }
-}
-
-function startMarauderSerifProtection() {
-    if (marauderSerifObserver) return;
-    const windowEl = document.getElementById('mma-window');
-    if (!windowEl) return;
-    marauderSerifObserver = new MutationObserver(syncProtectedThemeFonts);
-    marauderSerifObserver.observe(windowEl, {
-        subtree: true,
-        childList: true,
-        attributes: true,
-        attributeFilter: ['class', 'style'],
-    });
-    syncProtectedThemeFonts();
-}
-
-function stopMarauderSerifProtection() {
-    marauderSerifObserver?.disconnect();
-    marauderSerifObserver = null;
-    restoreMarauderSerifFonts();
-    restoreShieldSansFonts();
-}
-
-
-// Match S.H.I.E.L.D.'s existing sans-serif family while leaving Bonbon's
-// SillyTavern font inheritance untouched.
 const SHIELD_SANS_FONT = "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Pretendard', 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif";
-// Protect text and controls without overriding icon fonts.
 const SHIELD_SANS_TARGETS = 'div, span, section, article, header, footer, main, aside, nav, p, ul, ol, li, h1, h2, h3, h4, h5, h6, b, strong, small, em, label, summary, button, input, select, option, textarea';
-const shieldOriginalFonts = new Map();
+const SHIELD_ICON_TARGETS = 'i, svg, .fa, .fas, .far, .fab, .fa-solid, .fa-regular, .fa-brands';
+const SHIELD_ICON_CLASSES = ['fa', 'fas', 'far', 'fab', 'fa-solid', 'fa-regular', 'fa-brands'];
+const protectedOriginalFonts = new Map();
+let marauderSerifObserver = null;
+let protectedFontRoot = null;
+let protectedFontTheme = '';
 
 function sameProtectedFontFamily(a, b) {
     const normalize = value => String(value || '').replace(/['"]/g, '').replace(/\s+/g, '').toLowerCase();
     return normalize(a) === normalize(b);
 }
 
-function restoreShieldSansFonts() {
-    for (const [element, original] of shieldOriginalFonts) {
-        if (element.isConnected
-            && sameProtectedFontFamily(element.style.getPropertyValue('font-family'), SHIELD_SANS_FONT)
-            && element.style.getPropertyPriority('font-family') === 'important') {
-            if (original.value) element.style.setProperty('font-family', original.value, original.priority);
-            else element.style.removeProperty('font-family');
-        }
-        shieldOriginalFonts.delete(element);
+function getProtectedMapFontTheme(root) {
+    if (root?.classList.contains('mma-theme-modern')) return 'modern';
+    if (root?.classList.contains('mma-theme-marauder')) return 'marauder';
+    return '';
+}
+
+function restoreProtectedMapFont(element) {
+    const original = protectedOriginalFonts.get(element);
+    if (!original) return;
+    protectedOriginalFonts.delete(element);
+    if (sameProtectedFontFamily(element.style.getPropertyValue('font-family'), original.font)
+        && element.style.getPropertyPriority('font-family') === 'important') {
+        if (original.value) element.style.setProperty('font-family', original.value, original.priority);
+        else element.style.removeProperty('font-family');
     }
 }
 
-function syncShieldSansFonts() {
-    const windowEl = document.getElementById('mma-window');
-    if (!windowEl?.classList.contains('mma-theme-modern')) {
-        restoreShieldSansFonts();
+function syncProtectedMapFontElement(element, root, theme) {
+    if (element.nodeType !== Node.ELEMENT_NODE || !root.contains(element)) return;
+    const eligible = theme === 'modern'
+        ? element === root || (element.matches(SHIELD_SANS_TARGETS) && !element.closest(SHIELD_ICON_TARGETS))
+        : element.matches(MARAUDER_SERIF_TARGETS);
+    if (!eligible) {
+        restoreProtectedMapFont(element);
         return;
     }
-    for (const element of shieldOriginalFonts.keys()) {
-        if (element !== windowEl && !windowEl.contains(element)) shieldOriginalFonts.delete(element);
-    }
-    for (const element of [windowEl, ...windowEl.querySelectorAll(SHIELD_SANS_TARGETS)]) {
-        if (element !== windowEl && element.closest('i, svg, .fa, .fas, .far, .fab, .fa-solid, .fa-regular, .fa-brands')) continue;
-        const value = element.style.getPropertyValue('font-family');
-        const priority = element.style.getPropertyPriority('font-family');
-        if (sameProtectedFontFamily(value, SHIELD_SANS_FONT) && priority === 'important') continue;
-        if (!shieldOriginalFonts.has(element)) shieldOriginalFonts.set(element, { value, priority });
-        element.style.setProperty('font-family', SHIELD_SANS_FONT, 'important');
-    }
+    const font = theme === 'modern' ? SHIELD_SANS_FONT : MARAUDER_SERIF_FONT;
+    const value = element.style.getPropertyValue('font-family');
+    const priority = element.style.getPropertyPriority('font-family');
+    // Non-font style changes and our own observer records stop here.
+    if (sameProtectedFontFamily(value, font) && priority === 'important') return;
+    if (!protectedOriginalFonts.has(element)) protectedOriginalFonts.set(element, { value, priority, font });
+    element.style.setProperty('font-family', font, 'important');
 }
 
-function syncProtectedThemeFonts() {
-    if (document.getElementById('mma-window')?.classList.contains('mma-theme-modern')) {
-        restoreMarauderSerifFonts();
-        syncShieldSansFonts();
-    } else {
-        restoreShieldSansFonts();
-        syncMarauderSerifFonts();
+function syncProtectedMapFontTree(node, root, theme) {
+    if (node.nodeType !== Node.ELEMENT_NODE || !root.contains(node)) return;
+    syncProtectedMapFontElement(node, root, theme);
+    const targets = theme === 'modern' ? SHIELD_SANS_TARGETS : MARAUDER_SERIF_TARGETS;
+    // On class removal, previously protected descendants may no longer match.
+    for (const element of node.querySelectorAll(targets)) syncProtectedMapFontElement(element, root, theme);
+}
+
+function stopMarauderSerifProtection() {
+    marauderSerifObserver?.disconnect();
+    marauderSerifObserver = null;
+    protectedFontRoot = null;
+    protectedFontTheme = '';
+    for (const element of protectedOriginalFonts.keys()) restoreProtectedMapFont(element);
+}
+
+function startMarauderSerifProtection() {
+    const root = document.getElementById('mma-window');
+    const theme = getProtectedMapFontTheme(root);
+    if (!isMapOverlayVisible() || !root || !theme) {
+        if (marauderSerifObserver) stopMarauderSerifProtection();
+        return;
     }
+    if (marauderSerifObserver && protectedFontRoot === root && protectedFontTheme === theme) return;
+    stopMarauderSerifProtection();
+    protectedFontRoot = root;
+    protectedFontTheme = theme;
+    syncProtectedMapFontTree(root, root, theme);
+    const observer = new MutationObserver(records => {
+        if (marauderSerifObserver !== observer || !isMapOverlayVisible()) return;
+        if (getProtectedMapFontTheme(root) !== theme) {
+            startMarauderSerifProtection();
+            return;
+        }
+        for (const record of records) {
+            if (!root.contains(record.target)) continue;
+            if (record.type === 'childList') {
+                for (const node of record.removedNodes) {
+                    if (node.nodeType !== Node.ELEMENT_NODE || root.contains(node)) continue;
+                    // Release only this detached branch, not the entire font map.
+                    restoreProtectedMapFont(node);
+                    for (const child of node.querySelectorAll('*')) restoreProtectedMapFont(child);
+                }
+                for (const node of record.addedNodes) syncProtectedMapFontTree(node, root, theme);
+            } else if (record.attributeName === 'style') {
+                syncProtectedMapFontElement(record.target, root, theme);
+            } else if (record.attributeName === 'class') {
+                const element = record.target;
+                const before = new Set(String(record.oldValue || '').split(/\s+/));
+                const changed = name => before.has(name) !== element.classList.contains(name);
+                if (theme === 'modern') {
+                    if (SHIELD_ICON_CLASSES.some(changed)) syncProtectedMapFontTree(element, root, theme);
+                } else if (changed('mma-spell-button')) {
+                    syncProtectedMapFontElement(element, root, theme);
+                    for (const child of element.querySelectorAll('span')) syncProtectedMapFontElement(child, root, theme);
+                } else if (changed('mma-brand') || changed('mma-managed-button')) {
+                    syncProtectedMapFontElement(element, root, theme);
+                }
+            }
+        }
+    });
+    marauderSerifObserver = observer;
+    observer.observe(root, {
+        subtree: true,
+        childList: true,
+        attributes: true,
+        attributeOldValue: true,
+        attributeFilter: ['class', 'style'],
+    });
 }
 
 function applyThemeClass() {
@@ -1080,7 +1122,7 @@ function applyThemeClass() {
         }
         el.dataset.mmaTheme = theme;
     });
-    syncProtectedThemeFonts();
+    startMarauderSerifProtection();
 }
 
 function setTheme(value, rerender = false) {
@@ -4232,6 +4274,7 @@ function getLivePersonSearchLinks(result, memory = ensureMemory()) {
 }
 
 function renderPersonSearchResultPanel(result, origin = 'search') {
+    if (!isMapOverlayVisible()) return;
     const panel = document.getElementById('mma-side-panel');
     if (!panel || !result) return;
     const backTitle = origin === 'notebook' ? '수첩으로 돌아가기' : '인물 찾기로 돌아가기';
@@ -4371,8 +4414,8 @@ async function addSearchResultToMap(result) {
         toast('위치 신호를 저장하지 못했습니다. 잠시 뒤 다시 시도해 주세요.', 'warning');
         return;
     }
-    renderMapView();
-    selectLocation(locationId);
+    if (isMapOverlayVisible() && getExistingMemory() === memory) refreshMapCanvasMarkers(memory);
+    if (getExistingMemory() === memory) selectLocation(locationId, memory);
     toast(isBonbonTheme()
         ? `${result.name}의 캐릭터 말을 게임판에 놓았습니다.`
         : `${result.name}의 위치 신호를 지도에 표시했습니다.`, 'success');
@@ -4490,6 +4533,8 @@ async function refreshTrackedPerson(key) {
         tracked.updatedAt = nowStamp();
         await saveMemory();
     });
+    if (getExistingMemory() !== memory) return;
+    if (visibleTrackedRouteKey === key) refreshTrackedRoute(memory);
     renderNotebookPanel();
 }
 
@@ -4497,11 +4542,14 @@ async function removeTrackedPerson(key) {
     const memory = ensureMemory();
     delete memory.trackedPeople[key];
     await saveMemory();
+    if (getExistingMemory() !== memory) return;
+    if (visibleTrackedRouteKey === key) clearTrackedRoute();
     renderNotebookPanel();
 }
 
 
 function renderFailurePanel(title = '지도 생성 실패', detail = '처리 중 오류가 발생했습니다.') {
+    if (!isMapOverlayVisible()) return;
     const content = document.getElementById('mma-content');
     if (!content) return;
     pushDebugLog('render.failure', detail);
@@ -4530,6 +4578,7 @@ function renderFailurePanel(title = '지도 생성 실패', detail = '처리 중
 }
 
 function renderDebugPanel() {
+    if (!isMapOverlayVisible()) return;
     const panel = document.getElementById('mma-side-panel');
     const logs = getDebugLogs();
     const rows = logs.slice(0, 30).map(log => `
@@ -4570,6 +4619,7 @@ function renderDebugPanel() {
 }
 
 function renderRecommendationPanel(activeTab = 'place') {
+    if (!isMapOverlayVisible()) return;
     const panel = document.getElementById('mma-side-panel');
     if (!panel) return;
     const selectedTab = activeTab === 'person' ? 'person' : 'place';
@@ -4864,6 +4914,7 @@ async function generateRecommendations(category) {
 }
 
 function renderNotebookPanel() {
+    if (!isMapOverlayVisible()) return;
     const panel = document.getElementById('mma-side-panel');
     if (!panel) return;
     const memory = ensureMemory();
@@ -4901,6 +4952,7 @@ function renderNotebookPanel() {
 
 
 let visibleTrackedRouteKey = '';
+const trackedRouteRenderKeys = new WeakMap();
 
 function getTrackedRouteSegments(tracked, map, positions) {
     if (!tracked || !isValidMapData(map)) return [];
@@ -4924,8 +4976,11 @@ function getTrackedRouteSegments(tracked, map, positions) {
 
 function drawTrackedRoute(canvas, map, positions, memoryArg = null) {
     const tracked = (memoryArg || ensureMemory()).trackedPeople?.[visibleTrackedRouteKey];
-    if (!tracked) return;
-    const segments = getTrackedRouteSegments(tracked, map, positions);
+    const segments = tracked ? getTrackedRouteSegments(tracked, map, positions) : [];
+    const key = JSON.stringify([visibleTrackedRouteKey, tracked?.name, isKoreanMapLocale(), segments]);
+    if (trackedRouteRenderKeys.get(canvas) === key) return;
+    canvas.querySelectorAll('.mma-tracked-route-layer, .mma-tracked-route-legend').forEach(node => node.remove());
+    trackedRouteRenderKeys.set(canvas, key);
     if (!segments.length) return;
     const ns = 'http://www.w3.org/2000/svg';
     const svg = document.createElementNS(ns, 'svg');
@@ -4943,13 +4998,47 @@ function drawTrackedRoute(canvas, map, positions, memoryArg = null) {
         if (segment.estimated) line.classList.add('mma-route-estimated');
         svg.appendChild(line);
     }
-    canvas.appendChild(svg);
     const legend = document.createElement('div');
     legend.className = 'mma-tracked-route-legend';
     legend.textContent = isKoreanMapLocale()
         ? '👣 ' + tracked.name + ' · 실선: 기록된 위치 연결 / 점선: 추정 (실제 이동 경로 미확인)'
         : '👣 ' + tracked.name + ' · Solid: logged points / Dashed: estimated (actual path unknown)';
-    canvas.appendChild(legend);
+    const trigger = canvas.querySelector('.mma-map-discovery-trigger');
+    if (trigger) trigger.after(svg, legend);
+    else canvas.append(svg, legend);
+}
+
+function refreshTrackedRoute(memoryArg = null) {
+    if (!isMapOverlayVisible()) return;
+    const canvas = document.getElementById('mma-map-canvas');
+    const toolbar = document.querySelector('#mma-window .mma-toolbar-actions');
+    if (!canvas || !toolbar) return;
+    const clear = toolbar.querySelector('[data-action="clear-route"]');
+    if (!visibleTrackedRouteKey) {
+        canvas.querySelectorAll('.mma-tracked-route-layer, .mma-tracked-route-legend').forEach(node => node.remove());
+        trackedRouteRenderKeys.delete(canvas);
+        clear?.remove();
+        return;
+    }
+    const memory = memoryArg || ensureMemory();
+    const map = memory.map;
+    if (!isValidMapData(map)) return;
+    const positions = isBonbonTheme() ? getBonbonJourneyPositions(map.locations.length) : getNodePositions(map.locations.length);
+    drawTrackedRoute(canvas, map, positions, memory);
+    if (!clear) {
+        const button = document.createElement('button');
+        button.dataset.action = 'clear-route';
+        button.title = '지도에서 동선 숨기기';
+        button.setAttribute('aria-label', button.title);
+        button.innerHTML = mapControlIcon('eye-slash', '×');
+        button.addEventListener('click', clearTrackedRoute);
+        toolbar.insertBefore(button, toolbar.querySelector('[data-action="recommend"]'));
+    }
+}
+
+function clearTrackedRoute() {
+    visibleTrackedRouteKey = '';
+    refreshTrackedRoute();
 }
 
 function showTrackedRoute(key) {
@@ -4958,8 +5047,7 @@ function showTrackedRoute(key) {
     const tracked = memory.trackedPeople?.[key];
     if (!tracked || !isValidMapData(map)) return;
     if (visibleTrackedRouteKey === key) {
-        visibleTrackedRouteKey = '';
-        renderMapView();
+        clearTrackedRoute();
         return;
     }
     const pos = isBonbonTheme() ? getBonbonJourneyPositions(map.locations.length) : getNodePositions(map.locations.length);
@@ -4970,7 +5058,7 @@ function showTrackedRoute(key) {
         return;
     }
     visibleTrackedRouteKey = key;
-    renderMapView();
+    refreshTrackedRoute(memory);
 }
 
 function renderTrackedCard(key, item) {
@@ -5253,11 +5341,9 @@ function isMapOverlayVisible() {
 
 function isViewingLocationPanel(locationId = '') {
     const panel = document.getElementById('mma-side-panel');
-    if (!panel || !panel.querySelector('[data-action="refresh-location"]')) return false;
-    if (!locationId) return true;
-    const location = ensureMemory().map?.locations?.find(item => item.id === locationId);
-    const title = panel.querySelector('.mma-place-header strong')?.textContent?.trim() || '';
-    return Boolean(location && title === String(location.name || '').trim());
+    const card = panel?.querySelector('.mma-place-card[data-mma-location-id]');
+    if (!card || !card.querySelector('[data-action="refresh-location"]')) return false;
+    return !locationId || card.dataset.mmaLocationId === String(locationId);
 }
 
 function refreshVisibleMapAfterBackgroundUpdate({ locationId = '', forceMapView = false } = {}) {
@@ -5271,22 +5357,25 @@ function refreshVisibleMapAfterBackgroundUpdate({ locationId = '', forceMapView 
 
     // Keep the panel the user is currently reading. Only refresh that panel
     // when it is still the exact place which just finished updating.
-    renderCanvas();
+    const memory = ensureMemory();
+    refreshMapCanvasMarkers(memory);
     refreshMapGenerationControls();
     if (locationId && isViewingLocationPanel(locationId)) {
-        renderLocationPanel(locationId);
+        renderLocationPanel(locationId, memory);
     } else if (!locationId && isViewingLocationPanel()) {
-        const selectedLocationId = ensureMemory().selectedLocationId;
-        if (selectedLocationId) renderLocationPanel(selectedLocationId);
+        const selectedLocationId = memory.selectedLocationId;
+        if (selectedLocationId) renderLocationPanel(selectedLocationId, memory);
     }
     return true;
 }
 
 function refreshMapGenerationControls() {
+    if (!isMapOverlayVisible()) return;
     const busy = Boolean(activeMapGeneration);
     document.querySelectorAll('#mma-window [data-action="refresh-all"], #mma-window [data-action="refresh-fresh"], #mma-window [data-action="refresh-location"], #mma-window [data-action="restore-previous-map"], #mma-window [data-action="discover"]').forEach(button => {
-        button.disabled = busy;
-        button.setAttribute('aria-busy', busy ? 'true' : 'false');
+        if (button.disabled !== busy) button.disabled = busy;
+        const ariaBusy = busy ? 'true' : 'false';
+        if (button.getAttribute('aria-busy') !== ariaBusy) button.setAttribute('aria-busy', ariaBusy);
     });
 }
 
@@ -6057,7 +6146,7 @@ async function generateDiscoveries() {
                 });
             }
             if (isMapOverlayVisible()) {
-                renderCanvas();
+                refreshMapCanvasMarkers(memory);
                 renderDiscoveryListPanel();
             }
             toast(isBonbonTheme()
@@ -6298,6 +6387,7 @@ function cleanProfileDisplayValue(value, replacement) {
 }
 
 function renderFootstepPanel(footstepId) {
+    if (!isMapOverlayVisible()) return;
     const panel = document.getElementById('mma-side-panel');
     if (!panel) return;
     const memory = ensureMemory();
@@ -6362,6 +6452,7 @@ function renderFootstepPanel(footstepId) {
 
 
 function renderFootstepActionPanel(footstepId) {
+    if (!isMapOverlayVisible()) return;
     const panel = document.getElementById('mma-side-panel');
     if (!panel) return;
     const memory = ensureMemory();
@@ -6610,10 +6701,11 @@ function getViewportHeight() {
     return Math.max(320, window.visualViewport?.height || window.innerHeight || document.documentElement.clientHeight || 720);
 }
 
-function rememberMapCanvasBaseHeight(canvas) {
-    const current = Math.round(canvas.getBoundingClientRect().height || 0);
+function rememberMapCanvasBaseHeight(canvas, rect = null) {
     const stored = Number(canvas.dataset.mmaResizeBaseHeight || 0);
-    if (!stored && current > 0) canvas.dataset.mmaResizeBaseHeight = String(current);
+    if (stored > 0) return stored;
+    const current = Math.round((rect || canvas.getBoundingClientRect()).height || 0);
+    if (current > 0) canvas.dataset.mmaResizeBaseHeight = String(current);
     return Number(canvas.dataset.mmaResizeBaseHeight || current || 320);
 }
 
@@ -6635,12 +6727,17 @@ function applyMapCanvasHeight(canvas, height, maxHeight = null, minHeight = null
     }
 
     const value = `${rounded}px`;
-    canvas.style.setProperty('height', value, 'important');
-    canvas.style.setProperty('min-height', value, 'important');
-    canvas.style.setProperty('max-height', maxHeight ? `${Math.round(maxHeight)}px` : 'none', 'important');
-    canvas.style.setProperty('aspect-ratio', 'auto', 'important');
-    canvas.dataset.mmaUserResized = 'true';
-    document.getElementById('mma-window')?.classList.add('mma-map-expanded');
+    for (const [property, next] of [
+        ['height', value], ['min-height', value],
+        ['max-height', maxHeight ? `${Math.round(maxHeight)}px` : 'none'], ['aspect-ratio', 'auto'],
+    ]) {
+        if (canvas.style.getPropertyValue(property) !== next || canvas.style.getPropertyPriority(property) !== 'important') {
+            canvas.style.setProperty(property, next, 'important');
+        }
+    }
+    if (canvas.dataset.mmaUserResized !== 'true') canvas.dataset.mmaUserResized = 'true';
+    const windowEl = document.getElementById('mma-window');
+    if (windowEl && !windowEl.classList.contains('mma-map-expanded')) windowEl.classList.add('mma-map-expanded');
 }
 
 function beginMapResize(event) {
@@ -6651,7 +6748,7 @@ function beginMapResize(event) {
 
     const rect = canvas.getBoundingClientRect();
     const viewportHeight = getViewportHeight();
-    const minHeight = rememberMapCanvasBaseHeight(canvas);
+    const minHeight = rememberMapCanvasBaseHeight(canvas, rect);
     const viewportLimitedMax = Math.round(viewportHeight - rect.top - 18);
     const maxHeight = Math.max(minHeight + 120, viewportLimitedMax);
 
@@ -6795,6 +6892,7 @@ function closeMap(reason = 'manual') {
 }
 
 function setBusy(isBusy, text = '') {
+    if (!isMapOverlayVisible()) return;
     const busy = document.getElementById('mma-busy');
     const label = document.getElementById('mma-busy-text');
     if (!busy) return;
@@ -6803,6 +6901,7 @@ function setBusy(isBusy, text = '') {
 }
 
 function renderSpellScreen() {
+    if (!isMapOverlayVisible()) return;
     pushDebugLog('render.spell.start', '활성화 화면을 렌더링합니다.');
     const content = document.getElementById('mma-content');
     if (!content) {
@@ -6908,7 +7007,7 @@ function wireSpellButton() {
             if (isValidMapData(ensureMemory().map) && isMapOverlayVisible()) toast(getMapActivationCompleteText(), 'success');
         } finally {
             spellCasting = false;
-            const current = document.getElementById('mma-spell-button');
+            const current = isMapOverlayVisible() ? document.getElementById('mma-spell-button') : null;
             if (current) {
                 current.disabled = false;
                 current.classList.remove('mma-casting');
@@ -6935,6 +7034,7 @@ function stopHoldVisual() {
 }
 
 function renderMapView() {
+    if (!isMapOverlayVisible()) return;
     pushDebugLog('render.map.start', '지도 화면을 렌더링합니다.');
     const content = document.getElementById('mma-content');
     if (!content) {
@@ -6998,7 +7098,7 @@ function renderMapView() {
         if (accepted) generateMap(true, { freshStart: true });
     });
     content.querySelector('[data-action="restore-previous-map"]')?.addEventListener('click', () => restorePreviousMap());
-    content.querySelector('[data-action="clear-route"]')?.addEventListener('click', () => { visibleTrackedRouteKey = ''; renderMapView(); });
+    content.querySelector('[data-action="clear-route"]')?.addEventListener('click', clearTrackedRoute);
     content.querySelector('[data-action="recommend"]')?.addEventListener('click', () => renderRecommendationPanel());
     content.querySelector('[data-action="notebook"]')?.addEventListener('click', renderNotebookPanel);
     content.querySelector('[data-action="memory"]')?.addEventListener('click', renderMemoryPanel);
@@ -7013,14 +7113,111 @@ function renderMapView() {
     });
 }
 
+const mapCanvasLayoutKeys = new WeakMap();
+const pendingMapCanvasBaseMeasurements = new WeakSet();
+
+function getMapCanvasLayoutKey(memory) {
+    const map = memory.map;
+    // Only marker identities/order/anchors affect the existing collision layout.
+    // Keep this key on the current canvas only; never cache hydrated memory.
+    return JSON.stringify([
+        getThemeKey(),
+        (map?.locations || []).map(location => location.id),
+        (map?.footsteps || []).filter(isRenderableMapFootstep).map(fp => [fp.id, fp.locationId]),
+        (memory.discoveries || []).map(item => [item.id, item.locationId]),
+    ]);
+}
+
+function getMapQuestCounts(map) {
+    const counts = new Map();
+    for (const event of map?.events || []) {
+        if (event.status !== 'ignored') counts.set(event.locationId, (counts.get(event.locationId) || 0) + 1);
+    }
+    return counts;
+}
+
+function getMapLocationMarkerLabel(location, current, count) {
+    return [location.name, current ? '현재 위치' : '', count ? `퀘스트 ${count}개` : ''].filter(Boolean).join(' — ');
+}
+
+function refreshMapCanvasMarkers(memory) {
+    if (!isMapOverlayVisible()) return;
+    const canvas = document.getElementById('mma-map-canvas');
+    if (!canvas || !memory?.map) return;
+    if (mapCanvasLayoutKeys.get(canvas) !== getMapCanvasLayoutKey(memory)) {
+        // Person/discovery ordering participates in collision avoidance.
+        renderCanvas(memory);
+        return;
+    }
+    const map = memory.map;
+    const locations = new Map(map.locations.map(location => [String(location.id), location]));
+    const counts = getMapQuestCounts(map);
+    for (const node of canvas.querySelectorAll('.mma-node')) {
+        const location = locations.get(node.dataset.id);
+        if (!location) continue;
+        const count = counts.get(location.id) || 0;
+        const current = location.id === map.currentLocationId;
+        const selected = location.id === memory.selectedLocationId;
+        if (node.classList.contains('current-location') !== current) node.classList.toggle('current-location', current);
+        if (node.classList.contains('selected') !== selected) node.classList.toggle('selected', selected);
+        if (current && node.getAttribute('aria-current') !== 'location') node.setAttribute('aria-current', 'location');
+        else if (!current && node.hasAttribute('aria-current')) node.removeAttribute('aria-current');
+        const label = getMapLocationMarkerLabel(location, current, count);
+        if (node.title !== label) node.title = label;
+        if (node.getAttribute('aria-label') !== label) node.setAttribute('aria-label', label);
+        const icon = node.querySelector('b');
+        const name = node.querySelector('.mma-node-label');
+        if (icon && icon.textContent !== (location.icon || '📍')) icon.textContent = location.icon || '📍';
+        if (name && name.textContent !== location.name) name.textContent = location.name;
+        const badge = node.querySelector('.mma-event-badge');
+        if (!count) badge?.remove();
+        else if (!badge) node.insertAdjacentHTML('beforeend', eventBadgeForLocation(location.id, map, count));
+        else if (badge.textContent !== String(count)) badge.textContent = String(count);
+    }
+    const footsteps = new Map((map.footsteps || []).map(fp => [String(fp.id), fp]));
+    for (const node of canvas.querySelectorAll('.mma-footstep')) {
+        const fp = footsteps.get(node.dataset.footstepId);
+        if (!fp) continue;
+        const label = fp.visibleName ? fp.label : '???';
+        const title = `${label} — ${fp.status || ''}`;
+        if (node.title !== title) node.title = title;
+        const name = node.querySelector('em');
+        if (name && name.textContent !== label) name.textContent = label;
+    }
+    const discoveries = new Map((memory.discoveries || []).map(item => [String(item.id), item]));
+    for (const node of canvas.querySelectorAll('.mma-discovery-marker')) {
+        const item = discoveries.get(node.dataset.discoveryId);
+        if (!item) continue;
+        if (node.title !== item.title) node.title = item.title;
+        const label = `${item.title} — ${item.locationName}`;
+        if (node.getAttribute('aria-label') !== label) node.setAttribute('aria-label', label);
+        const emoji = String(item.emoji || '').trim() || getDiscoveryCategoryIcon(item.category);
+        const icon = node.querySelector('span');
+        if (icon && icon.textContent !== emoji) icon.textContent = emoji;
+    }
+    // Bonbon group labels also contain the location name.
+    for (const group of canvas.querySelectorAll('.mma-bonbon-stop-people')) {
+        const location = locations.get(group.closest('.mma-bonbon-route-stop')?.dataset.locationId);
+        const label = `${location?.name || '장소'}의 인물`;
+        if (group.getAttribute('aria-label') !== label) group.setAttribute('aria-label', label);
+    }
+    if (visibleTrackedRouteKey) refreshTrackedRoute(memory);
+}
+
 function renderCanvas(memoryArg = null) {
+    if (!isMapOverlayVisible()) return;
     const canvas = document.getElementById('mma-map-canvas');
     if (!canvas) return;
     // renderMapView already owns the current hydrated memory. Re-running
     // ensureMemory for every nested canvas render repeats normalization work.
     const memory = memoryArg || ensureMemory();
     const map = memory.map;
-    const locations = (map?.locations || []).map(location => ({ ...location }));
+    const locations = map?.locations || [];
+    const locationIndices = new Map();
+    locations.forEach((location, index) => {
+        if (!locationIndices.has(location.id)) locationIndices.set(location.id, index);
+    });
+    const questCounts = getMapQuestCounts(map);
     const bonbon = isBonbonTheme();
     const bonbonTrackMarkup = bonbon ? `
         <div class="mma-bonbon-board-track" aria-hidden="true">
@@ -7034,9 +7231,22 @@ function renderCanvas(memoryArg = null) {
             </svg>
             <span class="mma-bonbon-board-mark"><b>BONBON</b><small>BOARD</small></span>
         </div>` : '';
-    canvas.innerHTML = `${bonbonTrackMarkup}<button id="mma-map-resize-handle" type="button" aria-label="지도판 세로 크기 조절" title="위아래로 드래그해 지도판 크기를 조절합니다."></button>`;
+    let handle = canvas.querySelector('#mma-map-resize-handle');
+    if (!handle) {
+        canvas.insertAdjacentHTML('beforeend', '<button id="mma-map-resize-handle" type="button" aria-label="지도판 세로 크기 조절" title="위아래로 드래그해 지도판 크기를 조절합니다."></button>');
+        handle = canvas.querySelector('#mma-map-resize-handle');
+    }
+    for (const child of [...canvas.children]) if (child !== handle) child.remove();
+    trackedRouteRenderKeys.delete(canvas);
+    if (bonbonTrackMarkup) handle.insertAdjacentHTML('beforebegin', bonbonTrackMarkup);
     wireMapResizeHandle(canvas);
-    requestAnimationFrame(() => rememberMapCanvasBaseHeight(canvas));
+    if (!Number(canvas.dataset.mmaResizeBaseHeight) && !pendingMapCanvasBaseMeasurements.has(canvas)) {
+        pendingMapCanvasBaseMeasurements.add(canvas);
+        requestAnimationFrame(() => {
+            pendingMapCanvasBaseMeasurements.delete(canvas);
+            if (isMapOverlayVisible() && canvas.isConnected && !Number(canvas.dataset.mmaResizeBaseHeight)) rememberMapCanvasBaseHeight(canvas);
+        });
+    }
 
     const discoveryUi = getDiscoveryUiConfig();
     const discoverButton = document.createElement('button');
@@ -7067,18 +7277,14 @@ function renderCanvas(memoryArg = null) {
         node.type = 'button';
         node.className = `mma-node ${bonbonClass} ${selectedClass} ${currentClass}`.trim();
         node.dataset.id = loc.id;
-        const locationQuestCount = (map.events || []).filter(event => event.locationId === loc.id && event.status !== 'ignored').length;
-        const locationLabel = [
-            loc.name,
-            currentClass ? '현재 위치' : '',
-            locationQuestCount ? `퀘스트 ${locationQuestCount}개` : '',
-        ].filter(Boolean).join(' — ');
+        const locationQuestCount = questCounts.get(loc.id) || 0;
+        const locationLabel = getMapLocationMarkerLabel(loc, Boolean(currentClass), locationQuestCount);
         node.title = locationLabel;
         node.setAttribute('aria-label', locationLabel);
         if (currentClass) {
             node.setAttribute('aria-current', 'location');
         }
-        node.innerHTML = `<b aria-hidden="true">${escapeHtml(loc.icon || '📍')}</b><span class="mma-node-label">${escapeHtml(loc.name)}</span>${eventBadgeForLocation(loc.id, map)}`;
+        node.innerHTML = `<b aria-hidden="true">${escapeHtml(loc.icon || '📍')}</b><span class="mma-node-label">${escapeHtml(loc.name)}</span>${eventBadgeForLocation(loc.id, map, locationQuestCount)}`;
         node.addEventListener('click', () => selectLocation(loc.id));
         if (bonbon) {
             const stop = document.createElement('div');
@@ -7107,8 +7313,8 @@ function renderCanvas(memoryArg = null) {
     const footstepCountByLocation = {};
 
     (map?.footsteps || []).filter(isRenderableMapFootstep).forEach((fp, index) => {
-        const locIndex = locations.findIndex(l => l.id === fp.locationId);
-        if (locIndex < 0) return;
+        const locIndex = locationIndices.get(fp.locationId);
+        if (locIndex === undefined) return;
         const pos = positions[locIndex] || { x: 50, y: 50 };
         const localIndex = footstepCountByLocation[fp.locationId] || 0;
         footstepCountByLocation[fp.locationId] = localIndex + 1;
@@ -7157,7 +7363,7 @@ function renderCanvas(memoryArg = null) {
     if (bonbon) {
         bonbonRouteStops.forEach((stop, locationId) => {
             if (!stop.querySelector('.mma-bonbon-stop-people')) return;
-            const locIndex = locations.findIndex(location => location.id === locationId);
+            const locIndex = locationIndices.get(locationId);
             const anchor = positions[locIndex] || { x: 50, y: 50 };
             const yOffset = stop.classList.contains('people-up') ? -9 : 9;
             occupiedPoints.push({ x: anchor.x, y: clampPositionValue(anchor.y + yOffset, 8, 92), r: 14 });
@@ -7166,8 +7372,8 @@ function renderCanvas(memoryArg = null) {
 
     const discoveryCountByLocation = {};
     (memory.discoveries || []).forEach((item, index) => {
-        const locIndex = locations.findIndex(location => location.id === item.locationId);
-        if (locIndex < 0) return;
+        const locIndex = locationIndices.get(item.locationId);
+        if (locIndex === undefined) return;
         const anchor = positions[locIndex] || { x: 50, y: 50 };
         const localIndex = discoveryCountByLocation[item.locationId] || 0;
         discoveryCountByLocation[item.locationId] = localIndex + 1;
@@ -7191,9 +7397,11 @@ function renderCanvas(memoryArg = null) {
         });
         canvas.appendChild(marker);
     });
+    mapCanvasLayoutKeys.set(canvas, getMapCanvasLayoutKey(memory));
 }
 
 function renderDiscoveryListPanel() {
+    if (!isMapOverlayVisible()) return;
     const panel = document.getElementById('mma-side-panel');
     if (!panel) return;
     const memory = ensureMemory();
@@ -7225,6 +7433,7 @@ function renderDiscoveryListPanel() {
 }
 
 function renderDiscoveryPanel(discoveryId) {
+    if (!isMapOverlayVisible()) return;
     const panel = document.getElementById('mma-side-panel');
     if (!panel) return;
     const memory = ensureMemory();
@@ -7274,15 +7483,26 @@ async function dismissDiscovery(discoveryId) {
     const memory = ensureMemory();
     const item = (memory.discoveries || []).find(entry => entry.id === discoveryId);
     if (!item) return;
+    const canvas = isMapOverlayVisible() ? document.getElementById('mma-map-canvas') : null;
+    const layoutBefore = canvas ? getMapCanvasLayoutKey(memory) : '';
+    const wasLast = memory.discoveries.at(-1) === item;
     updateDiscoveryHistoryOutcome(memory, item, 'excluded');
     memory.discoveries = memory.discoveries.filter(entry => entry.id !== discoveryId);
+    const layoutAfter = canvas ? getMapCanvasLayoutKey(memory) : '';
     await saveMemory(memory);
-    renderCanvas();
+    if (!isMapOverlayVisible() || getExistingMemory() !== memory) return;
+    if (wasLast && canvas?.isConnected && mapCanvasLayoutKeys.get(canvas) === layoutBefore
+        && getMapCanvasLayoutKey(memory) === layoutAfter) {
+        canvas.querySelector(`.mma-discovery-marker[data-discovery-id="${CSS.escape(String(discoveryId))}"]`)?.remove();
+        mapCanvasLayoutKeys.set(canvas, layoutAfter);
+    }
+    // Earlier removals may change later collision positions.
+    refreshMapCanvasMarkers(memory);
     renderDiscoveryListPanel();
 }
 
-function eventBadgeForLocation(locationId, map = ensureMemory().map) {
-    const count = (map?.events || []).filter(e => e.locationId === locationId && e.status !== 'ignored').length;
+function eventBadgeForLocation(locationId, map = ensureMemory().map, count = null) {
+    count ??= (map?.events || []).filter(e => e.locationId === locationId && e.status !== 'ignored').length;
     return count ? `<i class="mma-event-badge">${count}</i>` : '';
 }
 
@@ -7416,7 +7636,14 @@ function selectLocation(locationId, memoryArg = null) {
     // Opening/redrawing an existing map is not a user state change. Avoid
     // re-saving a large JSONL on every map open or repeat selection click.
     if (selectedLocationChanged) saveMemory();
-    document.querySelectorAll('.mma-node').forEach(node => node.classList.toggle('selected', node.dataset.id === location.id));
+    if (!isMapOverlayVisible()) return;
+    if (selectedLocationChanged) {
+        const canvas = document.getElementById('mma-map-canvas');
+        canvas?.querySelectorAll('.mma-node.selected').forEach(node => {
+            if (node.dataset.id !== String(location.id)) node.classList.remove('selected');
+        });
+        canvas?.querySelector(`.mma-node[data-id="${CSS.escape(String(location.id))}"]`)?.classList.add('selected');
+    }
     renderLocationPanel(location.id, memory);
 }
 
@@ -7515,15 +7742,18 @@ function renderQuestReward(event) {
 function renderLocationEventSummaryCard(event, location = null) {
     return `
         <article class="mma-event-card ${escapeHtml(event.status || 'available')}">
-            <div class="mma-event-title"><b>${escapeHtml(getEventDisplayTitle(event, location))}</b><span>${statusLabel(event.status)}</span></div>
-            <p>${escapeHtml(event.summary || '')}</p>
-            ${event.details ? `<p class="mma-event-detail">${escapeHtml(event.details)}</p>` : ''}
+            <div class="mma-event-title"><b data-mma-no-translate>${escapeHtml(getEventDisplayTitle(event, location))}</b><span>${statusLabel(event.status)}</span></div>
+            <p data-mma-no-translate>${escapeHtml(event.summary || '')}</p>
+            ${event.details ? `<p class="mma-event-detail" data-mma-no-translate>${escapeHtml(event.details)}</p>` : ''}
             ${renderQuestReward(event)}
         </article>
     `;
 }
 
+const locationPanelMarkup = new WeakMap();
+
 function renderLocationPanel(locationId, memoryArg = null) {
+    if (!isMapOverlayVisible()) return;
     const panel = document.getElementById('mma-side-panel');
     if (!panel) return;
     // The parent map view or location selector already owns this memory.
@@ -7534,19 +7764,19 @@ function renderLocationPanel(locationId, memoryArg = null) {
     if (!location) return;
     const relatedEvents = (map.events || []).filter(e => e.locationId === location.id && e.status !== 'ignored');
 
-    panel.innerHTML = `
-        <div class="mma-place-card">
+    const markup = `
+        <div class="mma-place-card" data-mma-location-id="${escapeHtml(location.id)}">
             <header class="mma-place-header">
                 <div><span class="mma-place-icon">${escapeHtml(location.icon || '📍')}</span><strong>${escapeHtml(location.name)}</strong></div>
                 <button aria-label="이 장소만 다시 새로고침" title="이 장소만 다시 새로고침" data-action="refresh-location">${mapControlIcon('arrows-rotate', '↻')}</button>
             </header>
             <section class="mma-info-block">
                 <h4>${escapeHtml(getThemeConfig().locationInfoIcon || '🎨')}</h4>
-                <p>${escapeHtml(buildDisplaySituation(location, relatedEvents))}</p>
+                <p data-mma-no-translate>${escapeHtml(buildDisplaySituation(location, relatedEvents))}</p>
             </section>
             <section class="mma-info-block">
                 <h4>👥</h4>
-                <ul>${location.present.map(p => `<li>${escapeHtml(p)}</li>`).join('') || '<li>인물이 뚜렷하게 보이지 않음</li>'}</ul>
+                <ul>${location.present.map(p => `<li data-mma-no-translate>${escapeHtml(p)}</li>`).join('') || '<li>인물이 뚜렷하게 보이지 않음</li>'}</ul>
             </section>
             ${relatedEvents.length ? `
             <section class="mma-info-block">
@@ -7558,6 +7788,9 @@ function renderLocationPanel(locationId, memoryArg = null) {
             </footer>
         </div>
     `;
+    if (isViewingLocationPanel(location.id) && locationPanelMarkup.get(panel.firstElementChild) === markup) return;
+    panel.innerHTML = markup;
+    locationPanelMarkup.set(panel.firstElementChild, markup);
     panel.querySelector('[data-action="refresh-location"]')?.addEventListener('click', () => refreshLocation(location.id));
     panel.querySelector('[data-action="actions"]')?.addEventListener('click', () => renderActionPanel(location.id, false));
     refreshMapGenerationControls();
@@ -7576,6 +7809,7 @@ function statusLabel(status) {
 }
 
 function renderActionPanel(locationFilterId = null, globalView = false) {
+    if (!isMapOverlayVisible()) return;
     const panel = document.getElementById('mma-side-panel');
     if (!panel) return;
     const memory = ensureMemory();
@@ -7881,7 +8115,8 @@ async function handleManageAction(type, id, action) {
 
     await saveMemory();
     syncExtensionPrompt();
-    renderMapView();
+    if (!isMapOverlayVisible() || !isTargetCurrent()) return;
+    refreshMapCanvasMarkers(memory);
     if (shouldReturnToNotebook) {
         renderNotebookPanel();
     } else if (type === 'managed') {
@@ -8244,6 +8479,7 @@ function syncSelectionBeforeGeneration(type) {
 }
 
 function renderMemoryPanel() {
+    if (!isMapOverlayVisible()) return;
     const panel = document.getElementById('mma-side-panel');
     if (!panel) return;
     const memory = ensureMemory();

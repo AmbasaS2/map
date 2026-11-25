@@ -13,7 +13,7 @@ function section(start, end) {
 }
 
 const selectionCode = section('function selectLocation(locationId, memoryArg = null) {', 'function stripEventLinesFromLocationPalette(');
-const badgeCode = section('function eventBadgeForLocation(locationId, map = ensureMemory().map) {', 'function getNodePositions(');
+const badgeCode = section('function eventBadgeForLocation(locationId, map = ensureMemory().map, count = null) {', 'function getNodePositions(');
 const viewCode = section('function renderMapView() {', 'function renderCanvas(');
 const canvasCode = section('function renderCanvas(memoryArg = null) {', 'function eventBadgeForLocation(');
 
@@ -25,26 +25,27 @@ function selectionFixture() {
     const stats = { saves: 0, rendered: [], alerts: [], toggles: [] };
     const nodes = [{ dataset: { id: 'locA' } }, { dataset: { id: 'locB' } }];
     nodes.forEach(node => {
-        node.classList = { toggle(key, value) { stats.toggles.push([node.dataset.id, key, value]); } };
+        node.classList = { add(key) { stats.toggles.push([node.dataset.id, key, true]); }, remove(key) { stats.toggles.push([node.dataset.id, key, false]); } };
     });
-    const factory = new Function('ensureMemory', 'saveMemory', 'document', 'renderLocationPanel', 'toast',
+    const factory = new Function('ensureMemory', 'saveMemory', 'document', 'renderLocationPanel', 'toast', 'isMapOverlayVisible', 'CSS',
         selectionCode + '\nreturn selectLocation;');
     const select = factory(
         () => state,
         () => { stats.saves++; },
-        { querySelectorAll: selector => selector === '.mma-node' ? nodes : [] },
+        { getElementById: () => ({ querySelectorAll: () => nodes.slice(0, 1), querySelector: () => nodes[1] }) },
         id => stats.rendered.push(id),
         value => stats.alerts.push(value),
+        () => true, { escape: String },
     );
     return { select, state, stats };
 }
 
-test('selecting already-selected location refreshes UI without saving JSONL', () => {
+test('selecting already-selected location avoids marker writes and saving JSONL', () => {
     const f = selectionFixture();
     f.select('locA');
     assert.equal(f.stats.saves, 0);
     assert.deepEqual(f.stats.rendered, ['locA']);
-    assert.ok(f.stats.toggles.length >= 2);
+    assert.equal(f.stats.toggles.length, 0);
 });
 
 test('genuine user location change persists exactly once', () => {
@@ -77,7 +78,7 @@ test('canvas receives existing memory, avoiding a second full hydration', () => 
     assert.match(canvasCode, /function renderCanvas\(memoryArg = null\)/);
     assert.match(canvasCode, /const memory = memoryArg \|\| ensureMemory\(\)/);
     assert.match(canvasCode, /drawTrackedRoute\(canvas, map, positions, memory\)/);
-    assert.match(canvasCode, /eventBadgeForLocation\(loc\.id, map\)/);
+    assert.match(canvasCode, /eventBadgeForLocation\(loc\.id, map, locationQuestCount\)/);
 });
 
 test('badge calculation reads provided map and does not call ensureMemory', () => {
@@ -92,6 +93,7 @@ test('badge calculation reads provided map and does not call ensureMemory', () =
     );
     assert.match(badge('a', map), />1<\/i>/);
     assert.equal(reads, 0);
+    assert.match(badge('a', map, 2), />2<\/i>/);
     assert.equal(badge('x', map), '');
     assert.equal(reads, 0);
     assert.match(badge('b'), />1<\/i>/);

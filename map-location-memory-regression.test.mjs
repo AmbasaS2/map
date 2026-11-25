@@ -22,13 +22,14 @@ function fixture() {
   const rendered = [];
   const nodes = [{ dataset: { id: 'A' } }, { dataset: { id: 'B' } }];
   for (const node of nodes) node.classList = { toggle() {} };
-  const fn = new Function('ensureMemory','saveMemory','document','renderLocationPanel','toast',
+  const fn = new Function('ensureMemory','saveMemory','document','renderLocationPanel','toast','isMapOverlayVisible','CSS',
     selector + '\nreturn selectLocation;')(
     () => { ensureCalls++; return memory; },
     () => { saves++; },
-    { querySelectorAll: () => nodes },
+    { getElementById: () => ({ querySelectorAll: () => [], querySelector: () => ({ classList: { add() {} } }) }) },
     (...args) => rendered.push(args),
     () => {},
+    () => true, { escape: String },
   );
   return { fn, memory, rendered, get ensureCalls() { return ensureCalls; }, get saves() { return saves; } };
 }
