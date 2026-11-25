@@ -13,10 +13,14 @@
 
 ## 📥 Installation and First Steps
 
+**Current version: 3.2.11.**
+
 1. In SillyTavern, open **Extensions → Install extension** (sometimes under extension management).
 2. Paste `https://github.com/AmbasaS2/map`, install, and reload the page.
-3. In **Extensions → Map**, choose a connection profile, a theme, and an output mode.
-4. Open the map to generate or restore the current chat's map. Opening information does not automatically apply it to the RP; choose an application mode when needed.
+3. In **Extensions → Map**, choose the main API or a dedicated connection profile, a theme, and an output mode.
+4. Open a character chat and continue RP. Open the map to generate or restore the current chat's map. Opening information does not automatically apply it to the RP; choose an application mode when needed.
+
+**Everyday use:** Read locations, people and quests; apply only the information you want, or save it to the notebook without injecting it. Explore, search and track when needed. Font size, debug logs and data cleanup are optional.
 
 
 ## 🧭 How to Use
@@ -427,10 +431,14 @@ Refreshing the full map or a single location saves the immediately preceding sta
 
 ## 📥 설치 및 처음 사용하기
 
+**현재 버전: 3.2.11.**
+
 1. SillyTavern의 **확장 프로그램 → 확장 설치** 메뉴를 엽니다. 버전에 따라 확장 관리 메뉴 안에 있을 수 있습니다.
 2. `https://github.com/AmbasaS2/map`을 붙여넣어 설치하고 새로고침합니다.
-3. **확장 프로그램 → 지도**에서 연결 프로필, 지도 테마, 출력 방식을 선택합니다.
-4. 지도를 열어 현재 채팅의 지도를 생성하거나 저장된 지도를 불러옵니다. 정보를 보는 것만으로 RP에 자동 반영되지는 않으며, 필요할 때 반영 방식을 선택합니다.
+3. **확장 프로그램 → 지도**에서 연결 프로필(메인 API 또는 별도 프로필), 지도 테마, 출력 방식을 선택합니다.
+4. 캐릭터 채팅에 들어가 평소처럼 롤플합니다. 지도를 열어 현재 채팅의 지도를 생성하거나 저장된 지도를 불러옵니다. 정보를 보는 것만으로 RP에 자동 반영되지는 않으며, 필요할 때 반영 방식을 선택합니다.
+
+**평소에는:** 장소·인물·퀘스트를 확인하고 마음에 드는 정보만 반영하거나 수첩에 수집하세요. 탐색·검색·추적은 필요할 때! 글씨 크기·디버그 로그·데이터 정리는 처음부터 설정할 필요 없습니다.
 
 
 ## 🧭 사용 순서
