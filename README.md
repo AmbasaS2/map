@@ -8,7 +8,7 @@
 ## 📸 Screenshots
 
 <p align="center">
-  <a href="assets/readme/map-marauders.jpeg"><img src="assets/readme/map-marauders.jpeg" alt="marauders · Map screenshot" width="540" /></a>
+  <a href="assets/readme/guides/preview.webp"><img src="assets/readme/guides/preview.webp" alt="롤플레이 지도 / RP Map" width="640" /></a>
 </p>
 
 ## 📥 Installation and First Steps
@@ -57,11 +57,11 @@ Choose the API used to generate map content.
 | **Bonbon Board** | A miniature-board-game theme that places emoji location cards and named character pieces on a sweet-colored game board. |
 
 <p align="center">
-  <a href="assets/readme/map-shield.jpeg"><img src="assets/readme/map-shield.jpeg" alt="shield · Map screenshot" width="540" /></a>
+  <a href="assets/readme/guides/shield.webp"><img src="assets/readme/guides/shield.webp" alt="기관 관제 지도 / S.H.I.E.L.D. Field Locator" width="640" /></a>
 </p>
 
 <p align="center">
-  <a href="assets/readme/map-bonbon.jpeg"><img src="assets/readme/map-bonbon.jpeg" alt="bonbon · Map screenshot" width="540" /></a>
+  <a href="assets/readme/guides/bonbon.webp"><img src="assets/readme/guides/bonbon.webp" alt="봉봉보드 / Bonbon Board" width="640" /></a>
 </p>
 
 The theme changes the screen colors, markers, and button names. Regardless of theme, the map uses the same structure and generates its contents from the world, era, and locations established by the current roleplay and character information.
@@ -136,6 +136,10 @@ If you move to another chat or disable the extension, a late result from the pre
 ---
 
 ## 📍 Map Screen
+
+<p align="center">
+  <a href="assets/readme/guides/board.webp"><img src="assets/readme/guides/board.webp" alt="지도판 사용법 / Map board" width="640" /></a>
+</p>
 
 ### Map Board
 
@@ -234,7 +238,7 @@ Select `👁 이후 동선 추적` (Track Later Movement) to add the character t
 ## 🪄 Application Modes
 
 <p align="center">
-  <a href="assets/readme/mobile/map-apply-guide-mobile.webp"><img src="assets/readme/mobile/map-apply-guide-mobile.webp" alt="Real quest panel and the five application choices: background, character-first, user-first, notebook-only and clearing application" width="520" /></a>
+  <a href="assets/readme/guides/apply.webp"><img src="assets/readme/guides/apply.webp" alt="반영 방식 / Application modes" width="640" /></a>
 </p>
 
 Locations, quests, characters, discoveries, and searched places are managed through the same set of actions.
@@ -256,7 +260,7 @@ Only information with a selected application mode is provided to subsequent AI r
 ## 🪄 Revelio / 📡 Nearby Scan / 🔑 Key Card
 
 <p align="center">
-  <a href="assets/readme/mobile/map-explore-guide-mobile.webp"><img src="assets/readme/mobile/map-explore-guide-mobile.webp" alt="Real Map example screens showing Revelio discovery, place search and notebook character tracking" width="520" /></a>
+  <a href="assets/readme/guides/explore.webp"><img src="assets/readme/guides/explore.webp" alt="탐색·검색·수첩 / Discovery, search and notebook" width="640" /></a>
 </p>
 
 Newly generated discoveries carry an **Observed in RP / Inferred / Rumor** evidence tag. The 'observed' tag is used only when the supplied recent roleplay has a matching anchor; previous AI maps alone cannot confirm facts. The tag and supporting anchors are AI assessments, not proof. Inferred information and rumors stay explicitly uncertain even when you apply them.
@@ -418,7 +422,7 @@ Refreshing the full map or a single location saves the immediately preceding sta
 ## 📸 화면
 
 <p align="center">
-  <a href="assets/readme/map-marauders.jpeg"><img src="assets/readme/map-marauders.jpeg" alt="marauders · Map screenshot" width="540" /></a>
+  <a href="assets/readme/guides/preview.webp"><img src="assets/readme/guides/preview.webp" alt="롤플레이 지도 / RP Map" width="640" /></a>
 </p>
 
 ## 📥 설치 및 처음 사용하기
@@ -467,11 +471,11 @@ Refreshing the full map or a single location saves the immediately preceding sta
 | **Bonbon Board** | 달콤한 색의 게임판에 이모지 장소 카드와 이름이 붙은 인물 말을 놓는 미니어처 보드게임 테마입니다. |
 
 <p align="center">
-  <a href="assets/readme/map-shield.jpeg"><img src="assets/readme/map-shield.jpeg" alt="shield · Map screenshot" width="540" /></a>
+  <a href="assets/readme/guides/shield.webp"><img src="assets/readme/guides/shield.webp" alt="기관 관제 지도 / S.H.I.E.L.D. Field Locator" width="640" /></a>
 </p>
 
 <p align="center">
-  <a href="assets/readme/map-bonbon.jpeg"><img src="assets/readme/map-bonbon.jpeg" alt="bonbon · Map screenshot" width="540" /></a>
+  <a href="assets/readme/guides/bonbon.webp"><img src="assets/readme/guides/bonbon.webp" alt="봉봉보드 / Bonbon Board" width="640" /></a>
 </p>
 
 테마는 화면의 색·표식·버튼 이름을 바꿉니다. 어느 테마를 선택해도 지도 내용은 현재 RP와 캐릭터 정보의 세계·시대·장소를 기준으로 같은 구조에서 생성됩니다.
@@ -544,6 +548,10 @@ Bonbon Board는 현재 실리태번 테마의 글꼴을 상속합니다. Maraude
 ---
 
 ## 📍 지도 화면
+
+<p align="center">
+  <a href="assets/readme/guides/board.webp"><img src="assets/readme/guides/board.webp" alt="지도판 사용법 / Map board" width="640" /></a>
+</p>
 
 ### 지도판
 
@@ -642,7 +650,7 @@ Bonbon Board에서는 네 면의 게임 경로 위에 장소를 나타내는 이
 ## 🪄 반영 방식
 
 <p align="center">
-  <a href="assets/readme/mobile/map-apply-guide-mobile.webp"><img src="assets/readme/mobile/map-apply-guide-mobile.webp" alt="실제 퀘스트 화면과 배경·캐릭터 먼저·유저 먼저·수첩 저장·반영 해제 다섯 가지 선택" width="520" /></a>
+  <a href="assets/readme/guides/apply.webp"><img src="assets/readme/guides/apply.webp" alt="반영 방식 / Application modes" width="640" /></a>
 </p>
 
 장소, 퀘스트, 인물, 발견과 검색 장소는 같은 방식으로 관리합니다.
@@ -664,7 +672,7 @@ Bonbon Board에서는 네 면의 게임 경로 위에 장소를 나타내는 이
 ## 🪄 Revelio / 📡 주변 상황 탐색 / 🔑 열쇠 카드
 
 <p align="center">
-  <a href="assets/readme/mobile/map-explore-guide-mobile.webp"><img src="assets/readme/mobile/map-explore-guide-mobile.webp" alt="실제 지도 화면의 Revelio 탐색, 장소 검색, 수첩과 인물 추적 기능 비교" width="520" /></a>
+  <a href="assets/readme/guides/explore.webp"><img src="assets/readme/guides/explore.webp" alt="탐색·검색·수첩 / Discovery, search and notebook" width="640" /></a>
 </p>
 
 새로 생성된 발견에는 **RP에서 확인 / 추정 / 소문** 근거 표시를 붙입니다. 최근 RP의 실제 내용과 근거가 연결되는 경우에만 '확인'으로 분류하고, AI가 이전에 생성한 지도 설명만으로 사실을 확정하지 않습니다. 표시와 근거 설명은 AI의 분류 결과이며 사실 보증이 아닙니다. 추정이나 소문을 RP에 반영하더라도 확정 사실로 취급하지 않도록 지시합니다.
