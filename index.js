@@ -26,7 +26,7 @@ const FOOTSTEP_REPAIR_MAX_TOKENS = 1600;
 const LOCATION_ICON_REVIEW_MAX_TOKENS = 600;
 const DEBUG_LOG_LIMIT = 40;
 const memoryDebugLogs = [];
-const EXTENSION_VERSION = '3.2.11';
+const EXTENSION_VERSION = '3.2.12';
 const SHARED_NOTEBOOK_KEYS = Object.freeze(['managedItems', 'footstepProfiles', 'trackedPeople', 'recommendations', 'searchResults']);
 const SHARED_NOTEBOOK_MIGRATION_VERSION = 1;
 const DISCOVERY_HISTORY_LIMIT = 30;
@@ -74,11 +74,11 @@ const THEME_OPTIONS = Object.freeze({
         menuTitle: "Marauder's Map",
         activationVariant: 'spell',
         closeText: 'Mischief Managed.',
-        idleNote: '낡은 양피지가 조용히 펼쳐진다.',
+        idleNote: '낡은 양피지가 조용히 펼쳐집니다.',
         activateText: 'I solemnly swear that I am up to no good.',
         castingText: '잉크가 양피지에 스며드는 중...',
         completeText: '지도가 모두 그려졌습니다.',
-        readyHint: '주문을 한 번 누르면 지도가 활성화된다.',
+        readyHint: '주문을 한 번 누르면 지도가 활성화됩니다.',
         loaderTitle: "Marauder's Map",
         locationInfoIcon: '🎨',
         discoveryUi: {
@@ -4932,9 +4932,9 @@ function renderNotebookPanel() {
             </header>
             <p class="mma-panel-note">반영 데이터, 추적 중인 인물, 수집한 장소를 한곳에서 볼 수 있습니다. 반영 데이터만 롤플에 반영되고 그 외 정보는 수첩에서만 볼 수 있습니다. 수집한 정보, 추적 중인 인물을 반영 데이터로 변경할 수 있습니다.</p>
             <details open class="mma-notebook-section"><summary>반영/수집 데이터 <small>${managed.length}</small></summary>${managed.length ? managed.map(item => renderManagedItemCard(item)).join('') : '<p class="mma-empty">반영 또는 수집 중인 항목이 없습니다.</p>'}</details>
-            <details class="mma-notebook-section"><summary>추적 중인 인물 <small>${trackedEntries.length}</small></summary>${trackedEntries.length ? trackedEntries.map(([key, item]) => renderTrackedCard(key, item)).join('') : '<p class="mma-empty">아직 추적 중인 인물이 없다.</p>'}</details>
+            <details class="mma-notebook-section"><summary>추적 중인 인물 <small>${trackedEntries.length}</small></summary>${trackedEntries.length ? trackedEntries.map(([key, item]) => renderTrackedCard(key, item)).join('') : '<p class="mma-empty">아직 추적 중인 인물이 없습니다.</p>'}</details>
             <details class="mma-notebook-section"><summary>인물 검색 기록 <small>${searchHistory.length}</small></summary>${searchHistory.length ? searchHistory.map(result => renderSearchHistoryCard(result)).join('') : '<p class="mma-empty">아직 인물 검색 기록이 없습니다.</p>'}</details>
-            <details class="mma-notebook-section"><summary>수집한 검색 장소 <small>${recommendations.length}</small></summary>${recommendations.length ? renderRecommendationCards(recommendations) : '<p class="mma-empty">수집한 검색 장소가 없다.</p>'}</details>
+            <details class="mma-notebook-section"><summary>수집한 검색 장소 <small>${recommendations.length}</small></summary>${recommendations.length ? renderRecommendationCards(recommendations) : '<p class="mma-empty">수집한 검색 장소가 없습니다.</p>'}</details>
         </div>
     `;
     panel.querySelector('[data-action="back"]')?.addEventListener('click', () => renderLocationPanel(memory.selectedLocationId));
@@ -5064,7 +5064,7 @@ function showTrackedRoute(key) {
 }
 
 function renderTrackedCard(key, item) {
-    const activityText = item.lastActivity || item.summary || '현재 행동이 또렷하지 않다.';
+    const activityText = item.lastActivity || item.summary || '현재 행동이 또렷하지 않습니다.';
     const history = item.history?.length ? `<details class="mma-track-history"><summary>이전 동선</summary><ul>${item.history.map(h => `<li>${escapeHtml(h.at || '')} — ${escapeHtml(h.location || '')}: ${escapeHtml(h.activity || '')}</li>`).join('')}</ul></details>` : '';
     return `
         <article class="mma-event-card tracked-card">
@@ -5075,7 +5075,7 @@ function renderTrackedCard(key, item) {
             ${item.trackerReaction ? `<div class="mma-scroll-text small"><p><b>추적 반응</b>: ${escapeHtml(item.trackerReaction)}</p></div>` : ''}
             ${Array.isArray(item.hooks) && item.hooks.length ? `<ul class="mma-possible-scenes">${item.hooks.slice(0, 4).map(hook => `<li>${escapeHtml(hook)}</li>`).join('')}</ul>` : ''}
             <div class="mma-event-actions">
-                <button data-track-refresh="${escapeHtml(key)}">지금 어디 있지?</button>
+                <button data-track-refresh="${escapeHtml(key)}">현재 위치 확인</button>
                 <button data-track-route="${escapeHtml(key)}">${mapControlIcon('shoe-prints')} 동선 지도 보기</button>
                 ${renderActionButtons('tracked', key)}
                 <button data-track-remove="${escapeHtml(key)}">추적 해제</button>
@@ -6467,7 +6467,7 @@ function renderFootstepActionPanel(footstepId) {
                 <div><span class="mma-place-icon">${mapControlIcon('book')}</span><strong>수첩 반영</strong></div>
                 <button aria-label="발자국 상태로 돌아가기" title="발자국 상태로 돌아가기" data-action="back">${mapControlIcon('reply', '↩')}</button>
             </header>
-            <p class="mma-panel-note">선택한 인물의 현재 상태, 행동, 생각 정보가 다음 응답부터 반영된다. 보류는 롤플에 반영되지 않고 나중에 다시 선택할 수 있도록 남는다.</p>
+            <p class="mma-panel-note">선택한 인물의 현재 상태, 행동, 생각 정보가 다음 응답부터 반영됩니다. 보류는 롤플에 반영되지 않고 나중에 다시 선택할 수 있도록 남습니다.</p>
             <article class="mma-event-card footstep-manage">
                 <div class="mma-event-title"><b>👣 ${escapeHtml(profile.name)}의 현재 상태</b><span>인물</span></div>
                 <div class="mma-event-location">📍 ${escapeHtml(profile.currentLocation)}</div>
@@ -7095,7 +7095,7 @@ function renderMapView() {
     content.querySelector('[data-action="refresh-all"]')?.addEventListener('click', () => generateMap(true));
     content.querySelector('[data-action="refresh-fresh"]')?.addEventListener('click', async () => {
         const accepted = await askMapConfirmation(isKoreanMapLocale()
-            ? '현재 지도 대신 완전히 새 지도를 그릴까?\n기존 수첩과 반영 데이터는 유지돼. 직전 지도는 이전 지도 불러오기로 한 번 복원할 수 있어.'
+            ? '현재 지도 대신 완전히 새 지도를 그릴까요?\n기존 수첩과 반영 데이터는 유지됩니다. 직전 지도는 이전 지도 불러오기로 한 번 복원할 수 있습니다.'
             : 'Generate a fresh map instead of continuing the current one?\nNotebook and applied items are kept. You can restore the previous map once from the toolbar.');
         if (accepted) generateMap(true, { freshStart: true });
     });
@@ -7463,7 +7463,7 @@ function renderDiscoveryPanel(discoveryId) {
                 <h4>🔎 지금 발견한 것</h4>
                 <p><b>${escapeHtml(focus)}</b>${focusContext ? ` — ${escapeHtml(focusContext)}` : ''}</p>
                 <p>${escapeHtml(observation)}</p>
-                <p class="mma-evidence-note">${isKoreanMapLocale() ? '표시는 지도 AI의 근거 분류이며 사실 보증은 아니야.' : 'Evidence tags reflect the map AI assessment, not proof.'}</p>
+                <p class="mma-evidence-note">${isKoreanMapLocale() ? '표시는 지도 AI의 근거 분류이며 사실을 보증하지는 않습니다.' : 'Evidence tags reflect the map AI assessment, not proof.'}</p>
             </section>
             ${stakes ? `<section class="mma-info-block"><h4>⏳ 이대로 두면</h4><p>${escapeHtml(stakes)}</p></section>` : ''}
             ${interactions.length ? `<section class="mma-info-block"><h4>↗️ 해볼 수 있는 일</h4><ul>${interactions.map(action => `<li>${escapeHtml(action)}</li>`).join('')}</ul></section>` : ''}
@@ -7715,7 +7715,7 @@ function buildDisplaySituation(location, relatedEvents = []) {
         && !companionKey.includes(paletteKey);
 
     if (palette && hasDistinctCompanion) return `${palette}\n\n${companion}`;
-    return palette || companion || '양피지가 아직 이 장소의 분위기를 충분히 그려내지 못하고 있다. 이 장소만 새로고침하면 현재 상황을 다시 읽을 수 있다.';
+    return palette || companion || '양피지가 아직 이 장소의 분위기를 충분히 그려내지 못하고 있습니다. 이 장소만 새로고침하면 현재 상황을 다시 읽을 수 있습니다.';
 }
 
 function isGenericEventTitle(title) {
@@ -8051,7 +8051,7 @@ async function handleManageAction(type, id, action) {
     if (action !== 'remove' && availableQuestCount > 0) {
         const korean = isKoreanMapLocale();
         const choice = await askMapConfirmation(korean
-            ? `이 장소의 퀘스트 ${availableQuestCount}개도 함께 ${action === 'hold' ? '수집' : '반영'}할까?`
+            ? `이 장소의 퀘스트 ${availableQuestCount}개도 함께 ${action === 'hold' ? '수집' : '반영'}할까요?`
             : `Include ${availableQuestCount} linked quest(s) with this location?`, {
             title: korean ? '연결된 퀘스트' : 'Linked quests',
             confirmLabel: korean ? '장소와 퀘스트' : 'Location and quests',
