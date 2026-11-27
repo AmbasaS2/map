@@ -70,7 +70,7 @@ const THEME_OPTIONS = Object.freeze({
         key: 'marauder',
         label: "Marauder's Map (HP AU)",
         shortLabel: "Marauder's Map",
-        menuIcon: ['scroll', '▤'],
+        menuIcon: 'scroll',
         menuTitle: "Marauder's Map",
         activationVariant: 'spell',
         closeText: 'Mischief Managed.',
@@ -94,7 +94,7 @@ const THEME_OPTIONS = Object.freeze({
         key: 'modern',
         label: 'S.H.I.E.L.D. Field Locator (MCU AU)',
         shortLabel: 'S.H.I.E.L.D. LOCATOR',
-        menuIcon: ['location-dot', '⌖'],
+        menuIcon: 'location-dot',
         menuTitle: 'S.H.I.E.L.D. Field Locator',
         activationVariant: 'warning',
         closeText: '×',
@@ -118,7 +118,7 @@ const THEME_OPTIONS = Object.freeze({
         key: 'bonbon',
         label: 'Bonbon Board',
         shortLabel: 'BONBON BOARD',
-        menuIcon: ['dice', '◇'],
+        menuIcon: 'dice',
         menuTitle: 'Bonbon Board',
         activationVariant: 'game-box',
         closeText: '×',
@@ -976,15 +976,17 @@ async function loadMapControlFont() {
     } catch { /* Keep the visible fallback if the host font is unavailable. */ }
 }
 
-function getExtensionMenuIcon() {
-    return mapControlIcon(...getThemeConfig().menuIcon);
+function getExtensionMenuIconClass() {
+    return `fa-solid fa-${getThemeConfig().menuIcon} extensionsMenuExtensionButton`;
 }
 
 function refreshExtensionsMenuButton() {
     const button = document.getElementById('mma-extension-menu-button');
     if (!button) return;
     button.title = getThemeConfig().menuTitle || getThemeConfig().shortLabel;
-    button.innerHTML = `<span class="mma-menu-icon extensionsMenuExtensionButton">${getExtensionMenuIcon()}</span><span class="mma-menu-label">지도</span>`;
+    const icon = button.querySelector('.extensionsMenuExtensionButton');
+    const iconClass = getExtensionMenuIconClass();
+    if (icon && icon.className !== iconClass) icon.className = iconClass;
 }
 
 
@@ -8800,7 +8802,7 @@ function ensureExtensionsMenuButton() {
     button.id = 'mma-extension-menu-button';
     button.className = 'list-group-item flex-container flexGap5 interactable';
     button.title = getThemeConfig().menuTitle || getThemeConfig().shortLabel;
-    button.innerHTML = `<span class="mma-menu-icon extensionsMenuExtensionButton">${getExtensionMenuIcon()}</span><span class="mma-menu-label">지도</span>`;
+    button.innerHTML = `<div class="${getExtensionMenuIconClass()}" aria-hidden="true"></div><span class="mma-menu-label">${escapeHtml(localizeMapUiText('지도'))}</span>`;
     button.addEventListener('click', () => {
         openMap();
     });
@@ -8918,7 +8920,6 @@ function init() {
     safeInitStep('ensureExtensionsMenuButton', ensureExtensionsMenuButton);
     safeInitStep('map locale', () => {
         observeMapUiLocale(document.getElementById('mma-settings-block'));
-        observeMapUiLocale(document.getElementById('mma-extension-menu-button'));
     });
     // Restore an already-existing injected map prompt quietly, but do not create
     // map DOM, run migrations, or touch chat memory during SillyTavern boot.
