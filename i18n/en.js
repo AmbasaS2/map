@@ -190,7 +190,7 @@ export const ENGLISH_UI = Object.freeze({
     "🎒 인벤토리": "🎒 Inventory",
     "✨ 따라갈 만한 단서": "✨ Clues to follow",
     "👣 현재 상태": "👣 Current status",
-    "현재 위치 확인": "Where are they now?",
+    "지금 어디 있지?": "Where are they now?",
     "추적 해제": "Stop tracking",
     "이전 동선": "Movement history",
     "추적 반응": "Tracking reaction",

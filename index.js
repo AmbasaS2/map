@@ -5075,7 +5075,7 @@ function renderTrackedCard(key, item) {
             ${item.trackerReaction ? `<div class="mma-scroll-text small"><p><b>추적 반응</b>: ${escapeHtml(item.trackerReaction)}</p></div>` : ''}
             ${Array.isArray(item.hooks) && item.hooks.length ? `<ul class="mma-possible-scenes">${item.hooks.slice(0, 4).map(hook => `<li>${escapeHtml(hook)}</li>`).join('')}</ul>` : ''}
             <div class="mma-event-actions">
-                <button data-track-refresh="${escapeHtml(key)}">현재 위치 확인</button>
+                <button data-track-refresh="${escapeHtml(key)}">지금 어디 있지?</button>
                 <button data-track-route="${escapeHtml(key)}">${mapControlIcon('shoe-prints')} 동선 지도 보기</button>
                 ${renderActionButtons('tracked', key)}
                 <button data-track-remove="${escapeHtml(key)}">추적 해제</button>
