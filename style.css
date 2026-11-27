@@ -2917,6 +2917,7 @@ button.mma-footstep:focus-visible em {
   align-self: flex-start !important;
   align-items: center !important;
   justify-content: center !important;
+  column-gap: 0.25em;
   width: max-content !important;
   inline-size: max-content !important;
   max-width: 100% !important;
