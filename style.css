@@ -2445,7 +2445,6 @@ button.mma-footstep:focus-visible em {
 
 
 /* v2.4.10: settings-side debug controls match Konggomul compact layout */
-#mma-settings-block.mma-settings-mini,
 #mma-settings-block .mma-settings-content {
   font-size: 12px !important;
   line-height: 1.35 !important;
@@ -3539,134 +3538,27 @@ button.mma-footstep:focus-visible em {
 
 /* Cream property spaces with an outward colour band read as a game route,
    rather than a strip of colour swatches. */
-#mma-window.mma-theme-bonbon .mma-bonbon-board-rail {
-  box-sizing: border-box;
-  overflow: hidden;
-  border: 1px solid rgba(112, 75, 94, .32) !important;
-  background-color: #fffcf8 !important;
-  box-shadow: inset 0 0 0 1px rgba(255, 252, 248, .72) !important;
-}
 
-#mma-window.mma-theme-bonbon .mma-bonbon-board-rail-top {
-  background:
-    repeating-linear-gradient(90deg, #9b718a 0 56px, #704b5e 56px 58px, #c28fa1 58px 114px, #704b5e 114px 116px, #cbd3b8 116px 172px, #704b5e 172px 174px, #a98578 174px 230px, #704b5e 230px 232px) top / 100% 9px no-repeat,
-    repeating-linear-gradient(90deg, transparent 0 56px, var(--mma-bb-tile-separator) 56px 57px, #fffcf8 57px 58px),
-    #fffcf8 !important;
-}
 
-#mma-window.mma-theme-bonbon .mma-bonbon-board-rail-right {
-  background:
-    repeating-linear-gradient(0deg, #cbd3b8 0 56px, #704b5e 56px 58px, #9b718a 58px 114px, #704b5e 114px 116px, #a98578 116px 172px, #704b5e 172px 174px, #c28fa1 174px 230px, #704b5e 230px 232px) right / 9px 100% no-repeat,
-    repeating-linear-gradient(0deg, transparent 0 56px, var(--mma-bb-tile-separator) 56px 57px, #fffcf8 57px 58px),
-    #fffcf8 !important;
-}
 
-#mma-window.mma-theme-bonbon .mma-bonbon-board-rail-bottom {
-  background:
-    repeating-linear-gradient(90deg, #c28fa1 0 56px, #704b5e 56px 58px, #cbd3b8 58px 114px, #704b5e 114px 116px, #a98578 116px 172px, #704b5e 172px 174px, #9b718a 174px 230px, #704b5e 230px 232px) bottom / 100% 9px no-repeat,
-    repeating-linear-gradient(90deg, transparent 0 56px, var(--mma-bb-tile-separator) 56px 57px, #fffcf8 57px 58px),
-    #fffcf8 !important;
-}
 
-#mma-window.mma-theme-bonbon .mma-bonbon-board-rail-left {
-  background:
-    repeating-linear-gradient(0deg, #a98578 0 56px, #704b5e 56px 58px, #c28fa1 58px 114px, #704b5e 114px 116px, #cbd3b8 116px 172px, #704b5e 172px 174px, #9b718a 174px 230px, #704b5e 230px 232px) left / 9px 100% no-repeat,
-    repeating-linear-gradient(0deg, transparent 0 56px, var(--mma-bb-tile-separator) 56px 57px, #fffcf8 57px 58px),
-    #fffcf8 !important;
-}
 
-#mma-window.mma-theme-bonbon .mma-bonbon-board-rail::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  opacity: .76;
-}
 
-#mma-window.mma-theme-bonbon :is(.mma-bonbon-board-rail-top, .mma-bonbon-board-rail-bottom)::after {
-  background: radial-gradient(circle, #fffcf8 0 1px, var(--mma-bb-tile-pip) 1.1px 1.8px, transparent 1.9px) 28px 20px / 58px 34px repeat-x;
-}
 
-#mma-window.mma-theme-bonbon :is(.mma-bonbon-board-rail-left, .mma-bonbon-board-rail-right)::after {
-  background: radial-gradient(circle, #fffcf8 0 1px, var(--mma-bb-tile-pip) 1.1px 1.8px, transparent 1.9px) 20px 28px / 34px 58px repeat-y;
-}
 
 /* Four larger special spaces anchor the route. The chocolate START space and
    every fourth colour band bring the milk-chocolate note back into Bonbon. */
-#mma-window.mma-theme-bonbon [class*="mma-bonbon-board-corner"] {
-  display: grid;
-  place-items: center;
-  width: 48px;
-  height: 48px;
-  overflow: hidden;
-  border: 3px solid #fffcf8 !important;
-  border-radius: 10px !important;
-  color: #fffcf8;
-  outline: 1px solid rgba(112, 75, 94, .42);
-  box-shadow: 0 1px 2px rgba(79, 65, 69, .12) !important;
-  pointer-events: none;
-}
 
-#mma-window.mma-theme-bonbon [class*="mma-bonbon-board-corner"]::before {
-  font-family: inherit !important;
-  font-size: 14px;
-  font-weight: 700;
-  line-height: 1;
-}
 
-#mma-window.mma-theme-bonbon .mma-bonbon-board-corner-top-left {
-  top: calc(18% - 24px);
-  left: calc(18% - 24px);
-  background: var(--mma-bb-milk-chocolate) !important;
-}
 
-#mma-window.mma-theme-bonbon .mma-bonbon-board-corner-top-left::before {
-  content: "START";
-  font-size: 8px;
-  letter-spacing: .06em;
-}
 
-#mma-window.mma-theme-bonbon .mma-bonbon-board-corner-top-right {
-  top: calc(18% - 24px);
-  right: calc(18% - 24px);
-  background: #e7d2d8 !important;
-  color: #704b5e;
-}
 
-#mma-window.mma-theme-bonbon .mma-bonbon-board-corner-top-right::before {
-  content: "🍬";
-}
 
-#mma-window.mma-theme-bonbon .mma-bonbon-board-corner-bottom-right {
-  right: calc(18% - 24px);
-  bottom: calc(22% - 24px);
-  background: #704b5e !important;
-}
 
-#mma-window.mma-theme-bonbon .mma-bonbon-board-corner-bottom-right::before {
-  content: "🍫";
-}
 
-#mma-window.mma-theme-bonbon .mma-bonbon-board-corner-bottom-left {
-  bottom: calc(22% - 24px);
-  left: calc(18% - 24px);
-  background: #cbd3b8 !important;
-  color: #4f4145;
-}
 
-#mma-window.mma-theme-bonbon .mma-bonbon-board-corner-bottom-left::before {
-  content: "🎲";
-}
 
 /* Keep the key card inside the scrollable confirmation panel. */
-#mma-window.mma-theme-bonbon .mma-discovery-confirm::before {
-  box-sizing: border-box;
-  width: 34px !important;
-  height: 24px !important;
-  margin: 0 auto 8px !important;
-  font-size: 15px !important;
-  line-height: 1;
-}
 
 @media (max-width: 420px) {
   #mma-window.mma-theme-bonbon [class*="mma-bonbon-board-corner"] {
@@ -3869,19 +3761,7 @@ button.mma-footstep:focus-visible em {
   transform: translateX(-50%);
 }
 
-#mma-window.mma-theme-bonbon .mma-map-toast.mma-map-toast-bonbon,
-#mma-root.mma-theme-bonbon .mma-map-toast.mma-map-toast-bonbon {
-  opacity: 0;
-  padding: 11px 14px;
-  transform: translateY(-12px) rotate(-.6deg);
-  transition: opacity .18s ease, transform .18s ease;
-}
 
-#mma-window.mma-theme-bonbon .mma-map-toast.mma-map-toast-visible,
-#mma-root.mma-theme-bonbon .mma-map-toast.mma-map-toast-visible {
-  opacity: 1;
-  transform: translateY(0) rotate(-.6deg);
-}
 
 #mma-window.mma-theme-bonbon .mma-map-toast.mma-map-toast-info,
 #mma-root.mma-theme-bonbon .mma-map-toast.mma-map-toast-info {
@@ -6105,9 +5985,6 @@ button.mma-footstep:focus-visible em {
   font-size: 23px !important;
 }
 
-#mma-window.mma-theme-bonbon .mma-bonbon-cover-piece-key-card::after {
-  content: none !important;
-}
 
 #mma-window.mma-theme-bonbon #mma-map-toast-layer,
 #mma-root.mma-theme-bonbon #mma-map-toast-layer {
@@ -8249,11 +8126,6 @@ button.mma-footstep:focus-visible em {
   box-shadow: none !important;
 }
 
-#mma-window.mma-theme-bonbon .mma-bonbon-board-rail::after {
-  content: none !important;
-  display: none !important;
-  background: none !important;
-}
 
 #mma-window.mma-theme-bonbon .mma-bonbon-board-rail-top {
   top: calc(18% - 13px);
@@ -8303,30 +8175,10 @@ button.mma-footstep:focus-visible em {
   pointer-events: none;
 }
 
-#mma-window.mma-theme-bonbon [class*="mma-bonbon-board-corner"]::before {
-  content: none !important;
-  display: none !important;
-}
 
-#mma-window.mma-theme-bonbon .mma-bonbon-board-corner-top-left {
-  top: calc(18% - 15px);
-  left: calc(18% - 15px);
-}
 
-#mma-window.mma-theme-bonbon .mma-bonbon-board-corner-top-right {
-  top: calc(18% - 15px);
-  right: calc(18% - 15px);
-}
 
-#mma-window.mma-theme-bonbon .mma-bonbon-board-corner-bottom-right {
-  right: calc(18% - 15px);
-  bottom: calc(22% - 15px);
-}
 
-#mma-window.mma-theme-bonbon .mma-bonbon-board-corner-bottom-left {
-  bottom: calc(22% - 15px);
-  left: calc(18% - 15px);
-}
 
 #mma-window.mma-theme-bonbon .mma-node {
   border-color: #e3d0ca !important;
@@ -8603,10 +8455,6 @@ button.mma-footstep:focus-visible em {
   box-shadow: 0 0 0 2px #a1715f, inset 0 0 0 2px rgba(255, 249, 241, .72) !important;
 }
 
-#mma-window.mma-theme-bonbon .mma-bonbon-board-rail,
-#mma-window.mma-theme-bonbon [class*="mma-bonbon-board-corner"] {
-  display: none !important;
-}
 
 /* Only locations remain card-like board spaces. */
 #mma-window.mma-theme-bonbon .mma-node {
@@ -8930,10 +8778,6 @@ button.mma-footstep:focus-visible em {
   pointer-events: none;
 }
 
-#mma-window.mma-theme-bonbon [class*="mma-bonbon-board-corner"]::before {
-  content: none !important;
-  display: none !important;
-}
 
 #mma-window.mma-theme-bonbon .mma-bonbon-board-corner-top-left {
   top: calc(18% - 15px);
