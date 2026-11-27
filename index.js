@@ -8688,7 +8688,7 @@ function setupExtensionButtonInSettings() {
     block.className = 'inline-drawer';
     block.innerHTML = `
         <div class="inline-drawer-toggle inline-drawer-header">
-            <b><i class="fa-solid fa-map" aria-hidden="true"></i> 지도</b>
+            <b><i class="fa-solid fa-map" aria-hidden="true"></i>&nbsp;지도</b>
             <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
         </div>
         <div class="inline-drawer-content mma-settings-content" style="display:none;">
